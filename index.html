@@ -4985,19 +4985,31 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             existingPhones.add(phone); // Prevent duplicates in same sync
           }
 
-          // Add all customers at once (important for React state!)
+          // Add all customers to savedLists so they appear on map
           if (newCustomers.length > 0) {
-            setCustomers(prev => {
-              const updated = [...prev, ...newCustomers];
-              console.log(`✅ Added ${newCustomers.length} customers to state`);
-              console.log(`📊 Total customers now: ${updated.length}`);
-              console.log(`📍 Sample customer:`, newCustomers[0]);
-// IMPORTANT: Update filteredCustomers so they show on map!
-              setFilteredCustomers(prevFiltered => [...prevFiltered, ...newCustomers]);
-              
-              return updated;
-            });
-            
+            const listId = Date.now() + Math.random();
+            const listName = `Google Sheets Import - ${new Date().toLocaleDateString()}`;
+
+            // Add customers with proper structure for the list
+            const customersForList = newCustomers.map(c => ({
+              ...c,
+              fileId: listId,
+              fileName: listName
+            }));
+
+            // Add to savedLists (this triggers the useEffect that updates customers)
+            setSavedLists(prev => [...prev, {
+              id: listId,
+              name: listName,
+              customers: customersForList,
+              visible: true,
+              count: customersForList.length,
+              type: 'sheets'
+            }]);
+
+            console.log(`✅ Added ${newCustomers.length} customers as "${listName}"`);
+            console.log(`📍 Sample customer:`, newCustomers[0]);
+
             // Also create in GHL if connected
             if (ghlConnected && ghlApiKey) {
               console.log('Syncing to GHL...');
@@ -10378,79 +10390,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             >
               📤 📡 Upload CSV File
             </button>
-
-            {/* Google Sheets Connection */}
-            <div style={{
-              padding: '16px',
-              background: 'rgba(34, 197, 94, 0.1)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              borderRadius: '12px',
-              marginBottom: '16px'
-            }}>
-              <div style={{ fontSize: '14px', fontWeight: 600, color: '#4ade80', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                📊 Google Sheets
-                {sheetsConnected && <span style={{ fontSize: '11px', background: 'rgba(34, 197, 94, 0.2)', padding: '2px 8px', borderRadius: '4px' }}>Connected</span>}
-              </div>
-              <input
-                type="text"
-                value={googleSheetId}
-                onChange={(e) => setGoogleSheetId(e.target.value)}
-                placeholder="Paste Google Sheet URL or ID..."
-                style={{
-                  width: '100%',
-                  padding: '10px 12px',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  borderRadius: '8px',
-                  color: '#f1f5f9',
-                  fontSize: '12px',
-                  marginBottom: '10px',
-                  boxSizing: 'border-box'
-                }}
-              />
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={testGoogleSheetsConnection}
-                  disabled={sheetSyncing || !googleSheetId}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: sheetSyncing ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, #22c55e, #16a34a)',
-                    border: 'none',
-                    borderRadius: '8px',
-                    color: '#fff',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: sheetSyncing ? 'not-allowed' : 'pointer',
-                    opacity: sheetSyncing || !googleSheetId ? 0.5 : 1
-                  }}
-                >
-                  {sheetSyncing ? '⏳ Testing...' : '🔗 Test Connection'}
-                </button>
-                {sheetsConnected && (
-                  <button
-                    onClick={() => syncFromGoogleSheet()}
-                    disabled={sheetSyncing}
-                    style={{
-                      flex: 1,
-                      padding: '10px',
-                      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                      border: 'none',
-                      borderRadius: '8px',
-                      color: '#fff',
-                      fontSize: '12px',
-                      fontWeight: 600,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    📥 Import Customers
-                  </button>
-                )}
-              </div>
-              <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px' }}>
-                💡 Supports: Sheet URLs, published CSV URLs, or just the Sheet ID
-              </div>
-            </div>
 
             {/* Files Section */}
             {uploadedFiles.length > 0 && (
