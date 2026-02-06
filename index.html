@@ -604,6 +604,33 @@
         '4': 6   // Tier 4: $6/panel
       };
 
+      // Helper function to construct proper CSV URL from any Google Sheets URL format
+      const getGoogleSheetsCsvUrl = (input) => {
+        if (!input) return null;
+
+        // If URL already contains output=csv or format=csv, use it directly
+        if (input.includes('output=csv') || input.includes('format=csv')) {
+          return input;
+        }
+
+        // Check for published sheet format: /d/e/PUBLISHED_ID/
+        const publishedMatch = input.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
+        if (publishedMatch) {
+          const publishedId = publishedMatch[1];
+          return `https://docs.google.com/spreadsheets/d/e/${publishedId}/pub?gid=0&single=true&output=csv`;
+        }
+
+        // Check for regular sheet format: /d/SHEET_ID/
+        const regularMatch = input.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (regularMatch) {
+          const sheetId = regularMatch[1];
+          return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=0`;
+        }
+
+        // Assume it's just a sheet ID
+        return `https://docs.google.com/spreadsheets/d/${input}/export?format=csv&gid=0`;
+      };
+
       // Load saved data
       useEffect(() => {
         const saved = localStorage.getItem('savedRoutes');
@@ -4269,18 +4296,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
        * Helper: Fetch all data from Google Sheets
        */
       const fetchAllSheetData = async () => {
-        // Reuse existing sync logic but return the data instead of importing
-        let actualSheetId = googleSheetId;
-        if (googleSheetId.includes('docs.google.com')) {
-          const match1 = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
-          const match2 = googleSheetId.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
-          if (match2) actualSheetId = match2[1];
-          else if (match1) actualSheetId = match1[1];
-        }
-        
-        const csvUrl = `https://docs.google.com/spreadsheets/d/${actualSheetId}/export?format=csv&gid=0`;
+        // Use helper to get proper CSV URL for any format
+        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
         let response;
-        
+
         try {
           response = await fetch(csvUrl);
         } catch (e) {
@@ -4374,30 +4393,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
         setSheetSyncing(true);
         try {
-          // Extract actual sheet ID from various URL formats
-          let actualSheetId = googleSheetId;
-          
-          // If it's a full URL, extract the ID
-          if (googleSheetId.includes('docs.google.com')) {
-            // Format 1: https://docs.google.com/spreadsheets/d/1w3bZy.../edit
-            const match1 = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
-            // Format 2: https://docs.google.com/spreadsheets/d/e/2PACX-.../pubhtml
-            const match2 = googleSheetId.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
-            
-            if (match2) {
-              actualSheetId = match2[1]; // Published sheet ID
-              console.log('Detected published sheet ID:', actualSheetId);
-            } else if (match1) {
-              actualSheetId = match1[1]; // Regular sheet ID
-              console.log('Detected regular sheet ID:', actualSheetId);
-            }
-          }
-          
-          // Method 1: Try CSV export (works for public sheets)
-          const csvUrl = `https://docs.google.com/spreadsheets/d/${actualSheetId}/export?format=csv&gid=0`;
-          
+          // Use helper to get proper CSV URL for any format
+          const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+
           console.log('Testing connection to:', csvUrl);
-          
+
           let response;
           try {
             // Try direct fetch first
@@ -4408,23 +4408,21 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
             response = await fetch(proxyUrl);
           }
-          
+
           if (response.ok) {
             const csvData = await response.text();
-            
+
             // Check if we got actual data
             if (csvData && csvData.length > 10) {
               setSheetsConnected(true);
               setLastSheetSync(new Date());
-              localStorage.setItem('googleSheetId', actualSheetId); // Store the clean ID
+              localStorage.setItem('googleSheetId', googleSheetId); // Store the original URL/ID
               if (googleApiKey) localStorage.setItem('googleApiKey', googleApiKey);
-              
+
               // Show preview of first row
               const firstLine = csvData.split('\n')[0];
-              alert(`✅ Connected to Google Sheets!\n\nSheet ID: ${actualSheetId}\n\nFirst row preview:\n${firstLine.substring(0, 100)}...\n\nReady to sync customers.`);
-              
-              // Update the input field with clean ID
-              setGoogleSheetId(actualSheetId);
+              alert(`✅ Connected to Google Sheets!\n\nFirst row preview:\n${firstLine.substring(0, 100)}...\n\nReady to sync customers.`);
+
               return true;
             } else {
               throw new Error('Sheet appears empty');
@@ -4551,17 +4549,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         }
         
         try {
-          // Extract sheet ID
-          let actualSheetId = googleSheetId;
-          if (googleSheetId.includes('docs.google.com')) {
-            const match1 = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
-            const match2 = googleSheetId.match(/\/d\/e\/([a-zA-Z0-9-_]+)/);
-            actualSheetId = match2 ? match2[1] : (match1 ? match1[1] : googleSheetId);
-          }
-          
-          // Fetch via CSV (faster than API for large datasets)
-          const csvUrl = `https://docs.google.com/spreadsheets/d/${actualSheetId}/export?format=csv&gid=0`;
-          
+          // Use helper to get proper CSV URL for any format
+          const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+
           let response;
           try {
             response = await fetch(csvUrl);
@@ -4569,7 +4559,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
             response = await fetch(proxyUrl);
           }
-          
+
           if (!response.ok) {
             throw new Error(`Failed to fetch sheet: ${response.status}`);
           }
@@ -4798,10 +4788,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             
           } else {
             // Use CSV export with CORS proxy fallback
-            const csvUrl = `https://docs.google.com/spreadsheets/d/${actualSheetId}/export?format=csv&gid=0`;
-            
+            const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+
             console.log('Fetching CSV from:', csvUrl);
-            
+
             let response;
             try {
               response = await fetch(csvUrl);
@@ -4811,7 +4801,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
               response = await fetch(proxyUrl);
             }
-            
+
             if (!response.ok) {
               throw new Error(`HTTP ${response.status}: Sheet may not be published or shared publicly`);
             }
