@@ -6824,7 +6824,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     />
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button
-                        onClick={testSheetsConnection}
+                        onClick={testGoogleSheetsConnection}
                         disabled={sheetSyncing || !googleSheetId}
                         style={{
                           flex: 1,
@@ -10410,7 +10410,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               />
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
-                  onClick={testSheetsConnection}
+                  onClick={testGoogleSheetsConnection}
                   disabled={sheetSyncing || !googleSheetId}
                   style={{
                     flex: 1,
