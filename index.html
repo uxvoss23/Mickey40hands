@@ -1602,31 +1602,43 @@
             // Route number display (white text in center of pin)
             const routeNumberDisplay = routeNumber ? `<span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(45deg); color: white; font-weight: 800; font-size: 11px; text-shadow: 0 1px 3px rgba(0,0,0,0.8);">${routeNumber}</span>` : '';
 
-            // Determine icon type: Blue T-Rex for recurring, Green Dinosaur for past customers, Purple pin for new
-            const isRecurringCustomer = customer.isRecurring === true || customer.recurring === true;
-            const isPastCustomer = customer.existingJob === true;
-            
+            // Determine icon type based on new logic:
+            // - Green dinosaur 🦖 = Recurring customer
+            // - Pink pin = Not recurring, but has upcoming job
+            // - Default purple pin = No upcoming job / completed
+            const isRecurringCustomer = customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
+
+            // Calculate next service date (12 months from last service if not manually set)
+            let nextServiceDate = customer.nextServiceDate;
+            if (!nextServiceDate && customer.lastServiceDate) {
+              const lastDate = new Date(customer.lastServiceDate);
+              const next = new Date(lastDate);
+              next.setFullYear(next.getFullYear() + 1);
+              nextServiceDate = next.toISOString().split('T')[0];
+            }
+            const hasUpcomingJob = nextServiceDate && new Date(nextServiceDate) > new Date();
+
             let customIcon;
             if (isRecurringCustomer) {
-              // Blue T-Rex for recurring customers
+              // Green T-Rex for recurring customers
               customIcon = L.divIcon({
                 className: 'custom-marker-recurring',
-                html: `<div style="font-size: 32px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); transform: translate(-50%, -50%);">🦖</div>`,
+                html: `<div style="font-size: 32px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); transform: translate(-50%, -50%); filter: hue-rotate(80deg) saturate(1.5);">🦖</div>`,
                 iconSize: [32, 32],
                 iconAnchor: [16, 32],
                 popupAnchor: [0, -32]
               });
-            } else if (isPastCustomer) {
-              // Green Dinosaur for past customers (not recurring)
+            } else if (hasUpcomingJob) {
+              // Pink pin for customers with upcoming job (not recurring)
               customIcon = L.divIcon({
-                className: 'custom-marker-past',
-                html: `<div style="font-size: 32px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); transform: translate(-50%, -50%);">🦕</div>`,
-                iconSize: [32, 32],
-                iconAnchor: [16, 32],
+                className: 'custom-marker-upcoming',
+                html: `<div class="marker-pin ${pinClass}" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}</div>`,
+                iconSize: [24, 32],
+                iconAnchor: [12, 32],
                 popupAnchor: [0, -32]
               });
             } else {
-              // Purple pin for new customers
+              // Default purple pin for others
               customIcon = L.divIcon({
                 className: 'custom-marker',
                 html: `<div class="marker-pin ${pinClass}" style="background: ${gradient}; position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}</div>`,
@@ -4837,17 +4849,18 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             email: getColumnIndex(['Email', 'Customer Email']),
             phone: getColumnIndex(['Phone', 'Mobile', 'Customer Mobile']),
             schedStart: getColumnIndex(['Scheduled Start', 'Start Date', 'Job Scheduled']),
-            completed: getColumnIndex(['Completed', 'Completed Date']),
+            completed: getColumnIndex(['Completed', 'Completed Date', 'Job completed date']),
             employee: getColumnIndex(['Employee', 'Assigned']),
             tags: getColumnIndex(['Tags', 'Job Tags']),
             recurring: getColumnIndex(['Recurring']),
             amount: getColumnIndex(['Amount', 'Job Amount']),
-            tip: getColumnIndex(['Tip']),
+            tip: getColumnIndex(['Tip', 'Tip amount']),
             lat: getColumnIndex(['Latitude', 'Lat']),
             lng: getColumnIndex(['Longitude', 'Lng', 'Long']),
             panels: getColumnIndex(['Panel', 'Number of Panel', 'Panels']),
             notes: getColumnIndex(['Notes', 'Customer Notes']),
-            solarVerified: getColumnIndex(['Solar Verified', 'Verified'])
+            solarVerified: getColumnIndex(['Solar Verified', 'Verified']),
+            nextServiceDate: getColumnIndex(['Next Service Date', 'Next Service', 'Upcoming Date'])
           };
           
           console.log('📍 Column mapping:', colMap);
@@ -4909,6 +4922,18 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const totalPanels = getValue('panels');
             const customerNotes = getValue('notes');
             const solarVerified = getValue('solarVerified');
+            const nextServiceDateFromSheet = getValue('nextServiceDate');
+
+            // Calculate next service date: use sheet value, or 12 months from completed date
+            let calculatedNextServiceDate = nextServiceDateFromSheet;
+            if (!calculatedNextServiceDate && completed) {
+              const completedDate = new Date(completed);
+              if (!isNaN(completedDate.getTime())) {
+                const nextDate = new Date(completedDate);
+                nextDate.setFullYear(nextDate.getFullYear() + 1);
+                calculatedNextServiceDate = nextDate.toISOString().split('T')[0];
+              }
+            }
             
             // Debug first row
             if (imported === 0 && skipped === 0) {
@@ -4956,28 +4981,40 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               city: city || '',
               state: state || '',
               zip: zip || '',
-              lat: parseFloat(lat),  // Use 'lat' not 'latitude' for map rendering
-              lng: parseFloat(lng),  // Use 'lng' not 'longitude' for map rendering
-              latitude: parseFloat(lat),  // Keep both for compatibility
+              lat: parseFloat(lat),
+              lng: parseFloat(lng),
+              latitude: parseFloat(lat),
               longitude: parseFloat(lng),
               phone: phone || '',
               email: email || '',
               totalPanels: parseInt(totalPanels) || 0,
-              panelCount: parseInt(totalPanels) || 0,  // Also set panelCount for popup display
-              name: `${firstname} ${lastname}`.trim(),  // Add name property for popups
+              panelCount: parseInt(totalPanels) || 0,
+              name: `${firstname} ${lastname}`.trim(),
               status: status || 'Not serviced',
-              isRecurring: recurring === 'TRUE',
+              jobDescription: jobDesc || '',
+              isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
+              tipAmount: parseFloat(tip) || 0,
               lastServiceDate: completed || '',
+              nextServiceDate: calculatedNextServiceDate || '',
               notes: customerNotes || '',
+              customerNotes: '', // General customer notes (separate from job notes)
               solarVerified: solarVerified === 'yes' ? 'yes' : (solarVerified === 'no' ? 'no' : null),
-              serviceHistory: [],
+              serviceHistory: completed ? [{
+                date: completed,
+                jobDescription: jobDesc || 'Service',
+                amount: parseFloat(amount) || 0,
+                tip: parseFloat(tip) || 0,
+                notes: customerNotes || '',
+                status: status || 'Completed'
+              }] : [],
               notesHistory: customerNotes ? [{
                 date: new Date().toISOString(),
                 note: customerNotes,
-                source: 'Google Sheets Import'
+                source: 'Google Sheets Import',
+                jobDate: completed || null
               }] : [],
-              existingJob: false
+              existingJob: !!completed
             };
 
             newCustomers.push(newCustomer); // Add to collection
@@ -5725,6 +5762,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 </button>
                 <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => setCurrentView('pipeline')}>
                   📊 Pipeline ({pipelineCustomers.length})
+                </button>
+                <button className={`tab-button ${currentView === 'recurring' ? 'active' : ''}`} onClick={() => setCurrentView('recurring')} style={{ color: currentView === 'recurring' ? '#22c55e' : undefined }}>
+                  🦖 Recurring ({customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true).length})
                 </button>
               </div>
               
@@ -10011,6 +10051,116 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     </table>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Recurring Customers View */}
+            {currentView === 'recurring' && (
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                overflow: 'auto',
+                padding: '32px'
+              }} className="scrollbar-custom">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                  <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#22c55e' }}>🦖 Recurring Customers</h2>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#94a3b8' }}>
+                      {customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true).length} recurring customers
+                    </span>
+                  </div>
+                </div>
+
+                {(() => {
+                  const recurringCustomers = customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true);
+
+                  if (recurringCustomers.length === 0) {
+                    return (
+                      <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
+                        <div style={{ fontSize: '64px', marginBottom: '16px' }}>🦖</div>
+                        <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No recurring customers yet</div>
+                        <div style={{ fontSize: '14px' }}>Customers marked as "Recurring" in Google Sheets will appear here.</div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="pipeline-table">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Address</th>
+                            <th>City, State</th>
+                            <th>Panels</th>
+                            <th>Last Service</th>
+                            <th>Next Service</th>
+                            <th>Job Amount</th>
+                            <th>Tip</th>
+                            <th style={{ width: '200px' }}>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recurringCustomers.map((customer) => {
+                            // Calculate next service date if not set
+                            let nextService = customer.nextServiceDate;
+                            if (!nextService && customer.lastServiceDate) {
+                              const lastDate = new Date(customer.lastServiceDate);
+                              const next = new Date(lastDate);
+                              next.setFullYear(next.getFullYear() + 1);
+                              nextService = next.toISOString().split('T')[0];
+                            }
+                            const isOverdue = nextService && new Date(nextService) < new Date();
+
+                            return (
+                              <tr key={customer.id} style={{ background: isOverdue ? 'rgba(239, 68, 68, 0.1)' : undefined }}>
+                                <td style={{ fontWeight: 600 }}>
+                                  <span style={{ marginRight: '8px' }}>🦖</span>
+                                  {customer.name}
+                                </td>
+                                <td>{customer.email || '-'}</td>
+                                <td>{customer.phone || '-'}</td>
+                                <td style={{ fontSize: '11px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {customer.address || '-'}
+                                </td>
+                                <td>{customer.city}, {customer.state}</td>
+                                <td>{customer.panelCount || customer.totalPanels ? `☀️ ${customer.panelCount || customer.totalPanels}` : '-'}</td>
+                                <td>
+                                  {customer.lastServiceDate
+                                    ? new Date(customer.lastServiceDate).toLocaleDateString()
+                                    : '-'
+                                  }
+                                </td>
+                                <td style={{ color: isOverdue ? '#ef4444' : '#22c55e', fontWeight: 600 }}>
+                                  {nextService
+                                    ? (isOverdue ? '⚠️ ' : '📅 ') + new Date(nextService).toLocaleDateString()
+                                    : '-'
+                                  }
+                                </td>
+                                <td style={{ color: '#22c55e' }}>
+                                  {customer.amountPaid ? `$${customer.amountPaid}` : '-'}
+                                </td>
+                                <td style={{ color: '#fbbf24' }}>
+                                  {customer.tipAmount ? `$${customer.tipAmount}` : '-'}
+                                </td>
+                                <td>
+                                  <div style={{ fontSize: '11px', color: '#94a3b8', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {customer.notes || customer.customerNotes || '-'}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>
