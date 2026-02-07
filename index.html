@@ -438,6 +438,9 @@
       const [error, setError] = useState(null);
       const [dragOver, setDragOver] = useState(false);
       const [searchQuery, setSearchQuery] = useState('');
+      const [cityFilter, setCityFilter] = useState('');
+      const [stateFilter, setStateFilter] = useState('');
+      const [zipFilter, setZipFilter] = useState('');
       const [showHeatMap, setShowHeatMap] = useState(false);
       const [radiusMode, setRadiusMode] = useState(false);
       const [awaitingMapClick, setAwaitingMapClick] = useState(false);
@@ -1922,32 +1925,46 @@
 
       // Handle search with smart features
       useEffect(() => {
+        let results = customers;
+
+        // Apply city/state/zip filters first
+        if (cityFilter) {
+          results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
+        }
+        if (stateFilter) {
+          results = results.filter(c => (c.state?.toLowerCase() || '') === stateFilter.toLowerCase());
+        }
+        if (zipFilter) {
+          results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
+        }
+
+        // If no search query, just apply location filters
         if (!searchQuery.trim()) {
-          setFilteredCustomers(customers);
+          setFilteredCustomers(results);
           return;
         }
 
         const query = searchQuery.toLowerCase().trim();
-        
+
         // Special search modes
         // Panel count search: p40 means 40+ panels
         if (query.startsWith('p') && !isNaN(query.substring(1))) {
           const minPanels = parseInt(query.substring(1));
-          const results = customers.filter(c => {
+          results = results.filter(c => {
             const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
             return panelCount >= minPanels;
           });
           setFilteredCustomers(results);
           return;
         }
-        
+
         // Recurring keyword search
         if (query === 'recurring') {
-          const results = customers.filter(c => c.isRecurring === true || c.recurring === true);
+          results = results.filter(c => c.isRecurring === true || c.recurring === true);
           setFilteredCustomers(results);
           return;
         }
-        
+
         // State abbreviation normalization
         const stateMap = {
           'tx': 'texas',
@@ -1962,14 +1979,14 @@
           'arizona': 'arizona'
           // Add more as needed
         };
-        
+
         const normalizedQuery = stateMap[query] || query;
-        
+
         // Regular search with state normalization
-        const results = customers.filter(c => {
+        results = results.filter(c => {
           const normalizedState = (c.state?.toLowerCase() || '');
           const stateFullName = stateMap[normalizedState] || normalizedState;
-          
+
           return (c.name?.toLowerCase() || '').includes(query) ||
             c.firstName?.toLowerCase().includes(query) ||
             c.lastName?.toLowerCase().includes(query) ||
@@ -1985,7 +2002,7 @@
         });
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers]);
+      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
@@ -5194,8 +5211,83 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 </div>
               )}
               
-              {/* Save List Button - only show when searching */}
-              {searchQuery && visibleCustomers.length > 0 && (
+              {/* Location Filters */}
+              {customers.length > 0 && (
+                <>
+                  <select
+                    value={stateFilter}
+                    onChange={(e) => setStateFilter(e.target.value)}
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: '11px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: stateFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
+                      borderRadius: '6px',
+                      color: '#f1f5f9',
+                      cursor: 'pointer',
+                      minWidth: '80px'
+                    }}
+                  >
+                    <option value="">All States</option>
+                    {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={cityFilter}
+                    onChange={(e) => setCityFilter(e.target.value)}
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: '11px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: cityFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
+                      borderRadius: '6px',
+                      color: '#f1f5f9',
+                      cursor: 'pointer',
+                      minWidth: '100px'
+                    }}
+                  >
+                    <option value="">All Cities</option>
+                    {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={zipFilter}
+                    onChange={(e) => setZipFilter(e.target.value)}
+                    placeholder="ZIP"
+                    style={{
+                      padding: '6px 10px',
+                      fontSize: '11px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: zipFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
+                      borderRadius: '6px',
+                      color: '#f1f5f9',
+                      width: '70px'
+                    }}
+                  />
+                  {(cityFilter || stateFilter || zipFilter) && (
+                    <button
+                      onClick={() => { setCityFilter(''); setStateFilter(''); setZipFilter(''); }}
+                      style={{
+                        padding: '4px 8px',
+                        fontSize: '10px',
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        border: '1px solid rgba(239, 68, 68, 0.4)',
+                        borderRadius: '4px',
+                        color: '#fca5a5',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </>
+              )}
+
+              {/* Save List Button - only show when searching or filtering */}
+              {(searchQuery || cityFilter || stateFilter || zipFilter) && visibleCustomers.length > 0 && (
                 <button
                   onClick={() => setShowSaveListModal(true)}
                   className="button-secondary"
@@ -7162,7 +7254,14 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                 
                                 {/* Quick Info */}
                                 <div style={{ padding: '16px' }}>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px' }}>{customer.name}</div>
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '8px', cursor: 'pointer' }}
+                                    onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                    onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
+                                  >
+                                    {customer.name}
+                                  </div>
                                   <div style={{ fontSize: '12px', color: '#94a3b8' }}>{customer.address}</div>
                                 </div>
                               </div>
@@ -7251,7 +7350,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   }}>
                                     {verifyIcon}
                                   </div>
-                                  <div style={{
+                                  <div
+                                    onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                    style={{
                                     fontSize: '14px',
                                     fontWeight: 600,
                                     color: '#f1f5f9',
@@ -7260,8 +7361,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                     whiteSpace: 'nowrap',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    gap: '6px'
-                                  }}>
+                                    gap: '6px',
+                                    cursor: 'pointer'
+                                  }}
+                                    onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                    onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
+                                  >
                                     {customer.name}
                                   </div>
                                 </div>
@@ -9343,14 +9448,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             />
                           </th>
                           <th>Name</th>
+                          <th>Job Description</th>
                           <th>Email</th>
                           <th>Phone</th>
                           <th>Panels</th>
                           <th>City, State</th>
+                          <th>Amount</th>
+                          <th>Tip</th>
                           <th>Status</th>
-                          <th>Last Customer</th>
+                          <th>Last Contact</th>
                           <th>Method</th>
-                          <th style={{ width: '300px' }}>Notes</th>
+                          <th style={{ width: '250px' }}>Notes</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -9363,11 +9471,29 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                 onChange={() => togglePipelineSelection(customer.pipelineId)}
                               />
                             </td>
-                            <td style={{ fontWeight: 600 }}>{customer.name}</td>
+                            <td style={{ fontWeight: 600 }}>
+                              <span
+                                onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                style={{ cursor: 'pointer', color: '#f1f5f9' }}
+                                onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
+                              >
+                                {customer.name}
+                              </span>
+                            </td>
+                            <td style={{ fontSize: '11px', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {customer.jobDescription || customer.jobType || '-'}
+                            </td>
                             <td>{customer.email || '-'}</td>
                             <td>{customer.phone || '-'}</td>
                             <td>{customer.panelCount ? `☀️ ${customer.panelCount}` : '-'}</td>
                             <td>{customer.city}, {customer.state}</td>
+                            <td style={{ color: '#22c55e' }}>
+                              {customer.amountPaid || customer.jobAmount ? `$${customer.amountPaid || customer.jobAmount}` : '-'}
+                            </td>
+                            <td style={{ color: '#fbbf24' }}>
+                              {customer.tipAmount ? `$${customer.tipAmount}` : '-'}
+                            </td>
                             <td>
                               <select
                                 value={customer.status}
@@ -9375,23 +9501,23 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                 style={{ padding: '6px 10px', fontSize: '12px' }}
                               >
                                 <option value="new">🆕 New</option>
-                                <option value="customered">📞 Customered</option>
+                                <option value="contacted">📞 Contacted</option>
                                 <option value="nurturing">🌱 Nurturing</option>
                                 <option value="qualified">✅ Qualified</option>
                               </select>
                             </td>
                             <td>
-                              {customer.lastCustomer 
-                                ? new Date(customer.lastCustomer).toLocaleDateString() 
+                              {customer.lastContact || customer.lastCustomer
+                                ? new Date(customer.lastContact || customer.lastCustomer).toLocaleDateString()
                                 : '-'
                               }
                             </td>
                             <td>
                               <select
-                                value={customer.customerMethod || ''}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, { 
-                                  customerMethod: e.target.value,
-                                  lastCustomer: new Date().toISOString()
+                                value={customer.contactMethod || customer.customerMethod || ''}
+                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, {
+                                  contactMethod: e.target.value,
+                                  lastContact: new Date().toISOString()
                                 })}
                                 style={{ padding: '6px 10px', fontSize: '12px' }}
                               >
@@ -9486,7 +9612,14 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               <tr key={customer.id} style={{ background: isOverdue ? 'rgba(239, 68, 68, 0.1)' : undefined }}>
                                 <td style={{ fontWeight: 600 }}>
                                   <span style={{ marginRight: '8px' }}>🦖</span>
-                                  {customer.name}
+                                  <span
+                                    onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                    style={{ cursor: 'pointer', color: '#f1f5f9' }}
+                                    onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                    onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
+                                  >
+                                    {customer.name}
+                                  </span>
                                 </td>
                                 <td>{customer.email || '-'}</td>
                                 <td>{customer.phone || '-'}</td>
