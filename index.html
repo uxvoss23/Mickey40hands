@@ -5241,81 +5241,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 </div>
               )}
               
-              {/* Location Filters */}
-              {customers.length > 0 && (
-                <>
-                  <select
-                    value={stateFilter}
-                    onChange={(e) => setStateFilter(e.target.value)}
-                    style={{
-                      padding: '6px 10px',
-                      fontSize: '11px',
-                      background: 'rgba(30, 41, 59, 0.8)',
-                      border: stateFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                      borderRadius: '6px',
-                      color: '#f1f5f9',
-                      cursor: 'pointer',
-                      minWidth: '80px'
-                    }}
-                  >
-                    <option value="">All States</option>
-                    {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
-                      <option key={state} value={state}>{state}</option>
-                    ))}
-                  </select>
-                  <select
-                    value={cityFilter}
-                    onChange={(e) => setCityFilter(e.target.value)}
-                    style={{
-                      padding: '6px 10px',
-                      fontSize: '11px',
-                      background: 'rgba(30, 41, 59, 0.8)',
-                      border: cityFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                      borderRadius: '6px',
-                      color: '#f1f5f9',
-                      cursor: 'pointer',
-                      minWidth: '100px'
-                    }}
-                  >
-                    <option value="">All Cities</option>
-                    {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    value={zipFilter}
-                    onChange={(e) => setZipFilter(e.target.value)}
-                    placeholder="ZIP"
-                    style={{
-                      padding: '6px 10px',
-                      fontSize: '11px',
-                      background: 'rgba(30, 41, 59, 0.8)',
-                      border: zipFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                      borderRadius: '6px',
-                      color: '#f1f5f9',
-                      width: '70px'
-                    }}
-                  />
-                  {(cityFilter || stateFilter || zipFilter) && (
-                    <button
-                      onClick={() => { setCityFilter(''); setStateFilter(''); setZipFilter(''); }}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: '10px',
-                        background: 'rgba(239, 68, 68, 0.2)',
-                        border: '1px solid rgba(239, 68, 68, 0.4)',
-                        borderRadius: '4px',
-                        color: '#fca5a5',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </>
-              )}
-
               {/* Save List Button - only show when searching or filtering */}
               {(searchQuery || cityFilter || stateFilter || zipFilter) && visibleCustomers.length > 0 && (
                 <button
@@ -6617,7 +6542,92 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               <option value="completed">🟢 Completed</option>
                             </select>
                           </div>
-                          
+
+                          {/* Location Filters */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(30, 41, 59, 0.3)',
+                            border: '2px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
+                              📍 Location
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <select
+                                value={stateFilter}
+                                onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: stateFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="">All States</option>
+                                {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                                  <option key={state} value={state}>{state}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={cityFilter}
+                                onChange={(e) => setCityFilter(e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: cityFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="">All Cities</option>
+                                {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                                  <option key={city} value={city}>{city}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                value={zipFilter}
+                                onChange={(e) => setZipFilter(e.target.value)}
+                                placeholder="Filter by ZIP code..."
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: zipFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                              {(cityFilter || stateFilter || zipFilter) && (
+                                <button
+                                  onClick={() => { setCityFilter(''); setStateFilter(''); setZipFilter(''); }}
+                                  style={{
+                                    padding: '8px',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    borderRadius: '6px',
+                                    color: '#fca5a5',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  ✕ Clear Location Filters
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
                           {/* Preference Filters - Show only when Unscheduled selected */}
                           {statusFilter === 'unscheduled' && (
                             <>
