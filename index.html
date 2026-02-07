@@ -458,6 +458,10 @@
       const [listName, setListName] = useState('');
       const [radiusAddress, setRadiusAddress] = useState('');
       const [radiusMiles, setRadiusMiles] = useState(10);
+      const [drawMode, setDrawMode] = useState(false);
+      const [drawnArea, setDrawnArea] = useState(null);
+      const [drawnPolygon, setDrawnPolygon] = useState(null);
+      const [lastServiceFilter, setLastServiceFilter] = useState(''); // '', '3months', '6months', '12months'
       const [referencePoint, setReferencePoint] = useState(null);
       const [referenceAddress, setReferenceAddress] = useState('');
       const [homeBase, setHomeBase] = useState(null);
@@ -1116,11 +1120,11 @@
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 80, // INCREASED: Larger clusters = fewer DOM elements
+            maxClusterRadius: 50, // Reduced: Less aggressive clustering
             spiderfyOnMaxZoom: true,
             showCoverageOnHover: false,  // Disabled for performance
             zoomToBoundsOnClick: true,
-            disableClusteringAtZoom: 19,  // INCREASED: Only uncluster at max zoom
+            disableClusteringAtZoom: 14,  // Reduced: Uncluster earlier when zooming
             removeOutsideVisibleBounds: true,  // Critical for 20k+ markers
             animate: false  // Disabled for performance
           });
