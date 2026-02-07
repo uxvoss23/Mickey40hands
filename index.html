@@ -4240,8 +4240,41 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           const csv = await response.text();
           const rows = csv.split('\n').filter(row => row.trim());
           
-          // First row is headers
-          const headers = rows[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+          // First row is headers - use proper CSV parsing
+          const parseCSVRow = (row) => {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+
+            for (let i = 0; i < row.length; i++) {
+              const char = row[i];
+              const nextChar = row[i + 1];
+
+              if (inQuotes) {
+                if (char === '"' && nextChar === '"') {
+                  current += '"';
+                  i++;
+                } else if (char === '"') {
+                  inQuotes = false;
+                } else {
+                  current += char;
+                }
+              } else {
+                if (char === '"') {
+                  inQuotes = true;
+                } else if (char === ',') {
+                  result.push(current.trim());
+                  current = '';
+                } else {
+                  current += char;
+                }
+              }
+            }
+            result.push(current.trim());
+            return result;
+          };
+
+          const headers = parseCSVRow(rows[0]);
           console.log('📋 Sheet headers:', headers);
           
           // Create column mapping
@@ -4283,12 +4316,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           
           console.log('📍 Column mapping:', colMap);
           console.log(`🔍 CRITICAL: lat=${colMap.lat}, lng=${colMap.lng}, panels=${colMap.panels}`);
-          
-          // Parse data rows (skip header)
-          data = rows.slice(1).map(row => {
-            const matches = row.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-            return matches ? matches.map(m => m.replace(/^"|"$/g, '')) : [];
-          });
+
+          // Parse data rows (skip header) - reuse parseCSVRow from above
+          data = rows.slice(1).map(row => parseCSVRow(row));
           }
           
           console.log('📍 Column mapping:', colMap);
