@@ -1134,11 +1134,11 @@
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 50, // Reduced: Less aggressive clustering
+            maxClusterRadius: 30, // Further reduced: Pins spread apart sooner
             spiderfyOnMaxZoom: true,
             showCoverageOnHover: false,  // Disabled for performance
             zoomToBoundsOnClick: true,
-            disableClusteringAtZoom: 14,  // Reduced: Uncluster earlier when zooming
+            disableClusteringAtZoom: 12,  // Further reduced: No clustering at zoom 12+
             removeOutsideVisibleBounds: true,  // Critical for 20k+ markers
             animate: false  // Disabled for performance
           });
@@ -10118,38 +10118,36 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   </button>
                 )}
 
-                {/* Time Filter for Radius/Draw Results */}
-                {(referencePoint || drawnArea) && (
-                  <div style={{
-                    marginTop: '8px',
-                    padding: '12px',
-                    background: 'rgba(251, 191, 36, 0.1)',
-                    border: '1px solid rgba(251, 191, 36, 0.3)',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
-                      ⏰ Filter by Last Service
-                    </div>
-                    <select
-                      value={lastServiceFilter}
-                      onChange={(e) => setLastServiceFilter(e.target.value)}
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        background: 'rgba(15, 23, 42, 0.8)',
-                        border: '1px solid rgba(251, 191, 36, 0.3)',
-                        borderRadius: '6px',
-                        color: '#f1f5f9',
-                        fontSize: '12px'
-                      }}
-                    >
-                      <option value="">All Customers</option>
-                      <option value="3months">Not serviced in 3+ months</option>
-                      <option value="6months">Not serviced in 6+ months</option>
-                      <option value="12months">Not serviced in 12+ months</option>
-                    </select>
+                {/* Time Filter - Always visible in radius mode */}
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: 'rgba(251, 191, 36, 0.1)',
+                  border: '1px solid rgba(251, 191, 36, 0.3)',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                    ⏰ Filter by Last Service
                   </div>
-                )}
+                  <select
+                    value={lastServiceFilter}
+                    onChange={(e) => setLastServiceFilter(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                      borderRadius: '6px',
+                      color: '#f1f5f9',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <option value="">All Customers</option>
+                    <option value="3months">Not serviced in 3+ months</option>
+                    <option value="6months">Not serviced in 6+ months</option>
+                    <option value="12months">Not serviced in 12+ months</option>
+                  </select>
+                </div>
 
                 {/* Save List Button */}
                 {referencePoint && filteredCustomers.length > 0 && (
