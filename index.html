@@ -558,6 +558,14 @@
       const [autoSyncSheets, setAutoSyncSheets] = useState(false);
       const [lastSheetSync, setLastSheetSync] = useState(null);
       const [sheetSyncing, setSheetSyncing] = useState(false);
+
+      // Pipeline Google Sheets Live Sync
+      const [sheetHeaders, setSheetHeaders] = useState([]); // Actual column headers from Google Sheet
+      const [sheetData, setSheetData] = useState([]); // Raw data rows from Google Sheet
+      const [pipelineSortColumn, setPipelineSortColumn] = useState(null); // Column index being sorted
+      const [pipelineSortOrder, setPipelineSortOrder] = useState('asc'); // 'asc' or 'desc'
+      const [sheetAutoRefresh, setSheetAutoRefresh] = useState(true); // Auto-refresh from Google Sheets
+      const [sheetRefreshInterval, setSheetRefreshInterval] = useState(30000); // Refresh every 30 seconds
       
       // Job Creation Modal State
       const [jobForm, setJobForm] = useState({
@@ -3961,6 +3969,178 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         }).filter(customer => customer.email || customer.phone); // Must have email or phone
         
         return data;
+      };
+
+      /**
+       * Fetch raw Google Sheet data for Pipeline view (preserves exact headers and rows)
+       */
+      const fetchPipelineSheetData = async () => {
+        if (!googleSheetId) return { headers: [], rows: [] };
+
+        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        let response;
+
+        try {
+          response = await fetch(csvUrl);
+        } catch (e) {
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
+          response = await fetch(proxyUrl);
+        }
+
+        const csv = await response.text();
+        const allRows = csv.split('\n').filter(row => row.trim());
+
+        // Parse header row
+        const headerRow = allRows[0];
+        const headers = parseCSVRow(headerRow);
+
+        // Parse data rows with proper CSV parsing
+        const rows = allRows.slice(1).map((row, index) => {
+          const values = parseCSVRow(row);
+          return {
+            rowIndex: index + 2, // Google Sheets row number (1-indexed, +1 for header)
+            values: values,
+            // Create object with header keys for easy access
+            data: headers.reduce((obj, header, i) => {
+              obj[header] = values[i] || '';
+              return obj;
+            }, {})
+          };
+        });
+
+        return { headers, rows };
+      };
+
+      /**
+       * Update a cell in Google Sheets
+       */
+      const updateSheetCell = async (rowIndex, colIndex, value) => {
+        if (!googleApiKey || !googleSheetId) {
+          console.log('⚠️ Cannot update Google Sheet - API key required for write access');
+          return false;
+        }
+
+        try {
+          // Get the actual sheet ID (not published URL)
+          let actualSheetId = googleSheetId;
+          if (googleSheetId.includes('docs.google.com')) {
+            const match = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (match) actualSheetId = match[1];
+          }
+
+          // Convert column index to letter (A, B, C, etc.)
+          const colLetter = String.fromCharCode(65 + colIndex);
+          const range = `Sheet1!${colLetter}${rowIndex}`;
+
+          const response = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/${range}?valueInputOption=RAW&key=${googleApiKey}`,
+            {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                values: [[value]]
+              })
+            }
+          );
+
+          if (response.ok) {
+            console.log(`✅ Updated cell ${range} to: ${value}`);
+            return true;
+          } else {
+            console.error('Failed to update cell:', await response.text());
+            return false;
+          }
+        } catch (error) {
+          console.error('Error updating Google Sheet:', error);
+          return false;
+        }
+      };
+
+      /**
+       * Refresh Pipeline data from Google Sheets
+       */
+      const refreshPipelineData = async () => {
+        if (!sheetsConnected || !googleSheetId) return;
+
+        try {
+          const { headers, rows } = await fetchPipelineSheetData();
+          setSheetHeaders(headers);
+          setSheetData(rows);
+          setLastSheetSync(new Date());
+          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
+        } catch (error) {
+          console.error('Error refreshing pipeline:', error);
+        }
+      };
+
+      // Auto-refresh Pipeline from Google Sheets
+      useEffect(() => {
+        if (!sheetAutoRefresh || !sheetsConnected) return;
+
+        // Initial load
+        refreshPipelineData();
+
+        // Set up interval for auto-refresh
+        const interval = setInterval(refreshPipelineData, sheetRefreshInterval);
+        return () => clearInterval(interval);
+      }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
+
+      /**
+       * Handle Pipeline cell edit - update local state and sync to Google Sheets
+       */
+      const handlePipelineCellEdit = async (rowIndex, colIndex, newValue) => {
+        // Update local state immediately for responsiveness
+        setSheetData(prev => prev.map(row => {
+          if (row.rowIndex === rowIndex) {
+            const newValues = [...row.values];
+            newValues[colIndex] = newValue;
+            const newData = { ...row.data };
+            newData[sheetHeaders[colIndex]] = newValue;
+            return { ...row, values: newValues, data: newData };
+          }
+          return row;
+        }));
+
+        // Sync to Google Sheets if API key is available
+        if (googleApiKey) {
+          await updateSheetCell(rowIndex, colIndex, newValue);
+        }
+      };
+
+      /**
+       * Sort Pipeline data by column
+       */
+      const sortPipelineData = (colIndex) => {
+        if (pipelineSortColumn === colIndex) {
+          // Toggle order if same column
+          setPipelineSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+          // New column, start with ascending
+          setPipelineSortColumn(colIndex);
+          setPipelineSortOrder('asc');
+        }
+      };
+
+      // Get sorted Pipeline data
+      const getSortedPipelineData = () => {
+        if (pipelineSortColumn === null) return sheetData;
+
+        return [...sheetData].sort((a, b) => {
+          const aVal = a.values[pipelineSortColumn] || '';
+          const bVal = b.values[pipelineSortColumn] || '';
+
+          // Try numeric comparison first
+          const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ''));
+          const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ''));
+
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return pipelineSortOrder === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+
+          // Fall back to string comparison
+          const comparison = aVal.localeCompare(bVal, undefined, { numeric: true });
+          return pipelineSortOrder === 'asc' ? comparison : -comparison;
+        });
       };
 
       // Google Sheets API Functions
@@ -9670,7 +9850,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
             {/* Pipeline View */}
             {currentView === 'pipeline' && (
-              <div style={{ 
+              <div style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
@@ -9679,131 +9859,177 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 overflow: 'auto',
                 padding: '32px'
               }} className="scrollbar-custom">
+                {/* Pipeline Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 800 }}>📡 Customer Pipeline</h2>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    {selectedPipeline.length > 0 && (
-                      <button
-                        onClick={handlePipelineMassEmail}
-                        className="button-primary"
-                      >
-                        📧 Email Selected ({selectedPipeline.length})
-                      </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <h2 style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>📡 Google Sheets Pipeline</h2>
+                    {sheetsConnected && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '12px',
+                        color: '#22c55e'
+                      }}>
+                        🔗 Live Sync
+                      </span>
                     )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {lastSheetSync && (
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        Last sync: {new Date(lastSheetSync).toLocaleTimeString()}
+                      </span>
+                    )}
+                    <button
+                      onClick={refreshPipelineData}
+                      className="button-primary"
+                      disabled={!sheetsConnected || sheetSyncing}
+                      style={{
+                        padding: '8px 16px',
+                        opacity: sheetsConnected ? 1 : 0.5
+                      }}
+                    >
+                      🔄 Refresh
+                    </button>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={sheetAutoRefresh}
+                        onChange={(e) => setSheetAutoRefresh(e.target.checked)}
+                      />
+                      Auto-refresh
+                    </label>
                   </div>
                 </div>
 
-                {pipelineCustomers.length === 0 ? (
+                {/* Connection Status */}
+                {!sheetsConnected ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
                     <div style={{ fontSize: '64px', marginBottom: '16px' }}>📊</div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No customers in pipeline yet</div>
-                    <div style={{ fontSize: '14px' }}>Save a route to add customers to your pipeline!</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Connect to Google Sheets</div>
+                    <div style={{ fontSize: '14px', marginBottom: '24px' }}>
+                      Enter your Google Sheet URL in the sidebar and click "Test Connection" to view your data here.
+                    </div>
+                    <div style={{
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      maxWidth: '500px',
+                      margin: '0 auto',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '12px' }}>📋 Setup Instructions:</div>
+                      <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '13px' }}>
+                        <li>Open your Google Sheet</li>
+                        <li>Click File → Share → Publish to web</li>
+                        <li>Select "Comma-separated values (.csv)"</li>
+                        <li>Copy the published URL</li>
+                        <li>Paste it in the "Google Sheets" field in the sidebar</li>
+                        <li>Click "Test Connection"</li>
+                      </ol>
+                    </div>
+                  </div>
+                ) : sheetHeaders.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+                    <div style={{ fontSize: '16px' }}>Loading Google Sheet data...</div>
                   </div>
                 ) : (
+                  /* Google Sheets Data Table */
                   <div style={{ overflowX: 'auto' }}>
+                    <div style={{
+                      marginBottom: '12px',
+                      fontSize: '13px',
+                      color: '#94a3b8',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <span>📊 {sheetData.length} rows • {sheetHeaders.length} columns</span>
+                      {pipelineSortColumn !== null && (
+                        <span style={{ color: '#a78bfa' }}>
+                          Sorted by: {sheetHeaders[pipelineSortColumn]} ({pipelineSortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'})
+                        </span>
+                      )}
+                    </div>
                     <table className="pipeline-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '50px' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedPipeline.length === pipelineCustomers.length}
-                              onChange={selectAllPipeline}
-                            />
-                          </th>
-                          <th>Name</th>
-                          <th>Job Description</th>
-                          <th>Email</th>
-                          <th>Phone</th>
-                          <th>Panels</th>
-                          <th>City, State</th>
-                          <th>Amount</th>
-                          <th>Tip</th>
-                          <th>Status</th>
-                          <th>Last Contact</th>
-                          <th>Method</th>
-                          <th style={{ width: '250px' }}>Notes</th>
+                          {sheetHeaders.map((header, colIndex) => (
+                            <th
+                              key={colIndex}
+                              onClick={() => sortPipelineData(colIndex)}
+                              style={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                whiteSpace: 'nowrap',
+                                background: pipelineSortColumn === colIndex ? 'rgba(139, 92, 246, 0.3)' : undefined
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {header}
+                                <span style={{
+                                  fontSize: '10px',
+                                  opacity: pipelineSortColumn === colIndex ? 1 : 0.4,
+                                  color: pipelineSortColumn === colIndex ? '#a78bfa' : '#64748b'
+                                }}>
+                                  {pipelineSortColumn === colIndex
+                                    ? (pipelineSortOrder === 'asc' ? '▲' : '▼')
+                                    : '⇅'
+                                  }
+                                </span>
+                              </div>
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {pipelineCustomers.map((customer) => (
-                          <tr key={customer.pipelineId}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selectedPipeline.includes(customer.pipelineId)}
-                                onChange={() => togglePipelineSelection(customer.pipelineId)}
-                              />
-                            </td>
-                            <td style={{ fontWeight: 600 }}>
-                              <span
-                                onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
-                                style={{ cursor: 'pointer', color: '#f1f5f9' }}
-                                onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
-                                onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
-                              >
-                                {customer.name}
-                              </span>
-                            </td>
-                            <td style={{ fontSize: '11px', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {customer.jobDescription || customer.jobType || '-'}
-                            </td>
-                            <td>{customer.email || '-'}</td>
-                            <td>{customer.phone || '-'}</td>
-                            <td>{customer.panelCount ? `☀️ ${customer.panelCount}` : '-'}</td>
-                            <td>{customer.city}, {customer.state}</td>
-                            <td style={{ color: '#22c55e' }}>
-                              {customer.amountPaid || customer.jobAmount ? `$${customer.amountPaid || customer.jobAmount}` : '-'}
-                            </td>
-                            <td style={{ color: '#fbbf24' }}>
-                              {customer.tipAmount ? `$${customer.tipAmount}` : '-'}
-                            </td>
-                            <td>
-                              <select
-                                value={customer.status}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, { status: e.target.value })}
-                                style={{ padding: '6px 10px', fontSize: '12px' }}
-                              >
-                                <option value="new">🆕 New</option>
-                                <option value="contacted">📞 Contacted</option>
-                                <option value="nurturing">🌱 Nurturing</option>
-                                <option value="qualified">✅ Qualified</option>
-                              </select>
-                            </td>
-                            <td>
-                              {customer.lastContact || customer.lastCustomer
-                                ? new Date(customer.lastContact || customer.lastCustomer).toLocaleDateString()
-                                : '-'
-                              }
-                            </td>
-                            <td>
-                              <select
-                                value={customer.contactMethod || customer.customerMethod || ''}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, {
-                                  contactMethod: e.target.value,
-                                  lastContact: new Date().toISOString()
-                                })}
-                                style={{ padding: '6px 10px', fontSize: '12px' }}
-                              >
-                                <option value="">Select...</option>
-                                <option value="Email">📧 Email</option>
-                                <option value="Phone">📞 Phone</option>
-                                <option value="Text">💬 Text</option>
-                                <option value="In-Person">🤝 In-Person</option>
-                              </select>
-                            </td>
-                            <td>
-                              <textarea
-                                value={customer.notes}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, { notes: e.target.value })}
-                                placeholder="Add notes..."
-                                style={{ padding: '8px', fontSize: '12px', minHeight: '60px' }}
-                              />
-                            </td>
+                        {getSortedPipelineData().map((row) => (
+                          <tr key={row.rowIndex}>
+                            {row.values.map((value, colIndex) => (
+                              <td key={colIndex}>
+                                <input
+                                  type="text"
+                                  value={value || ''}
+                                  onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    minWidth: '80px',
+                                    padding: '6px 8px',
+                                    background: 'transparent',
+                                    border: '1px solid transparent',
+                                    borderRadius: '4px',
+                                    color: '#f1f5f9',
+                                    fontSize: '12px'
+                                  }}
+                                  onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                  onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                />
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
                     </table>
+
+                    {/* API Key Notice for Write Access */}
+                    {!googleApiKey && (
+                      <div style={{
+                        marginTop: '20px',
+                        padding: '16px',
+                        background: 'rgba(251, 191, 36, 0.1)',
+                        border: '1px solid rgba(251, 191, 36, 0.3)',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#fbbf24'
+                      }}>
+                        <strong>💡 Read-only mode:</strong> Edits are saved locally but not synced back to Google Sheets.
+                        To enable two-way sync, add a Google API key in settings with Sheets API write access.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
