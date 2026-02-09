@@ -458,6 +458,10 @@
       const [listName, setListName] = useState('');
       const [radiusAddress, setRadiusAddress] = useState('');
       const [radiusMiles, setRadiusMiles] = useState(10);
+      const [drawMode, setDrawMode] = useState(false);
+      const [drawnArea, setDrawnArea] = useState(null);
+      const [drawnPolygon, setDrawnPolygon] = useState(null);
+      const [lastServiceFilter, setLastServiceFilter] = useState(''); // '', '3months', '6months', '12months'
       const [referencePoint, setReferencePoint] = useState(null);
       const [referenceAddress, setReferenceAddress] = useState('');
       const [homeBase, setHomeBase] = useState(null);
@@ -554,6 +558,14 @@
       const [autoSyncSheets, setAutoSyncSheets] = useState(false);
       const [lastSheetSync, setLastSheetSync] = useState(null);
       const [sheetSyncing, setSheetSyncing] = useState(false);
+
+      // Pipeline Google Sheets Live Sync
+      const [sheetHeaders, setSheetHeaders] = useState([]); // Actual column headers from Google Sheet
+      const [sheetData, setSheetData] = useState([]); // Raw data rows from Google Sheet
+      const [pipelineSortColumn, setPipelineSortColumn] = useState(null); // Column index being sorted
+      const [pipelineSortOrder, setPipelineSortOrder] = useState('asc'); // 'asc' or 'desc'
+      const [sheetAutoRefresh, setSheetAutoRefresh] = useState(true); // Auto-refresh from Google Sheets
+      const [sheetRefreshInterval, setSheetRefreshInterval] = useState(30000); // Refresh every 30 seconds
       
       // Job Creation Modal State
       const [jobForm, setJobForm] = useState({
@@ -630,15 +642,50 @@
         return `https://docs.google.com/spreadsheets/d/${input}/export?format=csv&gid=0`;
       };
 
-      // Load saved data
+      // CSV Row Parser - handles quoted values, escaped quotes, values with spaces
+      const parseCSVRow = (row) => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < row.length; i++) {
+          const char = row[i];
+          const nextChar = row[i + 1];
+
+          if (inQuotes) {
+            if (char === '"' && nextChar === '"') {
+              current += '"';
+              i++;
+            } else if (char === '"') {
+              inQuotes = false;
+            } else {
+              current += char;
+            }
+          } else {
+            if (char === '"') {
+              inQuotes = true;
+            } else if (char === ',') {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      // Load saved data (clear old pipeline data - now using Google Sheets directly)
       useEffect(() => {
         const saved = localStorage.getItem('savedRoutes');
-        const pipeline = localStorage.getItem('pipelineCustomers');
         const sheetId = localStorage.getItem('googleSheetId');
         const sheetsApiKey = localStorage.getItem('googleApiKey');
 
+        // Clear old pipeline data since we now use Google Sheets directly
+        localStorage.removeItem('pipelineCustomers');
+
         if (saved) setSavedRoutes(JSON.parse(saved));
-        if (pipeline) setPipelineCustomers(JSON.parse(pipeline));
         if (sheetId) {
           setGoogleSheetId(sheetId);
           setSheetsConnected(true);
@@ -652,12 +699,6 @@
           localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
         }
       }, [savedRoutes]);
-
-      useEffect(() => {
-        if (pipelineCustomers.length > 0) {
-          localStorage.setItem('pipelineCustomers', JSON.stringify(pipelineCustomers));
-        }
-      }, [pipelineCustomers]);
 
       // Update calculated price when panel count or tier changes
       useEffect(() => {
@@ -1075,6 +1116,20 @@
         setFilteredCustomers(customers);
       };
 
+      // Clear drawn area
+      const clearDrawnArea = () => {
+        if (drawnPolygon && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(drawnPolygon);
+        }
+        setDrawnPolygon(null);
+        setDrawnArea(null);
+        setDrawMode(false);
+      };
+
+      // Drawing state for freehand polygon
+      const drawingPointsRef = React.useRef([]);
+      const drawingLayerRef = React.useRef(null);
+
       // Handle radius search from address
       const handleRadiusSearch = async (clickMode = false) => {
         if (clickMode) {
@@ -1116,11 +1171,11 @@
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 80, // INCREASED: Larger clusters = fewer DOM elements
+            maxClusterRadius: 30, // Further reduced: Pins spread apart sooner
             spiderfyOnMaxZoom: true,
             showCoverageOnHover: false,  // Disabled for performance
             zoomToBoundsOnClick: true,
-            disableClusteringAtZoom: 19,  // INCREASED: Only uncluster at max zoom
+            disableClusteringAtZoom: 12,  // Further reduced: No clustering at zoom 12+
             removeOutsideVisibleBounds: true,  // Critical for 20k+ markers
             animate: false  // Disabled for performance
           });
@@ -1193,7 +1248,94 @@
           }
         };
       }, [awaitingMapClick, radiusMode]);
-      
+
+      // Handle draw mode for custom area selection
+      useEffect(() => {
+        if (!mapInstanceRef.current) return;
+        const map = mapInstanceRef.current;
+        const L = window.L;
+
+        if (drawMode) {
+          map.getContainer().style.cursor = 'crosshair';
+          drawingPointsRef.current = [];
+
+          const onMouseDown = (e) => {
+            if (!drawMode) return;
+            drawingPointsRef.current = [e.latlng];
+
+            // Create initial polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+            }
+            drawingLayerRef.current = L.polyline([e.latlng], {
+              color: '#8b5cf6',
+              weight: 3,
+              opacity: 0.8,
+              dashArray: '5, 10'
+            }).addTo(map);
+
+            map.dragging.disable();
+          };
+
+          const onMouseMove = (e) => {
+            if (!drawMode || drawingPointsRef.current.length === 0) return;
+            drawingPointsRef.current.push(e.latlng);
+            if (drawingLayerRef.current) {
+              drawingLayerRef.current.setLatLngs(drawingPointsRef.current);
+            }
+          };
+
+          const onMouseUp = (e) => {
+            if (!drawMode || drawingPointsRef.current.length < 3) {
+              map.dragging.enable();
+              return;
+            }
+
+            // Close the polygon
+            drawingPointsRef.current.push(drawingPointsRef.current[0]);
+
+            // Remove temporary polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+              drawingLayerRef.current = null;
+            }
+
+            // Remove old polygon if exists
+            if (drawnPolygon) {
+              map.removeLayer(drawnPolygon);
+            }
+
+            // Create final polygon
+            const polygon = L.polygon(drawingPointsRef.current, {
+              color: '#8b5cf6',
+              weight: 3,
+              fillColor: '#8b5cf6',
+              fillOpacity: 0.2
+            }).addTo(map);
+
+            setDrawnPolygon(polygon);
+            setDrawnArea(drawingPointsRef.current);
+            setDrawMode(false);
+            map.dragging.enable();
+            map.getContainer().style.cursor = '';
+          };
+
+          map.on('mousedown', onMouseDown);
+          map.on('mousemove', onMouseMove);
+          map.on('mouseup', onMouseUp);
+
+          return () => {
+            map.off('mousedown', onMouseDown);
+            map.off('mousemove', onMouseMove);
+            map.off('mouseup', onMouseUp);
+            map.dragging.enable();
+            map.getContainer().style.cursor = '';
+          };
+        } else {
+          map.getContainer().style.cursor = '';
+        }
+      }, [drawMode, drawnPolygon]);
+
       // Listen for popup action events
       useEffect(() => {
         const handleAddToRoute = (e) => {
@@ -1670,8 +1812,8 @@
                     style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     ${route.some(r => r.id === customer.id) ? '❌ Remove' : '➕ Add'}
                   </button>
-                  ${!customer.existingJob ? `
-                  <button 
+                  ${!customer.existingJob && !isRecurringCustomer ? `
+                  <button
                     onclick="window.dispatchEvent(new CustomEvent('markRecurring', {detail: '${customer.id}'}))"
                     style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     🦕 Past Customer?
@@ -1923,11 +2065,29 @@
         }
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
 
-      // Handle search with smart features
+      // Handle search with smart features - ALL FILTERS COMBINED
       useEffect(() => {
         let results = customers;
 
-        // Apply city/state/zip filters first
+        // Apply activeFilters first (recurring, existingJob, verifiedSolar, minPanels)
+        if (activeFilters.verifiedSolar) {
+          results = results.filter(c => c.solarVerified === 'yes');
+        }
+        if (activeFilters.existingJob) {
+          results = results.filter(c => c.existingJob === true);
+        }
+        if (activeFilters.recurring) {
+          results = results.filter(c => c.isRecurring === true || c.recurring === true || c.recurring === 'TRUE');
+        }
+        if (activeFilters.minPanels && !isNaN(parseInt(activeFilters.minPanels))) {
+          const minPanels = parseInt(activeFilters.minPanels);
+          results = results.filter(c => {
+            const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
+            return panelCount >= minPanels;
+          });
+        }
+
+        // Apply city/state/zip filters
         if (cityFilter) {
           results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
         }
@@ -1938,7 +2098,33 @@
           results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
         }
 
-        // If no search query, just apply location filters
+        // Apply time-based service filter
+        if (lastServiceFilter) {
+          const now = new Date();
+          const monthsMap = { '3months': 3, '6months': 6, '12months': 12 };
+          const monthsAgo = monthsMap[lastServiceFilter];
+          if (monthsAgo) {
+            const cutoffDate = new Date(now);
+            cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);
+            results = results.filter(c => {
+              if (!c.lastServiceDate) return true; // Include if never serviced
+              const serviceDate = new Date(c.lastServiceDate);
+              return serviceDate < cutoffDate; // Last service was before cutoff
+            });
+          }
+        }
+
+        // Apply drawn area filter if active
+        if (drawnArea && drawnPolygon) {
+          results = results.filter(c => {
+            if (!c.lat || !c.lng) return false;
+            // Check if point is inside drawn polygon
+            const point = L.latLng(c.lat, c.lng);
+            return drawnPolygon.getBounds().contains(point);
+          });
+        }
+
+        // If no search query, just apply filters
         if (!searchQuery.trim()) {
           setFilteredCustomers(results);
           return;
@@ -2002,7 +2188,7 @@
         });
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter]);
+      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter, drawnArea, drawnPolygon, activeFilters]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
@@ -3814,6 +4000,178 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         return data;
       };
 
+      /**
+       * Fetch raw Google Sheet data for Pipeline view (preserves exact headers and rows)
+       */
+      const fetchPipelineSheetData = async () => {
+        if (!googleSheetId) return { headers: [], rows: [] };
+
+        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        let response;
+
+        try {
+          response = await fetch(csvUrl);
+        } catch (e) {
+          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
+          response = await fetch(proxyUrl);
+        }
+
+        const csv = await response.text();
+        const allRows = csv.split('\n').filter(row => row.trim());
+
+        // Parse header row
+        const headerRow = allRows[0];
+        const headers = parseCSVRow(headerRow);
+
+        // Parse data rows with proper CSV parsing
+        const rows = allRows.slice(1).map((row, index) => {
+          const values = parseCSVRow(row);
+          return {
+            rowIndex: index + 2, // Google Sheets row number (1-indexed, +1 for header)
+            values: values,
+            // Create object with header keys for easy access
+            data: headers.reduce((obj, header, i) => {
+              obj[header] = values[i] || '';
+              return obj;
+            }, {})
+          };
+        });
+
+        return { headers, rows };
+      };
+
+      /**
+       * Update a cell in Google Sheets
+       */
+      const updateSheetCell = async (rowIndex, colIndex, value) => {
+        if (!googleApiKey || !googleSheetId) {
+          console.log('⚠️ Cannot update Google Sheet - API key required for write access');
+          return false;
+        }
+
+        try {
+          // Get the actual sheet ID (not published URL)
+          let actualSheetId = googleSheetId;
+          if (googleSheetId.includes('docs.google.com')) {
+            const match = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (match) actualSheetId = match[1];
+          }
+
+          // Convert column index to letter (A, B, C, etc.)
+          const colLetter = String.fromCharCode(65 + colIndex);
+          const range = `Sheet1!${colLetter}${rowIndex}`;
+
+          const response = await fetch(
+            `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/${range}?valueInputOption=RAW&key=${googleApiKey}`,
+            {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                values: [[value]]
+              })
+            }
+          );
+
+          if (response.ok) {
+            console.log(`✅ Updated cell ${range} to: ${value}`);
+            return true;
+          } else {
+            console.error('Failed to update cell:', await response.text());
+            return false;
+          }
+        } catch (error) {
+          console.error('Error updating Google Sheet:', error);
+          return false;
+        }
+      };
+
+      /**
+       * Refresh Pipeline data from Google Sheets
+       */
+      const refreshPipelineData = async () => {
+        if (!sheetsConnected || !googleSheetId) return;
+
+        try {
+          const { headers, rows } = await fetchPipelineSheetData();
+          setSheetHeaders(headers);
+          setSheetData(rows);
+          setLastSheetSync(new Date());
+          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
+        } catch (error) {
+          console.error('Error refreshing pipeline:', error);
+        }
+      };
+
+      // Auto-refresh Pipeline from Google Sheets
+      useEffect(() => {
+        if (!sheetAutoRefresh || !sheetsConnected) return;
+
+        // Initial load
+        refreshPipelineData();
+
+        // Set up interval for auto-refresh
+        const interval = setInterval(refreshPipelineData, sheetRefreshInterval);
+        return () => clearInterval(interval);
+      }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
+
+      /**
+       * Handle Pipeline cell edit - update local state and sync to Google Sheets
+       */
+      const handlePipelineCellEdit = async (rowIndex, colIndex, newValue) => {
+        // Update local state immediately for responsiveness
+        setSheetData(prev => prev.map(row => {
+          if (row.rowIndex === rowIndex) {
+            const newValues = [...row.values];
+            newValues[colIndex] = newValue;
+            const newData = { ...row.data };
+            newData[sheetHeaders[colIndex]] = newValue;
+            return { ...row, values: newValues, data: newData };
+          }
+          return row;
+        }));
+
+        // Sync to Google Sheets if API key is available
+        if (googleApiKey) {
+          await updateSheetCell(rowIndex, colIndex, newValue);
+        }
+      };
+
+      /**
+       * Sort Pipeline data by column
+       */
+      const sortPipelineData = (colIndex) => {
+        if (pipelineSortColumn === colIndex) {
+          // Toggle order if same column
+          setPipelineSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+          // New column, start with ascending
+          setPipelineSortColumn(colIndex);
+          setPipelineSortOrder('asc');
+        }
+      };
+
+      // Get sorted Pipeline data
+      const getSortedPipelineData = () => {
+        if (pipelineSortColumn === null) return sheetData;
+
+        return [...sheetData].sort((a, b) => {
+          const aVal = a.values[pipelineSortColumn] || '';
+          const bVal = b.values[pipelineSortColumn] || '';
+
+          // Try numeric comparison first
+          const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ''));
+          const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ''));
+
+          if (!isNaN(aNum) && !isNaN(bNum)) {
+            return pipelineSortOrder === 'asc' ? aNum - bNum : bNum - aNum;
+          }
+
+          // Fall back to string comparison
+          const comparison = aVal.localeCompare(bVal, undefined, { numeric: true });
+          return pipelineSortOrder === 'asc' ? comparison : -comparison;
+        });
+      };
+
       // Google Sheets API Functions
       const testGoogleSheetsConnection = async () => {
         if (!googleSheetId) {
@@ -4239,41 +4597,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           // Parse CSV and create header mapping
           const csv = await response.text();
           const rows = csv.split('\n').filter(row => row.trim());
-          
-          // First row is headers - use proper CSV parsing
-          const parseCSVRow = (row) => {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
 
-            for (let i = 0; i < row.length; i++) {
-              const char = row[i];
-              const nextChar = row[i + 1];
-
-              if (inQuotes) {
-                if (char === '"' && nextChar === '"') {
-                  current += '"';
-                  i++;
-                } else if (char === '"') {
-                  inQuotes = false;
-                } else {
-                  current += char;
-                }
-              } else {
-                if (char === '"') {
-                  inQuotes = true;
-                } else if (char === ',') {
-                  result.push(current.trim());
-                  current = '';
-                } else {
-                  current += char;
-                }
-              }
-            }
-            result.push(current.trim());
-            return result;
-          };
-
+          // First row is headers - use top-level parseCSVRow function
           const headers = parseCSVRow(rows[0]);
           console.log('📋 Sheet headers:', headers);
           
@@ -6628,6 +6953,60 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             </div>
                           </div>
 
+                          {/* Time-Based Service Filters */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(251, 191, 36, 0.1)',
+                            border: '2px solid rgba(251, 191, 36, 0.3)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                              ⏰ Last Service Date
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === ''}
+                                  onChange={() => setLastServiceFilter('')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>All Customers</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '3months'}
+                                  onChange={() => setLastServiceFilter('3months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 3+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '6months'}
+                                  onChange={() => setLastServiceFilter('6months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 6+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '12months'}
+                                  onChange={() => setLastServiceFilter('12months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 12+ months</span>
+                              </label>
+                            </div>
+                          </div>
+
                           {/* Preference Filters - Show only when Unscheduled selected */}
                           {statusFilter === 'unscheduled' && (
                             <>
@@ -6949,40 +7328,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               }}
                             />
                           </div>
-
-                          {/* Last Customer */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(30, 41, 59, 0.3)',
-                            border: '2px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '8px'
-                          }}>
-                              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '8px', display: 'block' }}>
-                                Last Customer Date
-                              </label>
-                              <select
-                                value={activeFilters.lastService}
-                                onChange={(e) => setActiveFilters(prev => ({ ...prev, lastService: e.target.value }))}
-                                style={{
-                                  width: '100%',
-                                  padding: '10px 12px',
-                                  background: 'rgba(15, 23, 42, 0.6)',
-                                  border: '1px solid rgba(139, 92, 246, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#f1f5f9',
-                                  fontSize: '13px',
-                                  outline: 'none',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <option value="">Any time</option>
-                                <option value="3months">More than 3 months ago</option>
-                                <option value="6months">More than 6 months ago</option>
-                                <option value="1year">More than 1 year ago</option>
-                                <option value="18months">More than 18 months ago</option>
-                                <option value="2years">More than 2 years ago</option>
-                              </select>
-                            </div>
                         </div>
 
                         {/* Footer with Results and Clear */}
@@ -9501,7 +9846,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
             {/* Pipeline View */}
             {currentView === 'pipeline' && (
-              <div style={{ 
+              <div style={{
                 position: 'absolute',
                 top: 0,
                 left: 0,
@@ -9510,131 +9855,177 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 overflow: 'auto',
                 padding: '32px'
               }} className="scrollbar-custom">
+                {/* Pipeline Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 800 }}>📡 Customer Pipeline</h2>
-                  <div style={{ display: 'flex', gap: '12px' }}>
-                    {selectedPipeline.length > 0 && (
-                      <button
-                        onClick={handlePipelineMassEmail}
-                        className="button-primary"
-                      >
-                        📧 Email Selected ({selectedPipeline.length})
-                      </button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                    <h2 style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>📡 Google Sheets Pipeline</h2>
+                    {sheetsConnected && (
+                      <span style={{
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '12px',
+                        color: '#22c55e'
+                      }}>
+                        🔗 Live Sync
+                      </span>
                     )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                    {lastSheetSync && (
+                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                        Last sync: {new Date(lastSheetSync).toLocaleTimeString()}
+                      </span>
+                    )}
+                    <button
+                      onClick={refreshPipelineData}
+                      className="button-primary"
+                      disabled={!sheetsConnected || sheetSyncing}
+                      style={{
+                        padding: '8px 16px',
+                        opacity: sheetsConnected ? 1 : 0.5
+                      }}
+                    >
+                      🔄 Refresh
+                    </button>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={sheetAutoRefresh}
+                        onChange={(e) => setSheetAutoRefresh(e.target.checked)}
+                      />
+                      Auto-refresh
+                    </label>
                   </div>
                 </div>
 
-                {pipelineCustomers.length === 0 ? (
+                {/* Connection Status */}
+                {!sheetsConnected ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
                     <div style={{ fontSize: '64px', marginBottom: '16px' }}>📊</div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No customers in pipeline yet</div>
-                    <div style={{ fontSize: '14px' }}>Save a route to add customers to your pipeline!</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Connect to Google Sheets</div>
+                    <div style={{ fontSize: '14px', marginBottom: '24px' }}>
+                      Enter your Google Sheet URL in the sidebar and click "Test Connection" to view your data here.
+                    </div>
+                    <div style={{
+                      background: 'rgba(139, 92, 246, 0.1)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '12px',
+                      padding: '20px',
+                      maxWidth: '500px',
+                      margin: '0 auto',
+                      textAlign: 'left'
+                    }}>
+                      <div style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '12px' }}>📋 Setup Instructions:</div>
+                      <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '13px' }}>
+                        <li>Open your Google Sheet</li>
+                        <li>Click File → Share → Publish to web</li>
+                        <li>Select "Comma-separated values (.csv)"</li>
+                        <li>Copy the published URL</li>
+                        <li>Paste it in the "Google Sheets" field in the sidebar</li>
+                        <li>Click "Test Connection"</li>
+                      </ol>
+                    </div>
+                  </div>
+                ) : sheetHeaders.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
+                    <div style={{ fontSize: '16px' }}>Loading Google Sheet data...</div>
                   </div>
                 ) : (
+                  /* Google Sheets Data Table */
                   <div style={{ overflowX: 'auto' }}>
+                    <div style={{
+                      marginBottom: '12px',
+                      fontSize: '13px',
+                      color: '#94a3b8',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <span>📊 {sheetData.length} rows • {sheetHeaders.length} columns</span>
+                      {pipelineSortColumn !== null && (
+                        <span style={{ color: '#a78bfa' }}>
+                          Sorted by: {sheetHeaders[pipelineSortColumn]} ({pipelineSortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'})
+                        </span>
+                      )}
+                    </div>
                     <table className="pipeline-table">
                       <thead>
                         <tr>
-                          <th style={{ width: '50px' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedPipeline.length === pipelineCustomers.length}
-                              onChange={selectAllPipeline}
-                            />
-                          </th>
-                          <th>Name</th>
-                          <th>Job Description</th>
-                          <th>Email</th>
-                          <th>Phone</th>
-                          <th>Panels</th>
-                          <th>City, State</th>
-                          <th>Amount</th>
-                          <th>Tip</th>
-                          <th>Status</th>
-                          <th>Last Contact</th>
-                          <th>Method</th>
-                          <th style={{ width: '250px' }}>Notes</th>
+                          {sheetHeaders.map((header, colIndex) => (
+                            <th
+                              key={colIndex}
+                              onClick={() => sortPipelineData(colIndex)}
+                              style={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                whiteSpace: 'nowrap',
+                                background: pipelineSortColumn === colIndex ? 'rgba(139, 92, 246, 0.3)' : undefined
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {header}
+                                <span style={{
+                                  fontSize: '10px',
+                                  opacity: pipelineSortColumn === colIndex ? 1 : 0.4,
+                                  color: pipelineSortColumn === colIndex ? '#a78bfa' : '#64748b'
+                                }}>
+                                  {pipelineSortColumn === colIndex
+                                    ? (pipelineSortOrder === 'asc' ? '▲' : '▼')
+                                    : '⇅'
+                                  }
+                                </span>
+                              </div>
+                            </th>
+                          ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {pipelineCustomers.map((customer) => (
-                          <tr key={customer.pipelineId}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={selectedPipeline.includes(customer.pipelineId)}
-                                onChange={() => togglePipelineSelection(customer.pipelineId)}
-                              />
-                            </td>
-                            <td style={{ fontWeight: 600 }}>
-                              <span
-                                onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
-                                style={{ cursor: 'pointer', color: '#f1f5f9' }}
-                                onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
-                                onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
-                              >
-                                {customer.name}
-                              </span>
-                            </td>
-                            <td style={{ fontSize: '11px', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {customer.jobDescription || customer.jobType || '-'}
-                            </td>
-                            <td>{customer.email || '-'}</td>
-                            <td>{customer.phone || '-'}</td>
-                            <td>{customer.panelCount ? `☀️ ${customer.panelCount}` : '-'}</td>
-                            <td>{customer.city}, {customer.state}</td>
-                            <td style={{ color: '#22c55e' }}>
-                              {customer.amountPaid || customer.jobAmount ? `$${customer.amountPaid || customer.jobAmount}` : '-'}
-                            </td>
-                            <td style={{ color: '#fbbf24' }}>
-                              {customer.tipAmount ? `$${customer.tipAmount}` : '-'}
-                            </td>
-                            <td>
-                              <select
-                                value={customer.status}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, { status: e.target.value })}
-                                style={{ padding: '6px 10px', fontSize: '12px' }}
-                              >
-                                <option value="new">🆕 New</option>
-                                <option value="contacted">📞 Contacted</option>
-                                <option value="nurturing">🌱 Nurturing</option>
-                                <option value="qualified">✅ Qualified</option>
-                              </select>
-                            </td>
-                            <td>
-                              {customer.lastContact || customer.lastCustomer
-                                ? new Date(customer.lastContact || customer.lastCustomer).toLocaleDateString()
-                                : '-'
-                              }
-                            </td>
-                            <td>
-                              <select
-                                value={customer.contactMethod || customer.customerMethod || ''}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, {
-                                  contactMethod: e.target.value,
-                                  lastContact: new Date().toISOString()
-                                })}
-                                style={{ padding: '6px 10px', fontSize: '12px' }}
-                              >
-                                <option value="">Select...</option>
-                                <option value="Email">📧 Email</option>
-                                <option value="Phone">📞 Phone</option>
-                                <option value="Text">💬 Text</option>
-                                <option value="In-Person">🤝 In-Person</option>
-                              </select>
-                            </td>
-                            <td>
-                              <textarea
-                                value={customer.notes}
-                                onChange={(e) => updatePipelineCustomer(customer.pipelineId, { notes: e.target.value })}
-                                placeholder="Add notes..."
-                                style={{ padding: '8px', fontSize: '12px', minHeight: '60px' }}
-                              />
-                            </td>
+                        {getSortedPipelineData().map((row) => (
+                          <tr key={row.rowIndex}>
+                            {row.values.map((value, colIndex) => (
+                              <td key={colIndex}>
+                                <input
+                                  type="text"
+                                  value={value || ''}
+                                  onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                  style={{
+                                    width: '100%',
+                                    minWidth: '80px',
+                                    padding: '6px 8px',
+                                    background: 'transparent',
+                                    border: '1px solid transparent',
+                                    borderRadius: '4px',
+                                    color: '#f1f5f9',
+                                    fontSize: '12px'
+                                  }}
+                                  onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                  onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                />
+                              </td>
+                            ))}
                           </tr>
                         ))}
                       </tbody>
                     </table>
+
+                    {/* API Key Notice for Write Access */}
+                    {!googleApiKey && (
+                      <div style={{
+                        marginTop: '20px',
+                        padding: '16px',
+                        background: 'rgba(251, 191, 36, 0.1)',
+                        border: '1px solid rgba(251, 191, 36, 0.3)',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#fbbf24'
+                      }}>
+                        <strong>💡 Read-only mode:</strong> Edits are saved locally but not synced back to Google Sheets.
+                        To enable two-way sync, add a Google API key in settings with Sheets API write access.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -9887,8 +10278,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   onClick={() => {
                     setAwaitingMapClick(true);
                   }}
-                  style={{ 
-                    width: '100%', 
+                  style={{
+                    width: '100%',
                     justifyContent: 'center',
                     background: awaitingMapClick ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
                     borderColor: awaitingMapClick ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.3)'
@@ -9896,50 +10287,174 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 >
                   📍 {awaitingMapClick ? 'Click on Map...' : 'Click on Map'}
                 </button>
-                
-                {/* Save List Button */}
-                {referencePoint && filteredCustomers.length > 0 && (
+
+                {/* Draw Area Button */}
+                <button
+                  className="button-secondary"
+                  onClick={() => {
+                    clearRadius();
+                    clearDrawnArea();
+                    setDrawMode(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    background: drawMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                    borderColor: drawMode ? 'rgba(251, 191, 36, 0.5)' : 'rgba(139, 92, 246, 0.3)',
+                    color: drawMode ? '#fbbf24' : undefined
+                  }}
+                >
+                  ✏️ {drawMode ? 'Drawing... (drag to draw)' : 'Draw Custom Area'}
+                </button>
+
+                {/* Clear Drawn Area Button */}
+                {drawnArea && (
                   <button
-                    className="button-primary"
-                    onClick={() => {
-                      const listName = prompt(`Save radius results as list (${filteredCustomers.length} customers)`, `Radius - ${referenceAddress || 'Search'}`);
-                      if (listName && listName.trim()) {
-                        const listId = Date.now() + Math.random();
-                        const customersToSave = filteredCustomers.map(c => ({
-                          ...c,
-                          fileId: listId,
-                          fileName: listName.trim()
-                        }));
-                        
-                        setSavedLists(prev => [...prev, {
-                          id: listId,
-                          name: listName.trim(),
-                          customers: customersToSave,
-                          visible: true,
-                          createdDate: new Date().toISOString()
-                        }]);
-                        
-                        // Exit radius mode after saving
-                        setRadiusMode(false);
-                        setAwaitingMapClick(false);
-                        clearRadius();
-                      }
-                    }}
-                    style={{ 
-                      width: '100%', 
+                    className="button-secondary"
+                    onClick={clearDrawnArea}
+                    style={{
+                      width: '100%',
                       justifyContent: 'center',
-                      background: 'rgba(34, 197, 94, 0.2)',
-                      borderColor: 'rgba(34, 197, 94, 0.3)',
-                      color: '#22c55e'
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                      color: '#fca5a5'
                     }}
                   >
-                    💾 Save List ({filteredCustomers.length})
+                    ✕ Clear Drawn Area ({filteredCustomers.length} customers)
                   </button>
+                )}
+
+                {/* Time Filter - Always visible in radius mode */}
+                <div style={{
+                  marginTop: '12px',
+                  padding: '12px',
+                  background: 'rgba(251, 191, 36, 0.1)',
+                  border: '1px solid rgba(251, 191, 36, 0.3)',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                    ⏰ Filter by Last Service
+                  </div>
+                  <select
+                    value={lastServiceFilter}
+                    onChange={(e) => setLastServiceFilter(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(251, 191, 36, 0.3)',
+                      borderRadius: '6px',
+                      color: '#f1f5f9',
+                      fontSize: '12px'
+                    }}
+                  >
+                    <option value="">All Customers</option>
+                    <option value="3months">Not serviced in 3+ months</option>
+                    <option value="6months">Not serviced in 6+ months</option>
+                    <option value="12months">Not serviced in 12+ months</option>
+                  </select>
+                </div>
+
+                {/* Save List & Download Buttons - Show for radius or drawn area */}
+                {(referencePoint || drawnArea) && filteredCustomers.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <button
+                      className="button-primary"
+                      onClick={() => {
+                        const defaultName = drawnArea
+                          ? `Drawn Area - ${new Date().toLocaleDateString()}`
+                          : `Radius - ${referenceAddress || 'Search'}`;
+                        const listName = prompt(`Save results as list (${filteredCustomers.length} customers)`, defaultName);
+                        if (listName && listName.trim()) {
+                          const listId = Date.now() + Math.random();
+                          const customersToSave = filteredCustomers.map(c => ({
+                            ...c,
+                            fileId: listId,
+                            fileName: listName.trim()
+                          }));
+
+                          setSavedLists(prev => [...prev, {
+                            id: listId,
+                            name: listName.trim(),
+                            customers: customersToSave,
+                            visible: true,
+                            createdDate: new Date().toISOString()
+                          }]);
+
+                          // Exit radius mode after saving
+                          setRadiusMode(false);
+                          setAwaitingMapClick(false);
+                          clearRadius();
+                          setDrawnArea(null);
+                          setDrawnPolygon(null);
+                        }
+                      }}
+                      style={{
+                        width: '100%',
+                        justifyContent: 'center',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        borderColor: 'rgba(34, 197, 94, 0.3)',
+                        color: '#22c55e'
+                      }}
+                    >
+                      💾 Save List ({filteredCustomers.length})
+                    </button>
+
+                    <button
+                      className="button-primary"
+                      onClick={() => {
+                        // Generate CSV from filtered customers
+                        const headers = ['Name', 'Phone', 'Email', 'Address', 'City', 'State', 'Zip', 'Panel Count', 'Last Service', 'Next Service', 'Recurring', 'Notes'];
+                        const csvRows = [headers.join(',')];
+
+                        filteredCustomers.forEach(c => {
+                          const row = [
+                            `"${(c.name || c.contactName || '').replace(/"/g, '""')}"`,
+                            `"${(c.phone || c.phoneNumber || '').replace(/"/g, '""')}"`,
+                            `"${(c.email || '').replace(/"/g, '""')}"`,
+                            `"${(c.address || c.fullAddress || '').replace(/"/g, '""')}"`,
+                            `"${(c.city || '').replace(/"/g, '""')}"`,
+                            `"${(c.state || '').replace(/"/g, '""')}"`,
+                            `"${(c.zip || c.zipCode || '').replace(/"/g, '""')}"`,
+                            `"${(c.panelCount || c.totalPanels || '').toString().replace(/"/g, '""')}"`,
+                            `"${(c.lastServiceDate || c.lastService || '').replace(/"/g, '""')}"`,
+                            `"${(c.nextServiceDate || '').replace(/"/g, '""')}"`,
+                            `"${(c.isRecurring || c.recurring) ? 'Yes' : 'No'}"`,
+                            `"${(c.notes || '').replace(/"/g, '""')}"`
+                          ];
+                          csvRows.push(row.join(','));
+                        });
+
+                        const csvContent = csvRows.join('\n');
+                        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.setAttribute('href', url);
+                        const filename = drawnArea
+                          ? `drawn-area-customers-${new Date().toISOString().split('T')[0]}.csv`
+                          : `radius-customers-${new Date().toISOString().split('T')[0]}.csv`;
+                        link.setAttribute('download', filename);
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                      }}
+                      style={{
+                        width: '100%',
+                        justifyContent: 'center',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(59, 130, 246, 0.3)',
+                        color: '#60a5fa'
+                      }}
+                    >
+                      📥 Download CSV ({filteredCustomers.length})
+                    </button>
+                  </div>
                 )}
               </div>
 
               {/* Results Count */}
-              {referencePoint && (
+              {(referencePoint || drawnArea) && (
                 <div style={{
                   marginTop: '16px',
                   padding: '12px',
@@ -9950,7 +10465,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   color: '#c4b5fd',
                   textAlign: 'center'
                 }}>
-                  📊 {filteredCustomers.length} customers in radius
+                  📊 {filteredCustomers.length} customers {drawnArea ? 'in drawn area' : 'in radius'}
                 </div>
               )}
             </div>
