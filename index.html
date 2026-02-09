@@ -1079,6 +1079,20 @@
         setFilteredCustomers(customers);
       };
 
+      // Clear drawn area
+      const clearDrawnArea = () => {
+        if (drawnPolygon && mapInstanceRef.current) {
+          mapInstanceRef.current.removeLayer(drawnPolygon);
+        }
+        setDrawnPolygon(null);
+        setDrawnArea(null);
+        setDrawMode(false);
+      };
+
+      // Drawing state for freehand polygon
+      const drawingPointsRef = React.useRef([]);
+      const drawingLayerRef = React.useRef(null);
+
       // Handle radius search from address
       const handleRadiusSearch = async (clickMode = false) => {
         if (clickMode) {
@@ -1197,7 +1211,94 @@
           }
         };
       }, [awaitingMapClick, radiusMode]);
-      
+
+      // Handle draw mode for custom area selection
+      useEffect(() => {
+        if (!mapInstanceRef.current) return;
+        const map = mapInstanceRef.current;
+        const L = window.L;
+
+        if (drawMode) {
+          map.getContainer().style.cursor = 'crosshair';
+          drawingPointsRef.current = [];
+
+          const onMouseDown = (e) => {
+            if (!drawMode) return;
+            drawingPointsRef.current = [e.latlng];
+
+            // Create initial polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+            }
+            drawingLayerRef.current = L.polyline([e.latlng], {
+              color: '#8b5cf6',
+              weight: 3,
+              opacity: 0.8,
+              dashArray: '5, 10'
+            }).addTo(map);
+
+            map.dragging.disable();
+          };
+
+          const onMouseMove = (e) => {
+            if (!drawMode || drawingPointsRef.current.length === 0) return;
+            drawingPointsRef.current.push(e.latlng);
+            if (drawingLayerRef.current) {
+              drawingLayerRef.current.setLatLngs(drawingPointsRef.current);
+            }
+          };
+
+          const onMouseUp = (e) => {
+            if (!drawMode || drawingPointsRef.current.length < 3) {
+              map.dragging.enable();
+              return;
+            }
+
+            // Close the polygon
+            drawingPointsRef.current.push(drawingPointsRef.current[0]);
+
+            // Remove temporary polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+              drawingLayerRef.current = null;
+            }
+
+            // Remove old polygon if exists
+            if (drawnPolygon) {
+              map.removeLayer(drawnPolygon);
+            }
+
+            // Create final polygon
+            const polygon = L.polygon(drawingPointsRef.current, {
+              color: '#8b5cf6',
+              weight: 3,
+              fillColor: '#8b5cf6',
+              fillOpacity: 0.2
+            }).addTo(map);
+
+            setDrawnPolygon(polygon);
+            setDrawnArea(drawingPointsRef.current);
+            setDrawMode(false);
+            map.dragging.enable();
+            map.getContainer().style.cursor = '';
+          };
+
+          map.on('mousedown', onMouseDown);
+          map.on('mousemove', onMouseMove);
+          map.on('mouseup', onMouseUp);
+
+          return () => {
+            map.off('mousedown', onMouseDown);
+            map.off('mousemove', onMouseMove);
+            map.off('mouseup', onMouseUp);
+            map.dragging.enable();
+            map.getContainer().style.cursor = '';
+          };
+        } else {
+          map.getContainer().style.cursor = '';
+        }
+      }, [drawMode, drawnPolygon]);
+
       // Listen for popup action events
       useEffect(() => {
         const handleAddToRoute = (e) => {
@@ -1674,8 +1775,8 @@
                     style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     ${route.some(r => r.id === customer.id) ? '❌ Remove' : '➕ Add'}
                   </button>
-                  ${!customer.existingJob ? `
-                  <button 
+                  ${!customer.existingJob && !isRecurringCustomer ? `
+                  <button
                     onclick="window.dispatchEvent(new CustomEvent('markRecurring', {detail: '${customer.id}'}))"
                     style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     🦕 Past Customer?
@@ -1942,7 +2043,33 @@
           results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
         }
 
-        // If no search query, just apply location filters
+        // Apply time-based service filter
+        if (lastServiceFilter) {
+          const now = new Date();
+          const monthsMap = { '3months': 3, '6months': 6, '12months': 12 };
+          const monthsAgo = monthsMap[lastServiceFilter];
+          if (monthsAgo) {
+            const cutoffDate = new Date(now);
+            cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);
+            results = results.filter(c => {
+              if (!c.lastServiceDate) return true; // Include if never serviced
+              const serviceDate = new Date(c.lastServiceDate);
+              return serviceDate < cutoffDate; // Last service was before cutoff
+            });
+          }
+        }
+
+        // Apply drawn area filter if active
+        if (drawnArea && drawnPolygon) {
+          results = results.filter(c => {
+            if (!c.lat || !c.lng) return false;
+            // Check if point is inside drawn polygon
+            const point = L.latLng(c.lat, c.lng);
+            return drawnPolygon.getBounds().contains(point);
+          });
+        }
+
+        // If no search query, just apply filters
         if (!searchQuery.trim()) {
           setFilteredCustomers(results);
           return;
@@ -2006,7 +2133,7 @@
         });
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter]);
+      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter, drawnArea, drawnPolygon]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
@@ -6632,6 +6759,60 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             </div>
                           </div>
 
+                          {/* Time-Based Service Filters */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(251, 191, 36, 0.1)',
+                            border: '2px solid rgba(251, 191, 36, 0.3)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                              ⏰ Last Service Date
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === ''}
+                                  onChange={() => setLastServiceFilter('')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>All Customers</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '3months'}
+                                  onChange={() => setLastServiceFilter('3months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 3+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '6months'}
+                                  onChange={() => setLastServiceFilter('6months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 6+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '12months'}
+                                  onChange={() => setLastServiceFilter('12months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 12+ months</span>
+                              </label>
+                            </div>
+                          </div>
+
                           {/* Preference Filters - Show only when Unscheduled selected */}
                           {statusFilter === 'unscheduled' && (
                             <>
@@ -9891,8 +10072,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   onClick={() => {
                     setAwaitingMapClick(true);
                   }}
-                  style={{ 
-                    width: '100%', 
+                  style={{
+                    width: '100%',
                     justifyContent: 'center',
                     background: awaitingMapClick ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
                     borderColor: awaitingMapClick ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.3)'
@@ -9900,7 +10081,76 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 >
                   📍 {awaitingMapClick ? 'Click on Map...' : 'Click on Map'}
                 </button>
-                
+
+                {/* Draw Area Button */}
+                <button
+                  className="button-secondary"
+                  onClick={() => {
+                    clearRadius();
+                    clearDrawnArea();
+                    setDrawMode(true);
+                  }}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    background: drawMode ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                    borderColor: drawMode ? 'rgba(251, 191, 36, 0.5)' : 'rgba(139, 92, 246, 0.3)',
+                    color: drawMode ? '#fbbf24' : undefined
+                  }}
+                >
+                  ✏️ {drawMode ? 'Drawing... (drag to draw)' : 'Draw Custom Area'}
+                </button>
+
+                {/* Clear Drawn Area Button */}
+                {drawnArea && (
+                  <button
+                    className="button-secondary"
+                    onClick={clearDrawnArea}
+                    style={{
+                      width: '100%',
+                      justifyContent: 'center',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      borderColor: 'rgba(239, 68, 68, 0.4)',
+                      color: '#fca5a5'
+                    }}
+                  >
+                    ✕ Clear Drawn Area ({filteredCustomers.length} customers)
+                  </button>
+                )}
+
+                {/* Time Filter for Radius/Draw Results */}
+                {(referencePoint || drawnArea) && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '12px',
+                    background: 'rgba(251, 191, 36, 0.1)',
+                    border: '1px solid rgba(251, 191, 36, 0.3)',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                      ⏰ Filter by Last Service
+                    </div>
+                    <select
+                      value={lastServiceFilter}
+                      onChange={(e) => setLastServiceFilter(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'rgba(15, 23, 42, 0.8)',
+                        border: '1px solid rgba(251, 191, 36, 0.3)',
+                        borderRadius: '6px',
+                        color: '#f1f5f9',
+                        fontSize: '12px'
+                      }}
+                    >
+                      <option value="">All Customers</option>
+                      <option value="3months">Not serviced in 3+ months</option>
+                      <option value="6months">Not serviced in 6+ months</option>
+                      <option value="12months">Not serviced in 12+ months</option>
+                    </select>
+                  </div>
+                )}
+
                 {/* Save List Button */}
                 {referencePoint && filteredCustomers.length > 0 && (
                   <button
