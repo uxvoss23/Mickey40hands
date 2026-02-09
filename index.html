@@ -642,15 +642,50 @@
         return `https://docs.google.com/spreadsheets/d/${input}/export?format=csv&gid=0`;
       };
 
-      // Load saved data
+      // CSV Row Parser - handles quoted values, escaped quotes, values with spaces
+      const parseCSVRow = (row) => {
+        const result = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < row.length; i++) {
+          const char = row[i];
+          const nextChar = row[i + 1];
+
+          if (inQuotes) {
+            if (char === '"' && nextChar === '"') {
+              current += '"';
+              i++;
+            } else if (char === '"') {
+              inQuotes = false;
+            } else {
+              current += char;
+            }
+          } else {
+            if (char === '"') {
+              inQuotes = true;
+            } else if (char === ',') {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += char;
+            }
+          }
+        }
+        result.push(current.trim());
+        return result;
+      };
+
+      // Load saved data (clear old pipeline data - now using Google Sheets directly)
       useEffect(() => {
         const saved = localStorage.getItem('savedRoutes');
-        const pipeline = localStorage.getItem('pipelineCustomers');
         const sheetId = localStorage.getItem('googleSheetId');
         const sheetsApiKey = localStorage.getItem('googleApiKey');
 
+        // Clear old pipeline data since we now use Google Sheets directly
+        localStorage.removeItem('pipelineCustomers');
+
         if (saved) setSavedRoutes(JSON.parse(saved));
-        if (pipeline) setPipelineCustomers(JSON.parse(pipeline));
         if (sheetId) {
           setGoogleSheetId(sheetId);
           setSheetsConnected(true);
@@ -664,12 +699,6 @@
           localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
         }
       }, [savedRoutes]);
-
-      useEffect(() => {
-        if (pipelineCustomers.length > 0) {
-          localStorage.setItem('pipelineCustomers', JSON.stringify(pipelineCustomers));
-        }
-      }, [pipelineCustomers]);
 
       // Update calculated price when panel count or tier changes
       useEffect(() => {
@@ -4568,41 +4597,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           // Parse CSV and create header mapping
           const csv = await response.text();
           const rows = csv.split('\n').filter(row => row.trim());
-          
-          // First row is headers - use proper CSV parsing
-          const parseCSVRow = (row) => {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
 
-            for (let i = 0; i < row.length; i++) {
-              const char = row[i];
-              const nextChar = row[i + 1];
-
-              if (inQuotes) {
-                if (char === '"' && nextChar === '"') {
-                  current += '"';
-                  i++;
-                } else if (char === '"') {
-                  inQuotes = false;
-                } else {
-                  current += char;
-                }
-              } else {
-                if (char === '"') {
-                  inQuotes = true;
-                } else if (char === ',') {
-                  result.push(current.trim());
-                  current = '';
-                } else {
-                  current += char;
-                }
-              }
-            }
-            result.push(current.trim());
-            return result;
-          };
-
+          // First row is headers - use top-level parseCSVRow function
           const headers = parseCSVRow(rows[0]);
           console.log('📋 Sheet headers:', headers);
           
