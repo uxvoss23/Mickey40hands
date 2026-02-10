@@ -1060,13 +1060,13 @@
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 15,  // Very tight: only overlapping pins cluster
+            maxClusterRadius: 10,  // Extremely tight: only nearly-overlapping pins cluster
             spiderfyOnMaxZoom: true,
             spiderfyDistanceMultiplier: 1.5,
             spiderLegPolylineOptions: { weight: 1.5, color: '#8b5cf6', opacity: 0.6 },
             showCoverageOnHover: false,
             zoomToBoundsOnClick: false,
-            disableClusteringAtZoom: 9,  // Show individual pins from zoom 9+
+            disableClusteringAtZoom: 7,  // Show individual pins from zoom 7+ (city-level)
             removeOutsideVisibleBounds: true,
             animate: false
           });
