@@ -6946,671 +6946,351 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
               {/* Map Container */}
               <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* Filter Button - Top Right */}
+                {/* Compact Filter Bar - Top of Map */}
                 {currentView === 'map' && customers.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => setShowFilterPanel(!showFilterPanel)}
-                      style={{
-                        position: 'absolute',
-                        top: '20px',
-                        right: '420px',
-                        zIndex: 1001,
-                        padding: '10px 16px',
-                        background: 'rgba(15, 23, 42, 0.95)',
-                        backdropFilter: 'blur(20px)',
-                        border: '2px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '10px',
-                        color: '#f1f5f9',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      🔍 Filters
-                      {(() => {
-                        const activeCount = [
-                          statusFilter !== 'all',
-                          preferredDateFilter.length > 0,
-                          preferredTimeFilter.length > 0,
-                          activeFilters.verifiedSolar,
-                          activeFilters.existingJob,
-                          activeFilters.recurring,
-                          activeFilters.minPanels,
-                          activeFilters.lastService
-                        ].filter(Boolean).length;
-                        
-                        return activeCount > 0 ? (
-                          <span style={{
-                            background: 'rgba(139, 92, 246, 0.4)',
-                            color: '#fff',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    left: '12px',
+                    right: '420px',
+                    zIndex: 1001,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    {/* Row 1: Status pills + Location + Service date */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
+                      background: 'rgba(10, 14, 39, 0.88)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                      borderRadius: '12px',
+                      padding: '8px 12px'
+                    }}>
+                      {/* Status pills */}
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' },
+                        { value: 'completed', label: 'Completed', color: '#22c55e' }
+                      ].map(s => (
+                        <button
+                          key={s.value}
+                          onClick={() => setStatusFilter(s.value)}
+                          style={{
+                            padding: '4px 10px',
                             fontSize: '11px',
-                            fontWeight: 700
-                          }}>
-                            {activeCount}
-                          </span>
+                            fontWeight: 600,
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: statusFilter === s.value
+                              ? (s.color ? `${s.color}33` : 'rgba(139, 92, 246, 0.3)')
+                              : 'rgba(30, 41, 59, 0.4)',
+                            color: statusFilter === s.value
+                              ? (s.color || '#a78bfa')
+                              : '#94a3b8',
+                            boxShadow: statusFilter === s.value
+                              ? `0 0 0 1px ${s.color || 'rgba(139, 92, 246, 0.5)'}`
+                              : 'none'
+                          }}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+
+                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
+
+                      {/* Location selects - inline */}
+                      <select
+                        value={stateFilter}
+                        onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: stateFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: stateFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '90px'
+                        }}
+                      >
+                        <option value="">State</option>
+                        {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                          <option key={state} value={state}>{state}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={cityFilter}
+                        onChange={(e) => setCityFilter(e.target.value)}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: cityFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: cityFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '110px'
+                        }}
+                      >
+                        <option value="">City</option>
+                        {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={zipFilter}
+                        onChange={(e) => setZipFilter(e.target.value)}
+                        placeholder="ZIP"
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: zipFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: zipFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          width: '60px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+
+                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
+
+                      {/* Last service dropdown */}
+                      <select
+                        value={lastServiceFilter}
+                        onChange={(e) => setLastServiceFilter(e.target.value)}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: lastServiceFilter ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: lastServiceFilter ? '1px solid rgba(251, 191, 36, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: lastServiceFilter ? '#fbbf24' : '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '130px'
+                        }}
+                      >
+                        <option value="">Last Service</option>
+                        <option value="3months">3+ months ago</option>
+                        <option value="6months">6+ months ago</option>
+                        <option value="12months">12+ months ago</option>
+                      </select>
+                    </div>
+
+                    {/* Row 2: Toggle chips + panels + results count */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
+                      background: 'rgba(10, 14, 39, 0.88)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(139, 92, 246, 0.15)',
+                      borderRadius: '12px',
+                      padding: '6px 12px'
+                    }}>
+                      {/* Toggle chips */}
+                      {[
+                        { key: 'verifiedSolar', label: '🛰 Verified', color: '#8b5cf6' },
+                        { key: 'existingJob', label: '🦕 Past', color: '#22c55e' },
+                        { key: 'recurring', label: '🦖 Recurring', color: '#3b82f6' }
+                      ].map(chip => (
+                        <button
+                          key={chip.key}
+                          onClick={() => setActiveFilters(prev => ({ ...prev, [chip.key]: !prev[chip.key] }))}
+                          style={{
+                            padding: '3px 10px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: activeFilters[chip.key] ? `${chip.color}30` : 'rgba(30, 41, 59, 0.4)',
+                            color: activeFilters[chip.key] ? chip.color : '#94a3b8',
+                            boxShadow: activeFilters[chip.key] ? `0 0 0 1px ${chip.color}80` : 'none'
+                          }}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+
+                      <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+
+                      {/* Min panels inline */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Min panels:</span>
+                        <input
+                          type="number"
+                          value={activeFilters.minPanels}
+                          onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
+                          placeholder="0"
+                          min="0"
+                          style={{
+                            width: '48px',
+                            padding: '3px 6px',
+                            fontSize: '11px',
+                            background: activeFilters.minPanels ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: activeFilters.minPanels ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      {/* Preferred time chips - only when unscheduled */}
+                      {statusFilter === 'unscheduled' && (
+                        <>
+                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+                          {['morning', 'afternoon', 'evening'].map(tw => {
+                            const isOn = preferredTimeFilter.includes(tw);
+                            const icon = tw === 'morning' ? '🌅' : tw === 'afternoon' ? '☀️' : '🌆';
+                            return (
+                              <button
+                                key={tw}
+                                onClick={() => {
+                                  if (isOn) setPreferredTimeFilter(prev => prev.filter(t => t !== tw));
+                                  else setPreferredTimeFilter(prev => [...prev, tw]);
+                                }}
+                                style={{
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: isOn ? 'rgba(239, 68, 68, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                  color: isOn ? '#fca5a5' : '#94a3b8',
+                                  boxShadow: isOn ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none'
+                                }}
+                                title={tw === 'morning' ? '8am-12pm' : tw === 'afternoon' ? '12pm-4pm' : '4pm-8pm'}
+                              >
+                                {icon} {tw.charAt(0).toUpperCase() + tw.slice(1, 3)}
+                              </button>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {/* Spacer + results + clear */}
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 700 }}>
+                        {filteredCustomers.length} results
+                      </span>
+                      {(() => {
+                        const hasAny = statusFilter !== 'all' || stateFilter || cityFilter || zipFilter ||
+                          lastServiceFilter || activeFilters.verifiedSolar || activeFilters.existingJob ||
+                          activeFilters.recurring || activeFilters.minPanels || preferredDateFilter.length > 0 ||
+                          preferredTimeFilter.length > 0;
+                        return hasAny ? (
+                          <button
+                            onClick={() => {
+                              setStatusFilter('all');
+                              setStateFilter('');
+                              setCityFilter('');
+                              setZipFilter('');
+                              setLastServiceFilter('');
+                              setPreferredDateFilter([]);
+                              setPreferredTimeFilter([]);
+                              setActiveFilters({ verifiedSolar: false, existingJob: false, recurring: false, minPanels: '', lastService: '' });
+                            }}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '6px',
+                              color: '#fca5a5',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Clear all
+                          </button>
                         ) : null;
                       })()}
-                      <span style={{ fontSize: '10px', opacity: 0.7 }}>
-                        {showFilterPanel ? '▲' : '▼'}
-                      </span>
-                    </button>
+                    </div>
 
-                    {/* Filter Dropdown Panel - Non-blocking Floating Overlay */}
-                    {showFilterPanel && (
+                    {/* Row 3: Date picker - only when unscheduled */}
+                    {statusFilter === 'unscheduled' && (
                       <div style={{
-                        position: 'absolute',
-                        top: '80px',
-                        right: '340px',
-                        zIndex: 1001,
-                        width: '320px',
-                        maxHeight: '500px',
-                        background: 'rgba(15, 23, 42, 0.98)',
-                        backdropFilter: 'blur(20px)',
-                        border: '2px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '16px',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                        overflow: 'hidden',
                         display: 'flex',
-                        flexDirection: 'column'
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(10, 14, 39, 0.88)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '12px',
+                        padding: '6px 12px'
                       }}>
-                        {/* Header */}
-                        <div style={{
-                          padding: '16px',
-                          borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
-                          background: 'rgba(139, 92, 246, 0.05)'
-                        }}>
-                          <div style={{ 
-                            fontSize: '14px', 
-                            fontWeight: 700, 
-                            color: '#f1f5f9',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                          }}>
-                            <span>Navigation Control</span>
+                        <span style={{ fontSize: '11px', color: '#fca5a5', fontWeight: 600, whiteSpace: 'nowrap' }}>Preferred dates:</span>
+                        <button
+                          onClick={() => {
+                            const newWeek = new Date(filterWeekStart);
+                            newWeek.setDate(newWeek.getDate() - 7);
+                            setFilterWeekStart(newWeek);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
+                        >◀</button>
+                        {getWeekDays(filterWeekStart).map((date, index) => {
+                          const dateStr = date.toISOString().split('T')[0];
+                          const isSelected = preferredDateFilter.includes(dateStr);
+                          const isToday = date.toDateString() === new Date().toDateString();
+                          return (
                             <button
-                              onClick={() => setShowFilterPanel(false)}
+                              key={index}
+                              onClick={() => {
+                                if (isSelected) setPreferredDateFilter(prev => prev.filter(d => d !== dateStr));
+                                else setPreferredDateFilter(prev => [...prev, dateStr]);
+                              }}
                               style={{
-                                background: 'transparent',
+                                padding: '4px 8px',
+                                fontSize: '10px',
+                                fontWeight: 700,
                                 border: 'none',
-                                color: '#94a3b8',
-                                fontSize: '18px',
+                                borderRadius: '6px',
                                 cursor: 'pointer',
-                                padding: 0
+                                background: isSelected ? 'rgba(239, 68, 68, 0.3)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
+                                color: isSelected ? '#fca5a5' : '#f1f5f9',
+                                boxShadow: isSelected ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                lineHeight: 1.2,
+                                minWidth: '36px'
                               }}
                             >
-                              ✕
+                              <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 600 }}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                              <span>{date.getDate()}</span>
                             </button>
-                          </div>
-                        </div>
-
-                        {/* Filter Options */}
-                        <div style={{ 
-                          padding: '16px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '16px',
-                          overflowY: 'auto',
-                          flex: 1
-                        }} className="scrollbar-custom">
-                          
-                          {/* Status Filter */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(30, 41, 59, 0.3)',
-                            border: '2px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '8px'
-                          }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
-                              📋 Customer Status
-                            </div>
-                            <select
-                              value={statusFilter}
-                              onChange={(e) => setStatusFilter(e.target.value)}
-                              style={{
-                                width: '100%',
-                                padding: '8px',
-                                background: 'rgba(15, 23, 42, 0.8)',
-                                border: '1px solid rgba(139, 92, 246, 0.3)',
-                                borderRadius: '6px',
-                                color: '#f1f5f9',
-                                fontSize: '12px',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="all">All Statuses</option>
-                              <option value="unscheduled">🔴 Unscheduled</option>
-                              <option value="scheduled">🟡 Scheduled</option>
-                              <option value="completed">🟢 Completed</option>
-                            </select>
-                          </div>
-
-                          {/* Location Filters */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(30, 41, 59, 0.3)',
-                            border: '2px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '8px'
-                          }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
-                              📍 Location
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                              <select
-                                value={stateFilter}
-                                onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  background: 'rgba(15, 23, 42, 0.8)',
-                                  border: stateFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#f1f5f9',
-                                  fontSize: '12px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <option value="">All States</option>
-                                {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
-                                  <option key={state} value={state}>{state}</option>
-                                ))}
-                              </select>
-                              <select
-                                value={cityFilter}
-                                onChange={(e) => setCityFilter(e.target.value)}
-                                style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  background: 'rgba(15, 23, 42, 0.8)',
-                                  border: cityFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#f1f5f9',
-                                  fontSize: '12px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <option value="">All Cities</option>
-                                {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
-                                  <option key={city} value={city}>{city}</option>
-                                ))}
-                              </select>
-                              <input
-                                type="text"
-                                value={zipFilter}
-                                onChange={(e) => setZipFilter(e.target.value)}
-                                placeholder="Filter by ZIP code..."
-                                style={{
-                                  width: '100%',
-                                  padding: '8px',
-                                  background: 'rgba(15, 23, 42, 0.8)',
-                                  border: zipFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
-                                  borderRadius: '6px',
-                                  color: '#f1f5f9',
-                                  fontSize: '12px',
-                                  boxSizing: 'border-box'
-                                }}
-                              />
-                              {(cityFilter || stateFilter || zipFilter) && (
-                                <button
-                                  onClick={() => { setCityFilter(''); setStateFilter(''); setZipFilter(''); }}
-                                  style={{
-                                    padding: '8px',
-                                    background: 'rgba(239, 68, 68, 0.2)',
-                                    border: '1px solid rgba(239, 68, 68, 0.4)',
-                                    borderRadius: '6px',
-                                    color: '#fca5a5',
-                                    fontSize: '12px',
-                                    cursor: 'pointer',
-                                    fontWeight: 600
-                                  }}
-                                >
-                                  ✕ Clear Location Filters
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Time-Based Service Filters */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(251, 191, 36, 0.1)',
-                            border: '2px solid rgba(251, 191, 36, 0.3)',
-                            borderRadius: '8px'
-                          }}>
-                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
-                              ⏰ Last Service Date
-                            </div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                  type="radio"
-                                  name="lastServiceFilter"
-                                  checked={lastServiceFilter === ''}
-                                  onChange={() => setLastServiceFilter('')}
-                                  style={{ accentColor: '#fbbf24' }}
-                                />
-                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>All Customers</span>
-                              </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                  type="radio"
-                                  name="lastServiceFilter"
-                                  checked={lastServiceFilter === '3months'}
-                                  onChange={() => setLastServiceFilter('3months')}
-                                  style={{ accentColor: '#fbbf24' }}
-                                />
-                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 3+ months</span>
-                              </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                  type="radio"
-                                  name="lastServiceFilter"
-                                  checked={lastServiceFilter === '6months'}
-                                  onChange={() => setLastServiceFilter('6months')}
-                                  style={{ accentColor: '#fbbf24' }}
-                                />
-                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 6+ months</span>
-                              </label>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                                <input
-                                  type="radio"
-                                  name="lastServiceFilter"
-                                  checked={lastServiceFilter === '12months'}
-                                  onChange={() => setLastServiceFilter('12months')}
-                                  style={{ accentColor: '#fbbf24' }}
-                                />
-                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 12+ months</span>
-                              </label>
-                            </div>
-                          </div>
-
-                          {/* Preference Filters - Show only when Unscheduled selected */}
-                          {statusFilter === 'unscheduled' && (
-                            <>
-                              {/* Preferred Date Filter */}
-                              <div style={{
-                                padding: '12px',
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '2px solid rgba(239, 68, 68, 0.3)',
-                                borderRadius: '8px'
-                              }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '8px' }}>
-                                  📅 Preferred Service Dates (Click Multiple)
-                                </div>
-                                
-                                {/* Week Navigation */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                                  <button
-                                    onClick={() => {
-                                      const newWeek = new Date(filterWeekStart);
-                                      newWeek.setDate(newWeek.getDate() - 7);
-                                      setFilterWeekStart(newWeek);
-                                    }}
-                                    style={{
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                                      borderRadius: '4px',
-                                      padding: '4px 8px',
-                                      color: '#fca5a5',
-                                      cursor: 'pointer',
-                                      fontSize: '11px',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    ◀ Prev
-                                  </button>
-                                  
-                                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>
-                                    {(() => {
-                                      const endDate = new Date(filterWeekStart);
-                                      endDate.setDate(endDate.getDate() + 6);
-                                      const startStr = filterWeekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                                      const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                      return `${startStr} - ${endStr}`;
-                                    })()}
-                                  </div>
-                                  
-                                  <button
-                                    onClick={() => {
-                                      const newWeek = new Date(filterWeekStart);
-                                      newWeek.setDate(newWeek.getDate() + 7);
-                                      setFilterWeekStart(newWeek);
-                                    }}
-                                    style={{
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                                      borderRadius: '4px',
-                                      padding: '4px 8px',
-                                      color: '#fca5a5',
-                                      cursor: 'pointer',
-                                      fontSize: '11px',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    Next ▶
-                                  </button>
-                                </div>
-                                
-                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
-                                  Click days to filter. {preferredDateFilter.length > 0 && `${preferredDateFilter.length} selected`}
-                                </div>
-                                
-                                {/* Mini calendar for date selection */}
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
-                                  {getWeekDays(filterWeekStart).map((date, index) => {
-                                    const dateStr = date.toISOString().split('T')[0];
-                                    const isSelected = preferredDateFilter.includes(dateStr);
-                                    const isToday = date.toDateString() === new Date().toDateString();
-                                    
-                                    return (
-                                      <div
-                                        key={index}
-                                        onClick={() => {
-                                          if (isSelected) {
-                                            setPreferredDateFilter(prev => prev.filter(d => d !== dateStr));
-                                          } else {
-                                            setPreferredDateFilter(prev => [...prev, dateStr]);
-                                          }
-                                        }}
-                                        style={{
-                                          padding: '6px 2px',
-                                          borderRadius: '6px',
-                                          cursor: 'pointer',
-                                          background: isSelected ? 'rgba(239, 68, 68, 0.3)' : 
-                                                     isToday ? 'rgba(59, 130, 246, 0.1)' : 
-                                                     'rgba(30, 41, 59, 0.3)',
-                                          border: isSelected ? '2px solid rgba(239, 68, 68, 0.6)' :
-                                                 '2px solid transparent',
-                                          transition: 'all 0.2s',
-                                          textAlign: 'center'
-                                        }}
-                                      >
-                                        <div style={{ fontSize: '8px', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>
-                                          {date.toLocaleDateString('en-US', { weekday: 'short' })}
-                                        </div>
-                                        <div style={{ fontSize: '12px', fontWeight: 700, color: isSelected ? '#fca5a5' : '#f1f5f9' }}>
-                                          {date.getDate()}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                                
-                                {preferredDateFilter.length > 0 && (
-                                  <button
-                                    onClick={() => setPreferredDateFilter([])}
-                                    style={{
-                                      marginTop: '8px',
-                                      width: '100%',
-                                      padding: '6px 12px',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                                      borderRadius: '6px',
-                                      color: '#fca5a5',
-                                      fontSize: '11px',
-                                      cursor: 'pointer',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    Clear All Dates
-                                  </button>
-                                )}
-                              </div>
-                              
-                              {/* Preferred Time Window Filter */}
-                              <div style={{
-                                padding: '12px',
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '2px solid rgba(239, 68, 68, 0.3)',
-                                borderRadius: '8px'
-                              }}>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '8px' }}>
-                                  ⏰ Preferred Arrival Windows (Select Multiple)
-                                </div>
-                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
-                                  Check all that apply. {preferredTimeFilter.length > 0 && `${preferredTimeFilter.length} selected`}
-                                </div>
-                                
-                                {/* Time window checkboxes */}
-                                {['morning', 'afternoon', 'evening'].map(timeWindow => {
-                                  const isSelected = preferredTimeFilter.includes(timeWindow);
-                                  const label = timeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
-                                               timeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
-                                               '🌆 Evening (4pm-8pm)';
-                                  
-                                  return (
-                                    <label key={timeWindow} style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '8px',
-                                      padding: '8px',
-                                      marginBottom: '6px',
-                                      background: isSelected ? 'rgba(239, 68, 68, 0.2)' : 'rgba(30, 41, 59, 0.3)',
-                                      border: `2px solid ${isSelected ? 'rgba(239, 68, 68, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                                      borderRadius: '6px',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.2s'
-                                    }}>
-                                      <input
-                                        type="checkbox"
-                                        checked={isSelected}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            setPreferredTimeFilter(prev => [...prev, timeWindow]);
-                                          } else {
-                                            setPreferredTimeFilter(prev => prev.filter(t => t !== timeWindow));
-                                          }
-                                        }}
-                                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#ef4444' }}
-                                      />
-                                      <div style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 600 }}>
-                                        {label}
-                                      </div>
-                                    </label>
-                                  );
-                                })}
-                                
-                                {preferredTimeFilter.length > 0 && (
-                                  <button
-                                    onClick={() => setPreferredTimeFilter([])}
-                                    style={{
-                                      marginTop: '4px',
-                                      width: '100%',
-                                      padding: '6px 12px',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                                      borderRadius: '6px',
-                                      color: '#fca5a5',
-                                      fontSize: '11px',
-                                      cursor: 'pointer',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    Clear All Times
-                                  </button>
-                                )}
-                              </div>
-                            </>
-                          )}
-                          
-                          {/* 🛰️ Verified Solar System */}
-                          <label style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            padding: '12px',
-                            background: activeFilters.verifiedSolar ? 'rgba(139, 92, 246, 0.15)' : 'rgba(30, 41, 59, 0.3)',
-                            border: `2px solid ${activeFilters.verifiedSolar ? 'rgba(139, 92, 246, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                            borderRadius: '8px',
-                            transition: 'all 0.2s'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={activeFilters.verifiedSolar}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, verifiedSolar: e.target.checked }))}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#8b5cf6' }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
-                                ✓ 🛰️ Verified Solar System
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                Show only verified installations
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Past Customers */}
-                          <label style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            padding: '12px',
-                            background: activeFilters.existingJob ? 'rgba(34, 197, 94, 0.15)' : 'rgba(30, 41, 59, 0.3)',
-                            border: `2px solid ${activeFilters.existingJob ? 'rgba(34, 197, 94, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                            borderRadius: '8px',
-                            transition: 'all 0.2s'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={activeFilters.existingJob}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, existingJob: e.target.checked }))}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#22c55e' }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
-                                🦕 Past Customers
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                Customers we've serviced
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Recurring */}
-                          <label style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            padding: '12px',
-                            background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.3)',
-                            border: `2px solid ${activeFilters.recurring ? 'rgba(59, 130, 246, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                            borderRadius: '8px',
-                            transition: 'all 0.2s'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={activeFilters.recurring}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, recurring: e.target.checked }))}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
-                                🦖 Recurring
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                Customers on recurring plan
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Min Panels */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(30, 41, 59, 0.3)',
-                            border: '2px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '8px'
-                          }}>
-                            <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '8px', display: 'block' }}>
-                              Minimum Panels
-                            </label>
-                            <input
-                              type="number"
-                              value={activeFilters.minPanels}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
-                              placeholder="Enter minimum panel count"
-                              min="0"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(15, 23, 42, 0.6)',
-                                border: '1px solid rgba(139, 92, 246, 0.3)',
-                                borderRadius: '6px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Footer with Results and Clear */}
-                        <div style={{
-                          padding: '16px',
-                          borderTop: '1px solid rgba(139, 92, 246, 0.2)',
-                          background: 'rgba(139, 92, 246, 0.05)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px'
-                        }}>
-                          {(activeFilters.verifiedSolar || activeFilters.existingJob || activeFilters.recurring || activeFilters.minPanels || activeFilters.lastService) ? (
-                            <>
-                              <div style={{
-                                fontSize: '13px',
-                                color: '#22c55e',
-                                fontWeight: 700
-                              }}>
-                                📊 {filteredCustomers.length} matches
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setActiveFilters({
-                                    verifiedSolar: false,
-                                    existingJob: false,
-                                    recurring: false,
-                                    minPanels: '',
-                                    lastService: ''
-                                  });
-                                }}
-                                style={{
-                                  padding: '8px 16px',
-                                  background: 'rgba(239, 68, 68, 0.2)',
-                                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                                  borderRadius: '6px',
-                                  color: '#fca5a5',
-                                  fontSize: '12px',
-                                  fontWeight: 600,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                ✕ Clear All
-                              </button>
-                            </>
-                          ) : (
-                            <div style={{
-                              fontSize: '12px',
-                              color: '#64748b',
-                              fontStyle: 'italic'
-                            }}>
-                              No filters applied
-                            </div>
-                          )}
-                        </div>
+                          );
+                        })}
+                        <button
+                          onClick={() => {
+                            const newWeek = new Date(filterWeekStart);
+                            newWeek.setDate(newWeek.getDate() + 7);
+                            setFilterWeekStart(newWeek);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
+                        >▶</button>
+                        {preferredDateFilter.length > 0 && (
+                          <button
+                            onClick={() => setPreferredDateFilter([])}
+                            style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer', fontWeight: 600 }}
+                          >Clear</button>
+                        )}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
                 
                 {/* Map - takes remaining space */}
