@@ -6259,9 +6259,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                     alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
                                     return;
                                   }
-                                  // Load the saved route into the editor
+                                  // Load the saved route into the editor via routesByDay (source of truth)
                                   if (savedRouteForDay) {
-                                    setRoute(savedRouteForDay.customers);
+                                    setRoutesByDay(prev => ({
+                                      ...prev,
+                                      [dateKey]: savedRouteForDay.customers
+                                    }));
                                     setEditingSavedRouteId(savedRouteForDay.id);
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
@@ -6279,7 +6282,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               <button
                                 onClick={() => {
                                   // Start a fresh new route for this day (don't load existing)
-                                  setRoute([]);
+                                  setRoutesByDay(prev => ({
+                                    ...prev,
+                                    [dateKey]: []
+                                  }));
                                   setEditingSavedRouteId(null);
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                 }}
@@ -9534,13 +9540,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
                                   return;
                                 }
-                                // Load route into map editor
-                                setRoute(savedRoute.customers);
+                                // Load route into map editor via routesByDay (source of truth)
+                                const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                setRoutesByDay(prev => ({
+                                  ...prev,
+                                  [routeDateKey]: savedRoute.customers
+                                }));
                                 setEditingSavedRouteId(savedRoute.id);
                                 setSelectedDate(new Date(savedRoute.scheduledDate));
                                 setSavedViewDays(prev => ({
                                   ...prev,
-                                  [new Date(savedRoute.scheduledDate).toDateString()]: false
+                                  [routeDateKey]: false
                                 }));
                                 setCurrentView('map');
                               }}
