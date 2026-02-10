@@ -1113,7 +1113,6 @@
         }
         setReferencePoint(null);
         setReferenceAddress('');
-        setFilteredCustomers(customers);
       };
 
       // Clear drawn area
@@ -1124,6 +1123,20 @@
         setDrawnPolygon(null);
         setDrawnArea(null);
         setDrawMode(false);
+        // Reset filtered customers if no other filters active
+        if (!referencePoint) {
+          setFilteredCustomers(customers);
+        }
+      };
+
+      // Completely exit radius mode and reset view
+      const exitRadiusMode = () => {
+        clearRadius();
+        clearDrawnArea();
+        setRadiusMode(false);
+        setAwaitingMapClick(false);
+        setLastServiceFilter('');
+        setFilteredCustomers(customers);
       };
 
       // Drawing state for freehand polygon
@@ -10167,11 +10180,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>🎯 Radius Search</h3>
                 <button
-                  onClick={() => {
-                    setRadiusMode(false);
-                    setAwaitingMapClick(false);
-                    clearRadius(); // Exit radius mode completely
-                  }}
+                  onClick={exitRadiusMode}
                   style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '20px' }}
                 >
                   ✕
@@ -10324,6 +10333,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   </button>
                 )}
 
+                {/* Exit and Show All Customers Button */}
+                <button
+                  className="button-secondary"
+                  onClick={exitRadiusMode}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    marginTop: '8px',
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    borderColor: 'rgba(34, 197, 94, 0.4)',
+                    color: '#22c55e'
+                  }}
+                >
+                  🔙 Exit & Show All Customers
+                </button>
+
                 {/* Time Filter - Always visible in radius mode */}
                 <div style={{
                   marginTop: '12px',
@@ -10381,12 +10406,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             createdDate: new Date().toISOString()
                           }]);
 
-                          // Exit radius mode after saving
-                          setRadiusMode(false);
-                          setAwaitingMapClick(false);
-                          clearRadius();
-                          setDrawnArea(null);
-                          setDrawnPolygon(null);
+                          // Completely exit radius mode and clear everything
+                          exitRadiusMode();
                         }
                       }}
                       style={{
@@ -10834,7 +10855,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </div>
                       </div>
                       <button
-                        onClick={() => setSavedLists(prev => prev.filter(l => l.id !== list.id))}
+                        onClick={() => {
+                          // Remove list and reset view
+                          setSavedLists(prev => {
+                            const remaining = prev.filter(l => l.id !== list.id);
+                            // If no lists remain or none are visible, show all customers
+                            const anyVisible = remaining.some(l => l.visible);
+                            if (!anyVisible) {
+                              // Reset to all customers
+                              exitRadiusMode();
+                            }
+                            return remaining;
+                          });
+                        }}
                         style={{
                           background: 'rgba(239, 68, 68, 0.1)',
                           border: '1px solid rgba(239, 68, 68, 0.2)',
