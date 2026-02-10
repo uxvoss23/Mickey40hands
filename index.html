@@ -6388,25 +6388,42 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     {(() => {
                       const dateKey = selectedDate.toDateString();
                       const inSavedView = savedViewDays[dateKey] === true;
-                      const jobsForDay = customers
-                        .filter(c => {
-                          if (!c.scheduledDate) return false;
-                          const custDate = new Date(c.scheduledDate);
-                          return custDate.toDateString() === dateKey;
-                        })
-                        .sort((a, b) => {
+
+                      // Find saved route for this day first
+                      const savedRouteForDay = savedRoutes.find(r => {
+                        const rDate = new Date(r.scheduledDate);
+                        return rDate.toDateString() === dateKey;
+                      });
+
+                      // Get jobs from saved route OR from customers state (fallback)
+                      let jobsForDay = [];
+                      if (inSavedView && savedRouteForDay && savedRouteForDay.customers) {
+                        // Use customers from saved route (source of truth for saved view)
+                        jobsForDay = savedRouteForDay.customers.sort((a, b) => {
                           if (!a.scheduledTime || !b.scheduledTime) return 0;
                           const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
                           const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
                           return (aHour * 60 + aMin) - (bHour * 60 + bMin);
                         });
-                      
+                      } else {
+                        // Use customers state (for edit view)
+                        jobsForDay = customers
+                          .filter(c => {
+                            if (!c.scheduledDate) return false;
+                            const custDate = new Date(c.scheduledDate);
+                            return custDate.toDateString() === dateKey;
+                          })
+                          .sort((a, b) => {
+                            if (!a.scheduledTime || !b.scheduledTime) return 0;
+                            const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                            const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                            return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                          });
+                      }
+
                       // SAVED VIEW - Show compact list (only if there are jobs and in saved mode)
                       if (inSavedView && jobsForDay.length > 0) {
-                        // Find the saved route for this day to check sentToTech status
-                        const savedRouteForDay = savedRoutes.find(r => {
-                          const rDate = new Date(r.scheduledDate);
-                          return rDate.toDateString() === selectedDate.toDateString();
+                        // savedRouteForDay already found above
                         });
 
                         return (
@@ -9944,18 +9961,24 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
-                                  // Unschedule all customers in this route
+                                  // Unschedule all customers in this route and propagate changes
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
+                                  const unscheduleUpdates = {
+                                    scheduledDate: null,
+                                    scheduledTime: null,
+                                    status: 'unscheduled',
+                                    routeConfirmed: false,
+                                    confirmedRouteName: null
+                                  };
+
+                                  // Propagate unschedule updates to all data stores for each customer
+                                  savedRoute.customers.forEach(c => {
+                                    propagateCustomerUpdate(c.id, unscheduleUpdates);
+                                  });
+
                                   setCustomers(prev => prev.map(c => {
                                     if (routeCustomerIds.has(c.id)) {
-                                      return {
-                                        ...c,
-                                        scheduledDate: null,
-                                        scheduledTime: null,
-                                        status: 'unscheduled',
-                                        routeConfirmed: false,
-                                        confirmedRouteName: null
-                                      };
+                                      return { ...c, ...unscheduleUpdates };
                                     }
                                     return c;
                                   }));
