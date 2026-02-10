@@ -2750,11 +2750,22 @@
           return c;
         }));
         
+        // Write lastServiceDate and status back to Google Sheet for each customer
+        if (googleSignedIn || googleApiKey) {
+          routeCustomers.forEach(rc => {
+            const customer = customers.find(c => c.id === rc.id) || rc;
+            writeCustomerFieldsToSheet(customer, {
+              lastServiceDate: scheduledDate,
+              status: 'unscheduled'
+            });
+          });
+        }
+
         // Mark route as sent
-        setSavedRoutes(prev => prev.map(r => 
+        setSavedRoutes(prev => prev.map(r =>
           r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
         ));
-        
+
         // Calculate totals
         const totalRevenue = routeCustomers.reduce((sum, c) => {
           return sum + (parseFloat(c.amountPaid) || 0);
@@ -4683,8 +4694,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           }
         }
 
-        // Sync to Google Sheets if API key is available
-        if (googleApiKey) {
+        // Sync to Google Sheets if authenticated
+        if (googleSignedIn || googleApiKey) {
           await updateSheetCell(rowIndex, colIndex, newValue);
         }
       };
@@ -4822,29 +4833,29 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             customerData.solarVerified || ''                               // 22. Solar Verified
           ];
 
-          if (googleApiKey) {
-            // Use API to append (columns A through V - 22 columns)
-            const response = await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${googleSheetId}/values/Sheet1!A:V:append?valueInputOption=RAW&key=${googleApiKey}`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  values: [rowData]
-                })
-              }
-            );
+          const auth = getSheetsAuthHeaders();
+          if (auth) {
+            const actualSheetId = getActualSheetId();
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A:V:append?valueInputOption=RAW${auth.queryAuth ? '&' + auth.queryAuth : ''}`;
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: auth.headers,
+              body: JSON.stringify({ values: [rowData] })
+            });
 
             if (response.ok) {
-              console.log('✅ Row added to Google Sheet');
+              console.log('Row added to Google Sheet');
               return true;
             } else {
               console.error('Failed to add row to sheet:', await response.text());
+              if (response.status === 401) {
+                setGoogleAccessToken(null);
+                setGoogleSignedIn(false);
+              }
               return false;
             }
           } else {
-            // Can't write without API key
-            console.log('⚠️ Need API key to write to sheet. Row not added.');
+            console.log('Sign in with Google to write to sheet. Row not added.');
             return false;
           }
         } catch (error) {
@@ -5074,11 +5085,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           data = [];
           let colMap = null;
           
-          if (googleApiKey) {
+          const auth = getSheetsAuthHeaders();
+          if (auth && (googleApiKey || googleAccessToken)) {
             // Use API - Get headers separately
-            const headersResponse = await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A1:Z1?key=${googleApiKey}`
-            );
+            const headerUrl = `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A1:Z1${auth.queryAuth ? '?' + auth.queryAuth : ''}`;
+            const headersResponse = await fetch(headerUrl, { headers: auth.headers });
             const headersJson = await headersResponse.json();
             const headers = headersJson.values ? headersJson.values[0] : [];
             
@@ -5121,9 +5132,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             };
             
             // Get data rows
-            const dataResponse = await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A2:Z?key=${googleApiKey}`
-            );
+            const dataUrl = `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A2:Z${auth.queryAuth ? '?' + auth.queryAuth : ''}`;
+            const dataResponse = await fetch(dataUrl, { headers: auth.headers });
             const dataJson = await dataResponse.json();
             data = dataJson.values || [];
             
@@ -5463,7 +5473,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             setCustomers(prev => [...prev, newCustomer]);
 
             // Add to Google Sheets
-            if (sheetsConnected && googleApiKey) {
+            if (sheetsConnected && (googleSignedIn || googleApiKey)) {
               const jobData = {
                 jobType: jobForm.jobType,
                 scheduledDate: jobForm.scheduledDate,
@@ -7315,6 +7325,98 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       )}
                     </div>
                   </div>
+
+                  {/* Two-Way Sync - Google Sign In */}
+                  {sheetsConnected && (
+                    <div style={{
+                      padding: '14px',
+                      background: googleSignedIn ? 'rgba(34, 197, 94, 0.08)' : 'rgba(251, 191, 36, 0.08)',
+                      border: `1px solid ${googleSignedIn ? 'rgba(34, 197, 94, 0.3)' : 'rgba(251, 191, 36, 0.3)'}`,
+                      borderRadius: '12px',
+                      marginBottom: '16px'
+                    }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: googleSignedIn ? '#4ade80' : '#fbbf24', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {googleSignedIn ? '🔄' : '🔒'} Two-Way Sync
+                        {googleSignedIn && <span style={{ fontSize: '10px', background: 'rgba(34, 197, 94, 0.3)', padding: '2px 6px', borderRadius: '4px' }}>Active</span>}
+                      </div>
+
+                      {!googleSignedIn ? (
+                        <>
+                          <input
+                            type="text"
+                            value={googleClientId}
+                            onChange={(e) => {
+                              setGoogleClientId(e.target.value);
+                              localStorage.setItem('googleClientId', e.target.value);
+                            }}
+                            placeholder="Google OAuth Client ID..."
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              background: 'rgba(15, 23, 42, 0.8)',
+                              border: '1px solid rgba(251, 191, 36, 0.3)',
+                              borderRadius: '8px',
+                              color: '#f1f5f9',
+                              fontSize: '11px',
+                              marginBottom: '8px',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          <button
+                            onClick={handleGoogleSignIn}
+                            disabled={!googleClientId}
+                            style={{
+                              width: '100%',
+                              padding: '10px',
+                              background: googleClientId ? 'linear-gradient(135deg, #4285f4, #356ac3)' : 'rgba(100, 116, 139, 0.3)',
+                              border: 'none',
+                              borderRadius: '8px',
+                              color: '#fff',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: googleClientId ? 'pointer' : 'not-allowed',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '8px'
+                            }}
+                          >
+                            Sign in with Google
+                          </button>
+                          <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px', lineHeight: '1.5' }}>
+                            Required for writing changes back to your Google Sheet. See setup guide in Pipeline tab.
+                          </div>
+                        </>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
+                            Changes on site will sync back to Google Sheets automatically.
+                          </div>
+                          <button
+                            onClick={handleGoogleSignOut}
+                            style={{
+                              width: '100%',
+                              padding: '8px',
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '6px',
+                              color: '#f87171',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Sign Out
+                          </button>
+                          {Object.keys(localOverrides).length > 0 && (
+                            <div style={{ fontSize: '10px', color: '#64748b', marginTop: '8px' }}>
+                              {Object.keys(localOverrides).length} customer(s) with local changes synced
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Customer Summary */}
                   {(uploadedFiles.length > 0 || savedLists.length > 0) && (
@@ -10331,7 +10433,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       margin: '0 auto',
                       textAlign: 'left'
                     }}>
-                      <div style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '12px' }}>📋 Setup Instructions:</div>
+                      <div style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '12px' }}>📋 Read Setup (one-way):</div>
                       <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '13px' }}>
                         <li>Open your Google Sheet</li>
                         <li>Click File → Share → Publish to web</li>
@@ -10339,6 +10441,18 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         <li>Copy the published URL</li>
                         <li>Paste it in the "Google Sheets" field in the sidebar</li>
                         <li>Click "Test Connection"</li>
+                      </ol>
+                      <div style={{ fontWeight: 600, color: '#fbbf24', marginBottom: '12px', marginTop: '16px' }}>🔄 Two-Way Sync Setup:</div>
+                      <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '13px' }}>
+                        <li>Go to <span style={{ color: '#a78bfa' }}>console.cloud.google.com</span></li>
+                        <li>Create a project (or select existing)</li>
+                        <li>Enable the <strong>Google Sheets API</strong></li>
+                        <li>Go to Credentials → Create OAuth Client ID</li>
+                        <li>Choose "Web application"</li>
+                        <li>Add your site URL to Authorized JavaScript origins</li>
+                        <li>Copy the Client ID</li>
+                        <li>Paste it in the "Two-Way Sync" section in the sidebar</li>
+                        <li>Click "Sign in with Google"</li>
                       </ol>
                     </div>
                   </div>
@@ -10425,8 +10539,20 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       </tbody>
                     </table>
 
-                    {/* API Key Notice for Write Access */}
-                    {!googleApiKey && (
+                    {/* Two-Way Sync Status */}
+                    {googleSignedIn ? (
+                      <div style={{
+                        marginTop: '20px',
+                        padding: '16px',
+                        background: 'rgba(34, 197, 94, 0.1)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        color: '#4ade80'
+                      }}>
+                        <strong>Two-way sync active.</strong> Edits here and route changes will sync back to your Google Sheet.
+                      </div>
+                    ) : (
                       <div style={{
                         marginTop: '20px',
                         padding: '16px',
@@ -10436,8 +10562,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         fontSize: '12px',
                         color: '#fbbf24'
                       }}>
-                        <strong>💡 Read-only mode:</strong> Edits are saved locally but not synced back to Google Sheets.
-                        To enable two-way sync, add a Google API key in settings with Sheets API write access.
+                        <strong>Read-only mode:</strong> Edits are saved locally but not synced back to Google Sheets.
+                        To enable two-way sync, sign in with Google in the sidebar (requires a Google Cloud OAuth Client ID).
                       </div>
                     )}
                   </div>
