@@ -2206,16 +2206,24 @@
       const handleCustomerClick = (customer) => {
         const dateKey = selectedDate.toDateString();
         const currentDayRoute = routesByDay[dateKey] || [];
-        const isInRoute = currentDayRoute.some(r => r.id === customer.id);
-        
+
+        // Check BOTH routesByDay AND customers state for existing scheduling
+        const isInRoutesByDay = currentDayRoute.some(r => r.id === customer.id);
+        const isScheduledForDay = customers.some(c => {
+          if (c.id !== customer.id) return false;
+          if (!c.scheduledDate) return false;
+          return new Date(c.scheduledDate).toDateString() === dateKey;
+        });
+        const isInRoute = isInRoutesByDay || isScheduledForDay;
+
         if (isInRoute) {
           // Remove from THIS DAY'S route AND clear scheduling
           setRoutesByDay(prev => ({
             ...prev,
-            [dateKey]: currentDayRoute.filter(r => r.id !== customer.id)
+            [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
           }));
-          
-          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled' };
+
+          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
           setCustomers(prev => prev.map(c => {
             if (c.id === customer.id) {
               return { ...c, ...unscheduleUpdates };
@@ -2227,7 +2235,7 @@
         } else {
           // Auto-schedule with 1 hour 15 minute spacing
           const allSlots = generateTimeSlots();
-          
+
           // Get all jobs for THIS SPECIFIC DAY sorted by time
           const jobsForDay = customers
             .filter(c => {
@@ -2240,9 +2248,9 @@
               const [bH, bM] = b.scheduledTime.split(':').map(Number);
               return (aH * 60 + aM) - (bH * 60 + bM);
             });
-          
+
           let nextSlot = null;
-          
+
           if (jobsForDay.length === 0) {
             // First job for THIS DAY - start at 8:00 AM
             nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
@@ -2254,7 +2262,7 @@
             const nextMinutes = lastMinutes + 75; // 1 hour 15 minutes
             const nextH = Math.floor(nextMinutes / 60);
             const nextM = nextMinutes % 60;
-            
+
             // Make sure it's not past 8pm
             if (nextH < 20) {
               nextSlot = {
@@ -2264,17 +2272,18 @@
               };
             }
           }
-          
+
           // Schedule customer to the next slot
           if (nextSlot) {
             scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
           }
-          
-          // Add to THIS DAY'S route
-          setRoutesByDay(prev => ({
-            ...prev,
-            [dateKey]: [...currentDayRoute, customer]
-          }));
+
+          // Add to THIS DAY'S route (prevent duplicates)
+          setRoutesByDay(prev => {
+            const existing = prev[dateKey] || [];
+            if (existing.some(r => r.id === customer.id)) return prev;
+            return { ...prev, [dateKey]: [...existing, customer] };
+          });
           
           const availableCustomers = filteredCustomers.filter(c => 
             c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
@@ -2338,17 +2347,25 @@
           return;
         }
 
-        // Merge route customers with latest data from customers state
-        // (route objects may be stale - customers state has scheduledTime etc.)
-        const routeCustomers = route.map(c => {
-          const latest = customers.find(cust => cust.id === c.id);
-          return {
-            ...c,
-            ...(latest || {}),
-            customerNotes: c.notes || c.customerNotes || (latest && latest.notes) || '',
-            distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
-          };
-        });
+        // Build route customers from the CUSTOMERS state (source of truth for scheduling)
+        // rather than from route/routesByDay which may have stale objects
+        const dateKey = selectedDate.toDateString();
+        const scheduledForDay = customers
+          .filter(c => {
+            if (!c.scheduledDate || !c.scheduledTime) return false;
+            return new Date(c.scheduledDate).toDateString() === dateKey;
+          })
+          .sort((a, b) => {
+            const [aH, aM] = a.scheduledTime.split(':').map(Number);
+            const [bH, bM] = b.scheduledTime.split(':').map(Number);
+            return (aH * 60 + aM) - (bH * 60 + bM);
+          });
+
+        const routeCustomers = scheduledForDay.map(c => ({
+          ...c,
+          customerNotes: c.notes || c.customerNotes || '',
+          distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+        }));
 
         if (editingSavedRouteId) {
           // UPDATE existing saved route
@@ -2382,15 +2399,14 @@
         }
 
         // Mark all customers in route as "scheduled" when route is saved
+        const routeIds = new Set(routeCustomers.map(c => c.id));
         setCustomers(prev => prev.map(c => {
-          const isInRoute = route.some(r => r.id === c.id);
-          if (isInRoute) {
+          if (routeIds.has(c.id)) {
             const scheduleUpdates = {
               status: 'scheduled',
               routeConfirmed: true,
               confirmedRouteName: routeName,
-              confirmedRouteDate: selectedDate.toISOString(),
-              scheduledDate: selectedDate.toISOString()
+              confirmedRouteDate: selectedDate.toISOString()
             };
             propagateCustomerUpdate(c.id, scheduleUpdates);
             return { ...c, ...scheduleUpdates };
@@ -2399,7 +2415,7 @@
         }));
 
         // Add to pipeline
-        const newPipelineCustomers = route.filter(c =>
+        const newPipelineCustomers = routeCustomers.filter(c =>
           !pipelineCustomers.some(pc => pc.id === c.id)
         ).map(c => ({
           ...c,
@@ -2419,7 +2435,6 @@
         setRouteName('');
 
         // Clear routesByDay for this date so stale data doesn't accumulate
-        const dateKey = selectedDate.toDateString();
         setRoutesByDay(prev => ({
           ...prev,
           [dateKey]: []
