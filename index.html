@@ -1164,20 +1164,26 @@
 
           const markers = L.markerClusterGroup({
             chunkedLoading: true,
-            chunkInterval: 500,  // INCREASED: Process markers slower but smoother
-            chunkDelay: 100,     // INCREASED: More delay for large datasets
+            chunkInterval: 500,
+            chunkDelay: 100,
             chunkProgress: (processed, total, elapsed) => {
               if (processed % 1000 === 0) {
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 30, // Further reduced: Pins spread apart sooner
+            maxClusterRadius: 30,
             spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,  // Disabled for performance
-            zoomToBoundsOnClick: true,
-            disableClusteringAtZoom: 12,  // Further reduced: No clustering at zoom 12+
-            removeOutsideVisibleBounds: true,  // Critical for 20k+ markers
-            animate: false  // Disabled for performance
+            spiderLegPolylineOptions: { weight: 1.5, color: '#8b5cf6', opacity: 0.6 },
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: false,  // Don't zoom - spiderfy instead
+            disableClusteringAtZoom: 12,
+            removeOutsideVisibleBounds: true,
+            animate: false
+          });
+
+          // Click cluster → spiderfy to show individual pins (no zoom)
+          markers.on('clusterclick', function (e) {
+            e.layer.spiderfy();
           });
 
           map.addLayer(markers);
