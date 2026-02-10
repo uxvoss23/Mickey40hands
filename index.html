@@ -1679,7 +1679,7 @@
             // Determine icon type based on new logic:
             // - Green dinosaur 🦖 = Recurring customer
             // - Pink pin = Not recurring, but has upcoming job
-            // - Default purple pin = No upcoming job / completed
+            // - Default purple pin = No upcoming job
             const isRecurringCustomer = customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
 
             // Calculate next service date (12 months from last service if not manually set)
@@ -2039,7 +2039,7 @@
         let results = customers;
 
         // --- Navigation bar filters ---
-        // Status filter (unscheduled, scheduled, completed)
+        // Status filter (unscheduled, scheduled)
         if (statusFilter !== 'all') {
           results = results.filter(c => c.status === statusFilter);
         }
@@ -2580,8 +2580,7 @@
                   return {
                     ...c,
                     scheduledDate: date.toISOString(),
-                    scheduledTime: timeSlot,
-                    status: 'scheduled'
+                    scheduledTime: timeSlot
                     // DO NOT set lastServiceDate - only update when emailing to tech
                   };
                 }
@@ -5310,7 +5309,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             // Update customer status filter will show it
             setCustomers(prev => prev.map(c => 
               c.id === customerId 
-                ? { ...c, status: c.status === 'completed' ? c.status : 'unscheduled' }
+                ? { ...c, status: 'unscheduled' }
                 : c
             ));
           }
@@ -6537,7 +6536,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                         ...c,
                                         scheduledDate: null,
                                         scheduledTime: null,
-                                        status: 'unscheduled'
+                                        status: 'unscheduled',
+                                        routeConfirmed: false
                                       };
                                     }
                                     return c;
@@ -6848,7 +6848,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                                   ...c,
                                                   scheduledDate: null,
                                                   scheduledTime: null,
-                                                  status: 'unscheduled'
+                                                  status: 'unscheduled',
+                                                  routeConfirmed: false
                                                 };
                                               }
                                               return c;
@@ -7153,8 +7154,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       {[
                         { value: 'all', label: 'All' },
                         { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
-                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' },
-                        { value: 'completed', label: 'Completed', color: '#22c55e' }
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
                       ].map(s => (
                         <button
                           key={s.value}
@@ -7910,19 +7910,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       ✓ Route Saved
                                     </span>
                                   )}
-                                  {customer.status === 'completed' && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.2)',
-                                      border: '1px solid rgba(34, 197, 94, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#86efac',
-                                      fontWeight: 600
-                                    }}>
-                                      🟢 Completed
-                                    </span>
-                                  )}
                                   {customer.panelCount && (
                                     <span style={{
                                       fontSize: '11px',
@@ -8230,26 +8217,20 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               {selectedCustomer.status && (
                                 <div style={{
                                   padding: '12px 16px',
-                                  background: selectedCustomer.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.1)' :
-                                             selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
-                                             'rgba(34, 197, 94, 0.1)',
-                                  border: selectedCustomer.status === 'unscheduled' ? '1px solid rgba(239, 68, 68, 0.3)' :
-                                         selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
-                                         '1px solid rgba(34, 197, 94, 0.3)',
+                                  background: selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
+                                             'rgba(239, 68, 68, 0.1)',
+                                  border: selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
+                                         '1px solid rgba(239, 68, 68, 0.3)',
                                   borderRadius: '8px',
                                   marginBottom: '12px'
                                 }}>
                                   <div style={{ 
                                     fontSize: '14px', 
                                     fontWeight: 600,
-                                    color: selectedCustomer.status === 'unscheduled' ? '#fca5a5' :
-                                           selectedCustomer.status === 'scheduled' ? '#fbbf24' :
-                                           '#86efac',
+                                    color: selectedCustomer.status === 'scheduled' ? '#fbbf24' : '#fca5a5',
                                     marginBottom: '8px'
                                   }}>
-                                    {selectedCustomer.status === 'unscheduled' ? '🔴 Unscheduled' :
-                                     selectedCustomer.status === 'scheduled' ? '🟡 Scheduled' :
-                                     '🟢 Completed'}
+                                    {selectedCustomer.status === 'scheduled' ? '🟡 Scheduled' : '🔴 Unscheduled'}
                                   </div>
                                   
                                   {selectedCustomer.status === 'unscheduled' && (
@@ -9700,9 +9681,28 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
+                                  // Unschedule all customers in this route
+                                  const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
+                                  setCustomers(prev => prev.map(c => {
+                                    if (routeCustomerIds.has(c.id)) {
+                                      return {
+                                        ...c,
+                                        scheduledDate: null,
+                                        scheduledTime: null,
+                                        status: 'unscheduled',
+                                        routeConfirmed: false,
+                                        confirmedRouteName: null
+                                      };
+                                    }
+                                    return c;
+                                  }));
+                                  // Clear routesByDay for this route's date
+                                  const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                  setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
+                                  setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                   setSavedRoutes(prev => prev.filter(r => r.id !== savedRoute.id));
                                 }
-                              }}
+                              }
                               style={{
                                 background: 'rgba(239, 68, 68, 0.1)',
                                 border: '1px solid rgba(239, 68, 68, 0.3)',
