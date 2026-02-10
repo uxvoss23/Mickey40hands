@@ -727,35 +727,7 @@
         return () => clearInterval(interval);
       }, [autoSyncSheets, sheetsConnected]);
 
-      // Keep filteredCustomers in sync with customers (if no active radius filter)
-      // PERFORMANCE: For large datasets (10k+), only show subset initially
-      useEffect(() => {
-        // Only auto-sync if there's no active radius filter
-        if (!referencePoint) {
-          // PERFORMANCE OPTIMIZATION for 20k+ customers
-          if (customers.length > 5000 && !showAllMarkers) {
-            // Only show today's scheduled + nearby unscheduled
-            const today = new Date().toISOString().split('T')[0];
-            const todayScheduled = customers.filter(c => 
-              c.scheduledDate === today || c.routeConfirmed
-            );
-            
-            // Add first 500 unscheduled as preview
-            const unscheduled = customers
-              .filter(c => !c.scheduledDate && !c.routeConfirmed)
-              .slice(0, 500);
-            
-            const subset = [...todayScheduled, ...unscheduled];
-            setFilteredCustomers(subset);
-            console.log(`⚡ PERFORMANCE MODE: Showing ${subset.length}/${customers.length} customers (${todayScheduled.length} scheduled today + ${unscheduled.length} unscheduled preview)`);
-            console.log(`💡 Click "Show All Markers" button or use filters to see more`);
-          } else {
-            // Show all (either under 5k OR user clicked "Show All")
-            setFilteredCustomers(customers);
-            console.log(`📊 Updated filteredCustomers: ${customers.length} total`);
-          }
-        }
-      }, [customers, referencePoint, showAllMarkers]);
+      // NOTE: filteredCustomers is managed by the unified filter useEffect below (search for "UNIFIED FILTER")
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 3959;
@@ -870,87 +842,7 @@
         setFilteredCustomers(uniqueCustomers);
       }, [uploadedFiles, savedLists]);
 
-      // Apply active filters to customers
-      useEffect(() => {
-        if (customers.length === 0) return;
-        
-        let filtered = [...customers];
-        
-        // Status filter (unscheduled, scheduled, completed)
-        if (statusFilter !== 'all') {
-          filtered = filtered.filter(c => c.status === statusFilter);
-        }
-        
-        // Preferred Date filter (multi-select)
-        if (preferredDateFilter.length > 0) {
-          filtered = filtered.filter(c => {
-            if (!c.preferredDate) return false;
-            const prefDate = new Date(c.preferredDate);
-            return preferredDateFilter.some(filterDate => {
-              const fDate = new Date(filterDate);
-              return prefDate.toDateString() === fDate.toDateString();
-            });
-          });
-        }
-        
-        // Preferred Time Window filter (multi-select)
-        if (preferredTimeFilter.length > 0) {
-          filtered = filtered.filter(c => 
-            preferredTimeFilter.includes(c.preferredTimeWindow)
-          );
-        }
-        
-        // 🛰️ Verified Solar System filter
-        if (activeFilters.verifiedSolar) {
-          filtered = filtered.filter(c => c.solarVerified === 'yes');
-        }
-        
-        // Past Customers filter (existingJob = true)
-        if (activeFilters.existingJob) {
-          filtered = filtered.filter(c => c.existingJob === true);
-        }
-        
-        // Recurring filter (isRecurring = true)
-        if (activeFilters.recurring) {
-          filtered = filtered.filter(c => c.isRecurring === true || c.recurring === true);
-        }
-        
-        // Min Panels filter
-        if (activeFilters.minPanels && !isNaN(parseInt(activeFilters.minPanels))) {
-          const minPanels = parseInt(activeFilters.minPanels);
-          filtered = filtered.filter(c => {
-            const panelCount = parseInt(c.panelCount) || 0;
-            return panelCount >= minPanels;
-          });
-        }
-        
-        // Last Service filter
-        if (activeFilters.lastService) {
-          const now = new Date();
-          filtered = filtered.filter(c => {
-            if (!c.lastServiceDate) return false;
-            
-            const lastService = new Date(c.lastServiceDate);
-            const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-            
-            switch (activeFilters.lastService) {
-              case '3months': return monthsDiff > 3;
-              case '6months': return monthsDiff > 6;
-              case '1year': return monthsDiff > 12;
-              case '18months': return monthsDiff > 18;
-              case '2years': return monthsDiff > 24;
-              default: return true;
-            }
-          });
-        }
-        
-        // Recurring Auto-List filter (show only recurring customers when checked)
-        if (showRecurringList) {
-          filtered = filtered.filter(c => c.isRecurring === true || c.recurring === true);
-        }
-        
-        setFilteredCustomers(filtered);
-      }, [customers, activeFilters, showRecurringList, statusFilter, preferredDateFilter, preferredTimeFilter]);
+      // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
       
       // Calculate statistics
       useEffect(() => {
@@ -1070,11 +962,11 @@
         }
       };
 
-      // Draw radius circle on map
+      // Draw radius circle on map (visual only - filtering handled by unified filter useEffect)
       const drawRadius = (latlng, radiusMeters, displayName) => {
         const L = window.L;
         if (!mapInstanceRef.current) return;
-        
+
         // Remove existing circle
         if (radiusCircleRef.current) {
           mapInstanceRef.current.removeLayer(radiusCircleRef.current);
@@ -1093,14 +985,8 @@
         setReferencePoint(latlng);
         setReferenceAddress(displayName);
 
-        // Filter customers in radius
-        const filtered = customers.filter(c => {
-          if (!c.lat || !c.lng) return false;
-          const distance = mapInstanceRef.current.distance([c.lat, c.lng], [latlng.lat, latlng.lng]);
-          return distance <= radiusMeters;
-        });
-
-        setFilteredCustomers(filtered);
+        // Filtering is now handled by the unified filter useEffect
+        // which reacts to referencePoint and radiusMiles changes
         mapInstanceRef.current.fitBounds(circle.getBounds(), { padding: [50, 50] });
       };
 
@@ -1116,7 +1002,7 @@
         }
         setReferencePoint(null);
         setReferenceAddress('');
-        setFilteredCustomers(customers);
+        // Filtering handled by unified filter useEffect reacting to referencePoint change
       };
 
       // Clear drawn area
@@ -2089,11 +1975,43 @@
         }
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
 
-      // Handle search with smart features - ALL FILTERS COMBINED
+      // UNIFIED FILTER - Single useEffect that applies ALL filters together
+      // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
+      // active filters (solar, existing, recurring, panels), radius/drawn area, and text search
       useEffect(() => {
+        if (customers.length === 0) {
+          setFilteredCustomers([]);
+          return;
+        }
+
         let results = customers;
 
-        // Apply activeFilters first (recurring, existingJob, verifiedSolar, minPanels)
+        // --- Navigation bar filters ---
+        // Status filter (unscheduled, scheduled, completed)
+        if (statusFilter !== 'all') {
+          results = results.filter(c => c.status === statusFilter);
+        }
+
+        // Preferred Date filter (multi-select)
+        if (preferredDateFilter.length > 0) {
+          results = results.filter(c => {
+            if (!c.preferredDate) return false;
+            const prefDate = new Date(c.preferredDate);
+            return preferredDateFilter.some(filterDate => {
+              const fDate = new Date(filterDate);
+              return prefDate.toDateString() === fDate.toDateString();
+            });
+          });
+        }
+
+        // Preferred Time Window filter (multi-select)
+        if (preferredTimeFilter.length > 0) {
+          results = results.filter(c =>
+            preferredTimeFilter.includes(c.preferredTimeWindow)
+          );
+        }
+
+        // --- Active toggle filters ---
         if (activeFilters.verifiedSolar) {
           results = results.filter(c => c.solarVerified === 'yes');
         }
@@ -2111,7 +2029,30 @@
           });
         }
 
-        // Apply city/state/zip filters
+        // Last Service filter (from activeFilters)
+        if (activeFilters.lastService) {
+          const now = new Date();
+          results = results.filter(c => {
+            if (!c.lastServiceDate) return false;
+            const lastService = new Date(c.lastServiceDate);
+            const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
+            switch (activeFilters.lastService) {
+              case '3months': return monthsDiff > 3;
+              case '6months': return monthsDiff > 6;
+              case '1year': return monthsDiff > 12;
+              case '18months': return monthsDiff > 18;
+              case '2years': return monthsDiff > 24;
+              default: return true;
+            }
+          });
+        }
+
+        // Recurring Auto-List filter
+        if (showRecurringList) {
+          results = results.filter(c => c.isRecurring === true || c.recurring === true);
+        }
+
+        // --- Location filters (city/state/zip dropdowns) ---
         if (cityFilter) {
           results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
         }
@@ -2122,7 +2063,7 @@
           results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
         }
 
-        // Apply time-based service filter
+        // --- Radius panel: time-based service filter ---
         if (lastServiceFilter) {
           const now = new Date();
           const monthsMap = { '3months': 3, '6months': 6, '12months': 12 };
@@ -2131,88 +2072,83 @@
             const cutoffDate = new Date(now);
             cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);
             results = results.filter(c => {
-              if (!c.lastServiceDate) return true; // Include if never serviced
+              if (!c.lastServiceDate) return true;
               const serviceDate = new Date(c.lastServiceDate);
-              return serviceDate < cutoffDate; // Last service was before cutoff
+              return serviceDate < cutoffDate;
             });
           }
         }
 
-        // Apply drawn area filter if active
+        // --- Spatial filters (radius circle & drawn polygon) ---
+        // Radius filter: only show customers within the radius circle
+        if (referencePoint && radiusMiles) {
+          results = results.filter(c => {
+            if (!c.lat || !c.lng) return false;
+            // calculateDistance returns miles
+            return calculateDistance(c.lat, c.lng, referencePoint.lat, referencePoint.lng) <= radiusMiles;
+          });
+        }
+
+        // Drawn area filter
         if (drawnArea && drawnPolygon) {
           results = results.filter(c => {
             if (!c.lat || !c.lng) return false;
-            // Check if point is inside drawn polygon
             const point = L.latLng(c.lat, c.lng);
             return drawnPolygon.getBounds().contains(point);
           });
         }
 
-        // If no search query, just apply filters
-        if (!searchQuery.trim()) {
-          setFilteredCustomers(results);
-          return;
+        // --- Text search ---
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase().trim();
+
+          // Panel count search: p40 means 40+ panels
+          if (query.startsWith('p') && !isNaN(query.substring(1))) {
+            const minPanels = parseInt(query.substring(1));
+            results = results.filter(c => {
+              const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
+              return panelCount >= minPanels;
+            });
+          } else if (query === 'recurring') {
+            // Recurring keyword search
+            results = results.filter(c => c.isRecurring === true || c.recurring === true);
+          } else {
+            // State abbreviation normalization
+            const stateMap = {
+              'tx': 'texas', 'texas': 'texas',
+              'ca': 'california', 'california': 'california',
+              'fl': 'florida', 'florida': 'florida',
+              'ny': 'new york', 'newyork': 'new york',
+              'az': 'arizona', 'arizona': 'arizona'
+            };
+
+            const normalizedQuery = stateMap[query] || query;
+
+            // Regular search with state normalization
+            results = results.filter(c => {
+              const normalizedState = (c.state?.toLowerCase() || '');
+              const stateFullName = stateMap[normalizedState] || normalizedState;
+
+              return (c.name?.toLowerCase() || '').includes(query) ||
+                c.firstName?.toLowerCase().includes(query) ||
+                c.lastName?.toLowerCase().includes(query) ||
+                (c.address?.toLowerCase() || '').includes(query) ||
+                c.city?.toLowerCase().includes(query) ||
+                normalizedState.includes(query) ||
+                stateFullName.includes(normalizedQuery) ||
+                c.zip?.toLowerCase().includes(query) ||
+                c.email?.toLowerCase().includes(query) ||
+                c.phone?.toLowerCase().includes(query) ||
+                c.secondaryEmails?.some(email => email?.toLowerCase().includes(query)) ||
+                c.secondaryPhones?.some(phone => phone?.toLowerCase().includes(query));
+            });
+          }
         }
-
-        const query = searchQuery.toLowerCase().trim();
-
-        // Special search modes
-        // Panel count search: p40 means 40+ panels
-        if (query.startsWith('p') && !isNaN(query.substring(1))) {
-          const minPanels = parseInt(query.substring(1));
-          results = results.filter(c => {
-            const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
-            return panelCount >= minPanels;
-          });
-          setFilteredCustomers(results);
-          return;
-        }
-
-        // Recurring keyword search
-        if (query === 'recurring') {
-          results = results.filter(c => c.isRecurring === true || c.recurring === true);
-          setFilteredCustomers(results);
-          return;
-        }
-
-        // State abbreviation normalization
-        const stateMap = {
-          'tx': 'texas',
-          'texas': 'texas',
-          'ca': 'california',
-          'california': 'california',
-          'fl': 'florida',
-          'florida': 'florida',
-          'ny': 'new york',
-          'newyork': 'new york',
-          'az': 'arizona',
-          'arizona': 'arizona'
-          // Add more as needed
-        };
-
-        const normalizedQuery = stateMap[query] || query;
-
-        // Regular search with state normalization
-        results = results.filter(c => {
-          const normalizedState = (c.state?.toLowerCase() || '');
-          const stateFullName = stateMap[normalizedState] || normalizedState;
-
-          return (c.name?.toLowerCase() || '').includes(query) ||
-            c.firstName?.toLowerCase().includes(query) ||
-            c.lastName?.toLowerCase().includes(query) ||
-            (c.address?.toLowerCase() || '').includes(query) ||
-            c.city?.toLowerCase().includes(query) ||
-            normalizedState.includes(query) ||
-            stateFullName.includes(normalizedQuery) ||
-            c.zip?.toLowerCase().includes(query) ||
-            c.email?.toLowerCase().includes(query) ||
-            c.phone?.toLowerCase().includes(query) ||
-            c.secondaryEmails?.some(email => email?.toLowerCase().includes(query)) ||
-            c.secondaryPhones?.some(phone => phone?.toLowerCase().includes(query));
-        });
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter, drawnArea, drawnPolygon, activeFilters]);
+      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter,
+          drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
+          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
