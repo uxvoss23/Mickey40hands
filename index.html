@@ -516,6 +516,7 @@
       });
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
+      const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
       const [editedNotes, setEditedNotes] = useState('');
@@ -2278,7 +2279,7 @@
         setDraggedIndex(null);
       };
 
-      // Save route
+      // Save route (handles both new and edit modes)
       const handleSaveRoute = () => {
         if (!routeName.trim()) {
           setError('Please enter a route name');
@@ -2286,26 +2287,44 @@
           return;
         }
 
-        const newRoute = {
-          id: Date.now().toString(),
-          name: routeName,
-          date: new Date().toISOString(),
-          scheduledDate: selectedDate.toISOString(), // Date route is scheduled for
-          customers: route.map(c => ({
-            ...c,
-            customerNotes: c.notes || '', // Preserve customer notes
-            distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
-          })),
-          totalDistance: stats.totalDistance,
-          confirmed: true, // Mark route as confirmed
-          sentToTech: false, // Track if emailed
-          sentDate: null // When emailed to tech
-        };
+        const routeCustomers = route.map(c => ({
+          ...c,
+          customerNotes: c.notes || '',
+          distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+        }));
 
-        setSavedRoutes(prev => [...prev, newRoute]);
-        
+        if (editingSavedRouteId) {
+          // UPDATE existing saved route
+          setSavedRoutes(prev => prev.map(r => {
+            if (r.id === editingSavedRouteId) {
+              return {
+                ...r,
+                name: routeName,
+                scheduledDate: selectedDate.toISOString(),
+                customers: routeCustomers,
+                totalDistance: stats.totalDistance
+              };
+            }
+            return r;
+          }));
+          setEditingSavedRouteId(null);
+        } else {
+          // CREATE new saved route
+          const newRoute = {
+            id: Date.now().toString(),
+            name: routeName,
+            date: new Date().toISOString(),
+            scheduledDate: selectedDate.toISOString(),
+            customers: routeCustomers,
+            totalDistance: stats.totalDistance,
+            confirmed: true,
+            sentToTech: false,
+            sentDate: null
+          };
+          setSavedRoutes(prev => [...prev, newRoute]);
+        }
+
         // Mark all customers in route as "scheduled" when route is saved
-        // DO NOT update lastServiceDate here - only update when emailing to tech
         setCustomers(prev => prev.map(c => {
           const isInRoute = route.some(r => r.id === c.id);
           if (isInRoute) {
@@ -2316,20 +2335,19 @@
               confirmedRouteDate: selectedDate.toISOString(),
               scheduledDate: selectedDate.toISOString()
             };
-            // Propagate to savedLists and savedRoutes
             propagateCustomerUpdate(c.id, scheduleUpdates);
             return { ...c, ...scheduleUpdates };
           }
           return c;
         }));
-        
+
         // Add to pipeline
-        const newPipelineCustomers = route.filter(c => 
+        const newPipelineCustomers = route.filter(c =>
           !pipelineCustomers.some(pc => pc.id === c.id)
         ).map(c => ({
           ...c,
           pipelineId: Date.now().toString() + Math.random(),
-          status: 'scheduled', // Change to scheduled (not 'new')
+          status: 'scheduled',
           lastCustomer: null,
           customerMethod: null,
           notes: '',
@@ -2342,13 +2360,12 @@
 
         setShowSaveModal(false);
         setRouteName('');
-        
+
         // Switch to saved view for this date
         setSavedViewDays(prev => ({
           ...prev,
           [selectedDate.toDateString()]: true
         }));
-        // Don't clear route - keep it on the day after saving
         setSuggestedCustomers([]);
       };
 
@@ -6227,21 +6244,56 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       
                       // SAVED VIEW - Show compact list (only if there are jobs and in saved mode)
                       if (inSavedView && jobsForDay.length > 0) {
+                        // Find the saved route for this day to check sentToTech status
+                        const savedRouteForDay = savedRoutes.find(r => {
+                          const rDate = new Date(r.scheduledDate);
+                          return rDate.toDateString() === selectedDate.toDateString();
+                        });
+
                         return (
                           <div>
-                            <button
-                              onClick={() => setSavedViewDays(prev => ({ ...prev, [dateKey]: false }))}
-                              className="button-secondary"
-                              style={{ 
-                                width: '100%',
-                                padding: '8px 10px', 
-                                fontSize: '11px',
-                                justifyContent: 'center',
-                                marginBottom: '12px'
-                              }}
-                            >
-                              ✏️ Edit Route
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                              <button
+                                onClick={() => {
+                                  if (savedRouteForDay && savedRouteForDay.sentToTech) {
+                                    alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                    return;
+                                  }
+                                  // Load the saved route into the editor
+                                  if (savedRouteForDay) {
+                                    setRoute(savedRouteForDay.customers);
+                                    setEditingSavedRouteId(savedRouteForDay.id);
+                                  }
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-secondary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                ✏️ Edit Route
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Start a fresh new route for this day (don't load existing)
+                                  setRoute([]);
+                                  setEditingSavedRouteId(null);
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-primary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                + New Route
+                              </button>
+                            </div>
                             
                             <div style={{ 
                               padding: '12px',
@@ -6261,15 +6313,26 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 {jobsForDay.map((job, idx) => (
-                                  <div key={job.id} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '8px',
-                                    background: 'rgba(15, 23, 42, 0.6)',
-                                    borderRadius: '6px',
-                                    border: '1px solid rgba(139, 92, 246, 0.2)'
-                                  }}>
+                                  <div key={job.id}
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === job.id) || job;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '10px',
+                                      padding: '8px',
+                                      background: 'rgba(15, 23, 42, 0.6)',
+                                      borderRadius: '6px',
+                                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)'}
+                                  >
                                     <div style={{
                                       fontSize: '11px',
                                       fontWeight: 700,
@@ -6284,17 +6347,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       color: '#22c55e',
                                       minWidth: '65px'
                                     }}>
-                                      {job.scheduledTime ? 
-                                        new Date(`2000-01-01T${job.scheduledTime}`).toLocaleTimeString('en-US', { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
+                                      {job.scheduledTime ?
+                                        new Date(`2000-01-01T${job.scheduledTime}`).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true
                                         }) : 'N/A'}
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
-                                      <div style={{ 
-                                        fontSize: '12px', 
-                                        fontWeight: 600, 
+                                      <div style={{
+                                        fontSize: '12px',
+                                        fontWeight: 600,
                                         color: '#f1f5f9',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
@@ -6302,8 +6365,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       }}>
                                         {job.name}
                                       </div>
-                                      <div style={{ 
-                                        fontSize: '10px', 
+                                      <div style={{
+                                        fontSize: '10px',
                                         color: '#64748b',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
@@ -6327,10 +6390,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           {jobsForDay.length > 0 && (
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                               <button
-                                onClick={() => setShowSaveModal(true)}
+                                onClick={() => {
+                                  // Pre-fill name if editing existing route
+                                  if (editingSavedRouteId) {
+                                    const existingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    if (existingRoute) setRouteName(existingRoute.name);
+                                  }
+                                  setShowSaveModal(true);
+                                }}
                                 className="button-primary"
-                                style={{ 
-                                  padding: '6px 10px', 
+                                style={{
+                                  padding: '6px 10px',
                                   fontSize: '10px',
                                   flex: 1,
                                   justifyContent: 'center'
@@ -9457,7 +9527,28 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </div>
                             )}
                           </div>
-                          <div style={{ display: 'flex', gap: '12px' }}>
+                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => {
+                                if (savedRoute.sentToTech) {
+                                  alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                  return;
+                                }
+                                // Load route into map editor
+                                setRoute(savedRoute.customers);
+                                setEditingSavedRouteId(savedRoute.id);
+                                setSelectedDate(new Date(savedRoute.scheduledDate));
+                                setSavedViewDays(prev => ({
+                                  ...prev,
+                                  [new Date(savedRoute.scheduledDate).toDateString()]: false
+                                }));
+                                setCurrentView('map');
+                              }}
+                              className="button-secondary"
+                              style={{ padding: '12px 16px', fontSize: '14px', fontWeight: 600 }}
+                            >
+                              ✏️ Edit Route
+                            </button>
                             <button
                               onClick={() => emailRouteToTech(savedRoute)}
                               className="button-primary"
@@ -9521,7 +9612,16 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   {index + 1}
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: '#f1f5f9' }}>
+                                  <div
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === customer.id) || customer;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: '#c4b5fd', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(139, 92, 246, 0.3)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = '#c4b5fd'}
+                                  >
                                     {customer.name}
                                   </div>
                                   <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
@@ -10459,7 +10559,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Save Route</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{editingSavedRouteId ? 'Update Route' : 'Save Route'}</h2>
                   <button
                     onClick={() => setShowSaveModal(false)}
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '24px' }}
@@ -10517,7 +10617,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     onClick={handleSaveRoute}
                     style={{ flex: 1, justifyContent: 'center' }}
                   >
-                    💾 Save Route
+                    {editingSavedRouteId ? '💾 Update Route' : '💾 Save Route'}
                   </button>
                 </div>
               </div>
