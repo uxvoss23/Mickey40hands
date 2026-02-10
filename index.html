@@ -1079,6 +1079,20 @@
         setDrawnPolygon(null);
         setDrawnArea(null);
         setDrawMode(false);
+        // Reset filtered customers if no other filters active
+        if (!referencePoint) {
+          setFilteredCustomers(customers);
+        }
+      };
+
+      // Completely exit radius mode and reset view
+      const exitRadiusMode = () => {
+        clearRadius();
+        clearDrawnArea();
+        setRadiusMode(false);
+        setAwaitingMapClick(false);
+        setLastServiceFilter('');
+        setFilteredCustomers(customers);
       };
 
       // Drawing state for freehand polygon
@@ -6523,7 +6537,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </button>
                               <button
                                 onClick={() => {
-                                  // Clear all jobs for selected day
+                                  // Clear all jobs for selected day (preserve status)
                                   setCustomers(prev => prev.map(c => {
                                     if (!c.scheduledDate) return c;
                                     const custDate = new Date(c.scheduledDate);
@@ -6531,6 +6545,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       return {
                                         ...c,
                                         scheduledDate: null,
+                                        scheduledTime: null
+                                        // Status preserved - user can change manually
                                         scheduledTime: null,
                                         status: 'unscheduled',
                                         routeConfirmed: false
@@ -6836,13 +6852,15 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                             
                                             // Remove from old route state
                                             setRoute(prev => prev.filter(r => r.id !== job.id));
-                                            
-                                            // Unschedule customer
+
+                                            // Remove schedule but keep existing status (don't auto-set to unscheduled)
                                             setCustomers(prev => prev.map(c => {
                                               if (c.id === job.id) {
                                                 return {
                                                   ...c,
                                                   scheduledDate: null,
+                                                  scheduledTime: null
+                                                  // Status preserved - user can change manually if needed
                                                   scheduledTime: null,
                                                   status: 'unscheduled',
                                                   routeConfirmed: false
@@ -7119,6 +7137,422 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           color: '#a78bfa',
                           cursor: 'pointer',
                           display: 'flex',
+                          flexDirection: 'column',
+                          gap: '16px',
+                          overflowY: 'auto',
+                          flex: 1
+                        }} className="scrollbar-custom">
+                          
+                          {/* Status Filter */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(30, 41, 59, 0.3)',
+                            border: '2px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
+                              📋 Customer Status
+                            </div>
+                            <select
+                              value={statusFilter}
+                              onChange={(e) => setStatusFilter(e.target.value)}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                background: 'rgba(15, 23, 42, 0.8)',
+                                border: '1px solid rgba(139, 92, 246, 0.3)',
+                                borderRadius: '6px',
+                                color: '#f1f5f9',
+                                fontSize: '12px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="all">All Statuses</option>
+                              <option value="unscheduled">🔴 Unscheduled</option>
+                              <option value="scheduled">🟡 Scheduled</option>
+                              <option value="completed">🟢 Completed</option>
+                              <option value="contacted">📞 Contacted</option>
+                              <option value="quoted">💰 Quoted</option>
+                              <option value="follow-up">📋 Follow Up</option>
+                              <option value="not-interested">❌ Not Interested</option>
+                            </select>
+                          </div>
+
+                          {/* Location Filters */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(30, 41, 59, 0.3)',
+                            border: '2px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '8px' }}>
+                              📍 Location
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                              <select
+                                value={stateFilter}
+                                onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: stateFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="">All States</option>
+                                {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                                  <option key={state} value={state}>{state}</option>
+                                ))}
+                              </select>
+                              <select
+                                value={cityFilter}
+                                onChange={(e) => setCityFilter(e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: cityFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="">All Cities</option>
+                                {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                                  <option key={city} value={city}>{city}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                value={zipFilter}
+                                onChange={(e) => setZipFilter(e.target.value)}
+                                placeholder="Filter by ZIP code..."
+                                style={{
+                                  width: '100%',
+                                  padding: '8px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: zipFilter ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '12px',
+                                  boxSizing: 'border-box'
+                                }}
+                              />
+                              {(cityFilter || stateFilter || zipFilter) && (
+                                <button
+                                  onClick={() => { setCityFilter(''); setStateFilter(''); setZipFilter(''); }}
+                                  style={{
+                                    padding: '8px',
+                                    background: 'rgba(239, 68, 68, 0.2)',
+                                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                                    borderRadius: '6px',
+                                    color: '#fca5a5',
+                                    fontSize: '12px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  ✕ Clear Location Filters
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Time-Based Service Filters */}
+                          <div style={{
+                            padding: '12px',
+                            background: 'rgba(251, 191, 36, 0.1)',
+                            border: '2px solid rgba(251, 191, 36, 0.3)',
+                            borderRadius: '8px'
+                          }}>
+                            <div style={{ fontSize: '13px', fontWeight: 600, color: '#fbbf24', marginBottom: '8px' }}>
+                              ⏰ Last Service Date
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === ''}
+                                  onChange={() => setLastServiceFilter('')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>All Customers</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '3months'}
+                                  onChange={() => setLastServiceFilter('3months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 3+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '6months'}
+                                  onChange={() => setLastServiceFilter('6months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 6+ months</span>
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                                <input
+                                  type="radio"
+                                  name="lastServiceFilter"
+                                  checked={lastServiceFilter === '12months'}
+                                  onChange={() => setLastServiceFilter('12months')}
+                                  style={{ accentColor: '#fbbf24' }}
+                                />
+                                <span style={{ fontSize: '12px', color: '#f1f5f9' }}>Not serviced in 12+ months</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          {/* Preference Filters - Show only when Unscheduled selected */}
+                          {statusFilter === 'unscheduled' && (
+                            <>
+                              {/* Preferred Date Filter */}
+                              <div style={{
+                                padding: '12px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '2px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '8px'
+                              }}>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '8px' }}>
+                                  📅 Preferred Service Dates (Click Multiple)
+                                </div>
+                                
+                                {/* Week Navigation */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                  <button
+                                    onClick={() => {
+                                      const newWeek = new Date(filterWeekStart);
+                                      newWeek.setDate(newWeek.getDate() - 7);
+                                      setFilterWeekStart(newWeek);
+                                    }}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      borderRadius: '4px',
+                                      padding: '4px 8px',
+                                      color: '#fca5a5',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    ◀ Prev
+                                  </button>
+                                  
+                                  <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>
+                                    {(() => {
+                                      const endDate = new Date(filterWeekStart);
+                                      endDate.setDate(endDate.getDate() + 6);
+                                      const startStr = filterWeekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                                      const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                      return `${startStr} - ${endStr}`;
+                                    })()}
+                                  </div>
+                                  
+                                  <button
+                                    onClick={() => {
+                                      const newWeek = new Date(filterWeekStart);
+                                      newWeek.setDate(newWeek.getDate() + 7);
+                                      setFilterWeekStart(newWeek);
+                                    }}
+                                    style={{
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      borderRadius: '4px',
+                                      padding: '4px 8px',
+                                      color: '#fca5a5',
+                                      cursor: 'pointer',
+                                      fontSize: '11px',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Next ▶
+                                  </button>
+                                </div>
+                                
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
+                                  Click days to filter. {preferredDateFilter.length > 0 && `${preferredDateFilter.length} selected`}
+                                </div>
+                                
+                                {/* Mini calendar for date selection */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                                  {getWeekDays(filterWeekStart).map((date, index) => {
+                                    const dateStr = date.toISOString().split('T')[0];
+                                    const isSelected = preferredDateFilter.includes(dateStr);
+                                    const isToday = date.toDateString() === new Date().toDateString();
+                                    
+                                    return (
+                                      <div
+                                        key={index}
+                                        onClick={() => {
+                                          if (isSelected) {
+                                            setPreferredDateFilter(prev => prev.filter(d => d !== dateStr));
+                                          } else {
+                                            setPreferredDateFilter(prev => [...prev, dateStr]);
+                                          }
+                                        }}
+                                        style={{
+                                          padding: '6px 2px',
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          background: isSelected ? 'rgba(239, 68, 68, 0.3)' : 
+                                                     isToday ? 'rgba(59, 130, 246, 0.1)' : 
+                                                     'rgba(30, 41, 59, 0.3)',
+                                          border: isSelected ? '2px solid rgba(239, 68, 68, 0.6)' :
+                                                 '2px solid transparent',
+                                          transition: 'all 0.2s',
+                                          textAlign: 'center'
+                                        }}
+                                      >
+                                        <div style={{ fontSize: '8px', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>
+                                          {date.toLocaleDateString('en-US', { weekday: 'short' })}
+                                        </div>
+                                        <div style={{ fontSize: '12px', fontWeight: 700, color: isSelected ? '#fca5a5' : '#f1f5f9' }}>
+                                          {date.getDate()}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                                
+                                {preferredDateFilter.length > 0 && (
+                                  <button
+                                    onClick={() => setPreferredDateFilter([])}
+                                    style={{
+                                      marginTop: '8px',
+                                      width: '100%',
+                                      padding: '6px 12px',
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      borderRadius: '6px',
+                                      color: '#fca5a5',
+                                      fontSize: '11px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Clear All Dates
+                                  </button>
+                                )}
+                              </div>
+                              
+                              {/* Preferred Time Window Filter */}
+                              <div style={{
+                                padding: '12px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '2px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '8px'
+                              }}>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '8px' }}>
+                                  ⏰ Preferred Arrival Windows (Select Multiple)
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px' }}>
+                                  Check all that apply. {preferredTimeFilter.length > 0 && `${preferredTimeFilter.length} selected`}
+                                </div>
+                                
+                                {/* Time window checkboxes */}
+                                {['morning', 'afternoon', 'evening'].map(timeWindow => {
+                                  const isSelected = preferredTimeFilter.includes(timeWindow);
+                                  const label = timeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
+                                               timeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
+                                               '🌆 Evening (4pm-8pm)';
+                                  
+                                  return (
+                                    <label key={timeWindow} style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      padding: '8px',
+                                      marginBottom: '6px',
+                                      background: isSelected ? 'rgba(239, 68, 68, 0.2)' : 'rgba(30, 41, 59, 0.3)',
+                                      border: `2px solid ${isSelected ? 'rgba(239, 68, 68, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s'
+                                    }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => {
+                                          if (e.target.checked) {
+                                            setPreferredTimeFilter(prev => [...prev, timeWindow]);
+                                          } else {
+                                            setPreferredTimeFilter(prev => prev.filter(t => t !== timeWindow));
+                                          }
+                                        }}
+                                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#ef4444' }}
+                                      />
+                                      <div style={{ fontSize: '12px', color: '#f1f5f9', fontWeight: 600 }}>
+                                        {label}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                                
+                                {preferredTimeFilter.length > 0 && (
+                                  <button
+                                    onClick={() => setPreferredTimeFilter([])}
+                                    style={{
+                                      marginTop: '4px',
+                                      width: '100%',
+                                      padding: '6px 12px',
+                                      background: 'rgba(239, 68, 68, 0.2)',
+                                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                                      borderRadius: '6px',
+                                      color: '#fca5a5',
+                                      fontSize: '11px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600
+                                    }}
+                                  >
+                                    Clear All Times
+                                  </button>
+                                )}
+                              </div>
+                            </>
+                          )}
+                          
+                          {/* 🛰️ Verified Solar System */}
+                          <label style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            cursor: 'pointer',
+                            padding: '12px',
+                            background: activeFilters.verifiedSolar ? 'rgba(139, 92, 246, 0.15)' : 'rgba(30, 41, 59, 0.3)',
+                            border: `2px solid ${activeFilters.verifiedSolar ? 'rgba(139, 92, 246, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
+                            borderRadius: '8px',
+                            transition: 'all 0.2s'
+                          }}>
+                            <input
+                              type="checkbox"
+                              checked={activeFilters.verifiedSolar}
+                              onChange={(e) => setActiveFilters(prev => ({ ...prev, verifiedSolar: e.target.checked }))}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#8b5cf6' }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
+                                🛰️ Filter: Has Verified Solar
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                Only show customers already marked as having solar
+                              </div>
+                            </div>
+                          </label>
                           alignItems: 'center',
                           gap: '6px'
                         }}
@@ -8210,6 +8644,76 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           {/* Status and Preferences */}
                           {(selectedCustomer.status || selectedCustomer.preferredDate || selectedCustomer.preferredTimeWindow) && (
                             <div style={{ marginBottom: '16px' }}>
+                              {/* Status Section with Dropdown */}
+                              <div style={{
+                                padding: '12px 16px',
+                                background: selectedCustomer.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.1)' :
+                                           selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
+                                           selectedCustomer.status === 'completed' ? 'rgba(34, 197, 94, 0.1)' :
+                                           'rgba(100, 116, 139, 0.1)',
+                                border: selectedCustomer.status === 'unscheduled' ? '1px solid rgba(239, 68, 68, 0.3)' :
+                                       selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
+                                       selectedCustomer.status === 'completed' ? '1px solid rgba(34, 197, 94, 0.3)' :
+                                       '1px solid rgba(100, 116, 139, 0.3)',
+                                borderRadius: '8px',
+                                marginBottom: '12px'
+                              }}>
+                                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 600 }}>
+                                  STATUS
+                                </div>
+                                <select
+                                  value={selectedCustomer.status || 'unscheduled'}
+                                  onChange={(e) => {
+                                    const newStatus = e.target.value;
+                                    // Update customer status
+                                    setCustomers(prev => prev.map(c =>
+                                      c.id === selectedCustomer.id ? { ...c, status: newStatus } : c
+                                    ));
+                                    setSelectedCustomer(prev => ({ ...prev, status: newStatus }));
+                                  }}
+                                  style={{
+                                    width: '100%',
+                                    padding: '10px 12px',
+                                    background: 'rgba(15, 23, 42, 0.8)',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    borderRadius: '6px',
+                                    color: '#f1f5f9',
+                                    fontSize: '14px',
+                                    fontWeight: 600,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <option value="unscheduled">🔴 Unscheduled</option>
+                                  <option value="scheduled">🟡 Scheduled</option>
+                                  <option value="completed">🟢 Completed</option>
+                                  <option value="contacted">📞 Contacted</option>
+                                  <option value="quoted">💰 Quoted</option>
+                                  <option value="follow-up">📋 Follow Up</option>
+                                  <option value="not-interested">❌ Not Interested</option>
+                                </select>
+
+                                {selectedCustomer.status === 'unscheduled' && (
+                                  <div style={{ marginTop: '10px' }}>
+                                    {selectedCustomer.preferredDate && (
+                                      <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                                        <strong style={{ color: '#fca5a5' }}>Preferred Date:</strong>{' '}
+                                        {new Date(selectedCustomer.preferredDate).toLocaleDateString('en-US', {
+                                          weekday: 'short',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          year: 'numeric'
+                                        })}
+                                      </div>
+                                    )}
+                                    {selectedCustomer.preferredTimeWindow && (
+                                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                        <strong style={{ color: '#fca5a5' }}>Preferred Time:</strong>{' '}
+                                        {selectedCustomer.preferredTimeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
+                                         selectedCustomer.preferredTimeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
+                                         selectedCustomer.preferredTimeWindow === 'evening' ? '🌆 Evening (4pm-8pm)' :
+                                         selectedCustomer.preferredTimeWindow}
+                                      </div>
+                                    )}
                               {selectedCustomer.status && (
                                 <div style={{
                                   padding: '12px 16px',
@@ -8228,33 +8732,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   }}>
                                     {selectedCustomer.status === 'scheduled' ? '🟡 Scheduled' : '🔴 Unscheduled'}
                                   </div>
-                                  
-                                  {selectedCustomer.status === 'unscheduled' && (
-                                    <>
-                                      {selectedCustomer.preferredDate && (
-                                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
-                                          <strong style={{ color: '#fca5a5' }}>Preferred Date:</strong>{' '}
-                                          {new Date(selectedCustomer.preferredDate).toLocaleDateString('en-US', {
-                                            weekday: 'short',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric'
-                                          })}
-                                        </div>
-                                      )}
-                                      {selectedCustomer.preferredTimeWindow && (
-                                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                          <strong style={{ color: '#fca5a5' }}>Preferred Time:</strong>{' '}
-                                          {selectedCustomer.preferredTimeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
-                                           selectedCustomer.preferredTimeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
-                                           selectedCustomer.preferredTimeWindow === 'evening' ? '🌆 Evening (4pm-8pm)' :
-                                           selectedCustomer.preferredTimeWindow}
-                                        </div>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           )}
                           
@@ -10296,6 +10775,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>🎯 Radius Search</h3>
                 <button
+                  onClick={exitRadiusMode}
                   onClick={() => {
                     setRadiusMode(false);
                     setAwaitingMapClick(false);
@@ -10465,6 +10945,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   </button>
                 )}
 
+                {/* Exit and Show All Customers Button */}
+                <button
+                  className="button-secondary"
+                  onClick={exitRadiusMode}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    marginTop: '8px',
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    borderColor: 'rgba(34, 197, 94, 0.4)',
+                    color: '#22c55e'
+                  }}
+                >
+                  🔙 Exit & Show All Customers
+                </button>
+
                 {/* Time Filter - Always visible in radius mode */}
                 <div style={{
                   marginTop: '12px',
@@ -10522,12 +11018,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             createdDate: new Date().toISOString()
                           }]);
 
-                          // Exit radius mode after saving
-                          setRadiusMode(false);
-                          setAwaitingMapClick(false);
-                          clearRadius();
-                          setDrawnArea(null);
-                          setDrawnPolygon(null);
+                          // Completely exit radius mode and clear everything
+                          exitRadiusMode();
                         }
                       }}
                       style={{
@@ -10975,7 +11467,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </div>
                       </div>
                       <button
-                        onClick={() => setSavedLists(prev => prev.filter(l => l.id !== list.id))}
+                        onClick={() => {
+                          // Remove list and reset view
+                          setSavedLists(prev => {
+                            const remaining = prev.filter(l => l.id !== list.id);
+                            // If no lists remain or none are visible, show all customers
+                            const anyVisible = remaining.some(l => l.visible);
+                            if (!anyVisible) {
+                              // Reset to all customers
+                              exitRadiusMode();
+                            }
+                            return remaining;
+                          });
+                        }}
                         style={{
                           background: 'rgba(239, 68, 68, 0.1)',
                           border: '1px solid rgba(239, 68, 68, 0.2)',
