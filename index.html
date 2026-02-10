@@ -3197,7 +3197,13 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
         // Update selectedCustomer to show updated data
         setSelectedCustomer(updatedCustomer);
-        
+
+        // Protect edited fields from sheet sync overwriting them
+        if (existingJobData.lastServiceDate) trackLocalOverride(selectedCustomer.id, 'lastServiceDate', existingJobData.lastServiceDate);
+        if (existingJobData.totalPanels) trackLocalOverride(selectedCustomer.id, 'totalPanels', existingJobData.totalPanels);
+        if (existingJobData.amountPaid) trackLocalOverride(selectedCustomer.id, 'amountPaid', existingJobData.amountPaid);
+        trackLocalOverride(selectedCustomer.id, 'isRecurring', existingJobData.isRecurring);
+
         // Reset form and close modal
         setExistingJobData({
           totalPanels: '',
@@ -4402,13 +4408,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const updates = {};
             propMappings.forEach(({ prop, transform }) => {
               updates[prop] = transform(newValue);
+              // Protect each edited field from sheet sync overwriting it
+              trackLocalOverride(matchedCustomer.id, prop, transform(newValue));
             });
             propagateCustomerUpdate(matchedCustomer.id, updates);
           }
         }
-
-        // Note: Pipeline cell edits are saved locally only.
-        // Google Sheet is the source of truth for incoming data.
       };
 
       /**
@@ -8995,7 +9000,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       <div style={{ padding: '16px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Status</div>
                         <div style={{ fontSize: '14px', color: '#22c55e' }}>
-                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' : profileCustomer.status || 'Active'}
+                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' :
+                            (profileCustomer.status === 'scheduled' ? 'Scheduled' :
+                            profileCustomer.status === 'unscheduled' ? 'Unscheduled' : 'Active')}
                         </div>
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
@@ -9025,6 +9032,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             // Propagate to all views (savedLists, uploadedFiles, savedRoutes)
                             propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: e.target.value });
                             setProfileCustomer(updatedCustomer);
+                            // Protect from sheet sync overwriting this change
+                            trackLocalOverride(profileCustomer.id, 'nextServiceDate', e.target.value);
                           }}
                           style={{
                             width: '100%',
@@ -9126,6 +9135,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
                             setProfileCustomer(updatedCustomer);
                             setNewCustomerNote('');
+                            // Protect from sheet sync overwriting notes
+                            trackLocalOverride(profileCustomer.id, 'notes', newNotes);
                           }}
                           disabled={!newCustomerNote.trim()}
                           style={{
