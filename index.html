@@ -860,8 +860,10 @@
         if (customers.length === 0 || savedRoutes.length === 0) return;
 
         // Build a map of customer scheduling data from saved routes
+        // Skip routes already sent to tech - those customers are no longer scheduled
         const scheduleMap = new Map();
         savedRoutes.forEach(sr => {
+          if (sr.sentToTech) return; // Don't restore scheduling for sent routes
           sr.customers.forEach(c => {
             if (c.scheduledTime || c.scheduledDate) {
               scheduleMap.set(c.id, {
@@ -2650,14 +2652,19 @@
           day: 'numeric'
         });
         
-        // CRITICAL: Update service dates when emailing to tech (NOT when saving route)
-        // Status is already 'scheduled' from saving route, so don't change it
+        // When sent to tech: drop scheduled status, set lastServiceDate to the scheduled date
+        const scheduledDate = savedRoute.scheduledDate || today;
         setCustomers(prev => prev.map(c => {
           const isInRoute = routeCustomers.some(rc => rc.id === c.id);
           if (isInRoute) {
             return {
               ...c,
-              lastServiceDate: today, // Update service date when emailing to tech
+              lastServiceDate: scheduledDate, // Use the scheduled date from the route, not today
+              status: 'unscheduled', // Drop scheduled status when sent to tech
+              routeConfirmed: false,
+              confirmedRouteName: null,
+              scheduledDate: null,
+              scheduledTime: null,
               serviceHistory: [
                 ...(c.serviceHistory || []),
                 {
