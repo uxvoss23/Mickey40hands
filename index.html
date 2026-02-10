@@ -839,7 +839,7 @@
         console.log(`Loaded ${allCustomers.length} total customers, ${uniqueCustomers.length} unique by address (with merged contacts)`);
         
         setCustomers(uniqueCustomers);
-        setFilteredCustomers(uniqueCustomers);
+        // filteredCustomers will be set by the unified filter useEffect reacting to customers change
       }, [uploadedFiles, savedLists]);
 
       // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
@@ -5306,7 +5306,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const newCustomers = customers.filter(c => c.fileName !== fileName);
         setFiles(newFiles);
         setCustomers(newCustomers);
-        setFilteredCustomers(newCustomers);
+        // filteredCustomers will be updated by unified filter reacting to customers change
       };
 
       return (
