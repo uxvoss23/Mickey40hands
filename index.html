@@ -4351,8 +4351,39 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
+       * Map customer property names back to possible sheet header names
+       */
+      const mapCustomerPropToSheetHeaders = (propName) => {
+        const propMap = {
+          name: ['Customer Name', 'Name'],
+          email: ['Email', 'Customer Email'],
+          phone: ['Phone', 'Mobile', 'Customer Mobile'],
+          address: ['Address'],
+          street: ['Street'],
+          city: ['City'],
+          state: ['State'],
+          zip: ['Zip', 'Zipcode'],
+          totalPanels: ['Panels', 'Number of Panels', 'Panel Count'],
+          panelCount: ['Panels', 'Number of Panels', 'Panel Count'],
+          status: ['Job Status', 'Status'],
+          jobDescription: ['Job Description', 'Description'],
+          amountPaid: ['Amount', 'Job Amount'],
+          tipAmount: ['Tip'],
+          isRecurring: ['Recurring'],
+          recurring: ['Recurring'],
+          lastServiceDate: ['Completed', 'Completed Date', 'Job Completed'],
+          nextServiceDate: ['Next Service', 'Upcoming Date'],
+          notes: ['Notes', 'Customer Notes'],
+          solarVerified: ['Solar Verified', 'Verified'],
+          tags: ['Tags', 'Job Tags'],
+          employee: ['Employee', 'Assigned']
+        };
+        return propMap[propName] || [];
+      };
+
+      /**
        * Apply customer property updates across all data stores:
-       * savedLists, uploadedFiles, savedRoutes, and pipelineCustomers.
+       * savedLists, uploadedFiles, savedRoutes, pipelineCustomers, and sheetData.
        */
       const propagateCustomerUpdate = (customerId, updates) => {
         // Update savedLists (triggers customers rebuild via useEffect)
@@ -4383,6 +4414,45 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         setPipelineCustomers(prev => prev.map(c =>
           c.id === customerId ? { ...c, ...updates } : c
         ));
+
+        // Update sheetData (Pipeline view) - sync changes back to sheet data
+        setSheetData(prev => {
+          const customer = customers.find(c => c.id === customerId);
+          if (!customer) return prev;
+
+          return prev.map(row => {
+            // Match row to customer by name+address or phone
+            const nameIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+            const addressIdx = findSheetHeaderIndex(['Address']);
+            const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+
+            const rowName = (nameIdx >= 0 ? row.values[nameIdx] : '').toLowerCase().trim();
+            const rowAddress = (addressIdx >= 0 ? row.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneIdx >= 0 ? row.values[phoneIdx] : '').trim();
+
+            const cName = (customer.name || '').toLowerCase().trim();
+            const cAddress = (customer.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const isMatch = (rowName && rowAddress && cName === rowName && cAddress === rowAddress) ||
+                           (rowPhone && customer.phone && rowPhone === customer.phone);
+
+            if (!isMatch) return row;
+
+            // Update matching row with new values
+            const newValues = [...row.values];
+            const newData = { ...row.data };
+
+            Object.entries(updates).forEach(([prop, value]) => {
+              const possibleHeaders = mapCustomerPropToSheetHeaders(prop);
+              const headerIdx = findSheetHeaderIndex(possibleHeaders);
+              if (headerIdx >= 0) {
+                newValues[headerIdx] = String(value || '');
+                newData[sheetHeaders[headerIdx]] = String(value || '');
+              }
+            });
+
+            return { ...row, values: newValues, data: newData };
+          });
+        });
 
         // Update profileCustomer if it's currently open
         if (profileCustomer && profileCustomer.id === customerId) {
@@ -7164,12 +7234,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       {[
                         { value: 'all', label: 'All' },
                         { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
-                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' },
-                        { value: 'completed', label: 'Completed', color: '#22c55e' },
-                        { value: 'contacted', label: 'Contacted', color: '#3b82f6' },
-                        { value: 'quoted', label: 'Quoted', color: '#a855f7' },
-                        { value: 'follow-up', label: 'Follow Up', color: '#f97316' },
-                        { value: 'not-interested', label: 'Not Interested', color: '#6b7280' }
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
                       ].map(s => (
                         <button
                           key={s.value}
@@ -7696,7 +7761,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             }}
                             onMouseEnter={() => setHoveredCustomer(customer)}
                             onMouseLeave={() => setHoveredCustomer(null)}
-                            onClick={() => setSelectedCustomer(customer)}
+                            onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
                             style={{
                               padding: '16px 20px',
                               borderBottom: '1px solid rgba(139, 92, 246, 0.1)',
@@ -8267,11 +8332,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               >
                                 <option value="unscheduled">🔴 Unscheduled</option>
                                 <option value="scheduled">🟡 Scheduled</option>
-                                <option value="completed">🟢 Completed</option>
-                                <option value="contacted">📞 Contacted</option>
-                                <option value="quoted">💰 Quoted</option>
-                                <option value="follow-up">📋 Follow Up</option>
-                                <option value="not-interested">❌ Not Interested</option>
                               </select>
 
                               {selectedCustomer.status === 'unscheduled' && (
@@ -8991,17 +9051,62 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     alignItems: 'center',
                     justifyContent: 'space-between'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                       <div style={{ fontSize: '28px' }}>
                         {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖' : '👤'}
                       </div>
-                      <div>
-                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#f1f5f9' }}>
-                          {profileCustomer.name}
-                        </h2>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                          {profileCustomer.address}
-                        </div>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="text"
+                          value={profileCustomer.name || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, name: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { name: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'name', e.target.value);
+                          }}
+                          style={{
+                            margin: 0,
+                            fontSize: '20px',
+                            fontWeight: 700,
+                            color: '#f1f5f9',
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            width: '100%',
+                            maxWidth: '400px',
+                            transition: 'border-color 0.2s'
+                          }}
+                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          placeholder="Customer Name"
+                        />
+                        <input
+                          type="text"
+                          value={profileCustomer.address || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, address: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { address: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'address', e.target.value);
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            color: '#94a3b8',
+                            marginTop: '4px',
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            borderRadius: '4px',
+                            padding: '2px 8px',
+                            width: '100%',
+                            maxWidth: '400px',
+                            transition: 'border-color 0.2s'
+                          }}
+                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          placeholder="Address"
+                        />
                       </div>
                     </div>
                     <button
@@ -9029,30 +9134,143 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     {/* Customer Info Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Email</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>{profileCustomer.email || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Email</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <input
+                          type="email"
+                          value={profileCustomer.email || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, email: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { email: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'email', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px'
+                          }}
+                          placeholder="email@example.com"
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Phone</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>{profileCustomer.phone || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Phone</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <input
+                          type="tel"
+                          value={profileCustomer.phone || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, phone: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { phone: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'phone', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px'
+                          }}
+                          placeholder="(555) 555-5555"
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Panels</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>☀️ {profileCustomer.panelCount || profileCustomer.totalPanels || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Panels</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>☀️</span>
+                          <input
+                            type="number"
+                            value={profileCustomer.panelCount || profileCustomer.totalPanels || ''}
+                            onChange={(e) => {
+                              const updatedCustomer = { ...profileCustomer, panelCount: e.target.value, totalPanels: e.target.value };
+                              propagateCustomerUpdate(profileCustomer.id, { panelCount: e.target.value, totalPanels: e.target.value });
+                              setProfileCustomer(updatedCustomer);
+                              trackLocalOverride(profileCustomer.id, 'panelCount', e.target.value);
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '4px 8px',
+                              background: 'rgba(139, 92, 246, 0.2)',
+                              border: '1px solid rgba(139, 92, 246, 0.3)',
+                              borderRadius: '6px',
+                              color: '#f1f5f9',
+                              fontSize: '14px'
+                            }}
+                            placeholder="0"
+                            min="0"
+                          />
+                        </div>
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Status</div>
-                        <div style={{ fontSize: '14px', color: '#22c55e' }}>
-                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' :
-                            (profileCustomer.status === 'scheduled' ? 'Scheduled' :
-                            profileCustomer.status === 'unscheduled' ? 'Unscheduled' : 'Active')}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Status</span>
+                          <span style={{ fontSize: '10px', color: '#4ade80' }}>click to edit</span>
                         </div>
+                        <select
+                          value={profileCustomer.status || 'unscheduled'}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, status: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { status: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'status', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            background: 'rgba(34, 197, 94, 0.2)',
+                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                            borderRadius: '6px',
+                            color: '#22c55e',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="unscheduled">🔴 Unscheduled</option>
+                          <option value="scheduled">🟡 Scheduled</option>
+                        </select>
+                        {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') && (
+                          <div style={{ fontSize: '12px', color: '#22c55e', marginTop: '4px' }}>🦖 Recurring Customer</div>
+                        )}
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Last Service</div>
-                        <div style={{ fontSize: '14px', color: '#fbbf24' }}>
-                          {profileCustomer.lastServiceDate ? new Date(profileCustomer.lastServiceDate).toLocaleDateString() : '-'}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Last Service</span>
+                          <span style={{ fontSize: '10px', color: '#fbbf24' }}>click to edit</span>
                         </div>
+                        <input
+                          type="date"
+                          value={profileCustomer.lastServiceDate || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, lastServiceDate: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { lastServiceDate: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'lastServiceDate', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(251, 191, 36, 0.2)',
+                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                            borderRadius: '6px',
+                            color: '#fbbf24',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
