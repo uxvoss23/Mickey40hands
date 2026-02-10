@@ -1330,16 +1330,30 @@
             map.getContainer().style.cursor = '';
           };
 
+          const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+              setDrawMode(false);
+            }
+          };
+
           map.on('mousedown', onMouseDown);
           map.on('mousemove', onMouseMove);
           map.on('mouseup', onMouseUp);
+          document.addEventListener('keydown', onKeyDown);
 
           return () => {
             map.off('mousedown', onMouseDown);
             map.off('mousemove', onMouseMove);
             map.off('mouseup', onMouseUp);
+            document.removeEventListener('keydown', onKeyDown);
             map.dragging.enable();
             map.getContainer().style.cursor = '';
+            // Clean up temporary drawing polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+              drawingLayerRef.current = null;
+            }
+            drawingPointsRef.current = [];
           };
         } else {
           map.getContainer().style.cursor = '';
@@ -10120,7 +10134,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   onClick={() => {
                     setRadiusMode(false);
                     setAwaitingMapClick(false);
-                    clearRadius(); // Exit radius mode completely
+                    setDrawMode(false);
+                    clearRadius();
+                    clearDrawnArea();
                   }}
                   style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '20px' }}
                 >
@@ -10195,6 +10211,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-primary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     if (radiusAddress) {
                       handleRadiusSearch(false);
                     }
@@ -10212,6 +10230,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     if (homeBase) {
                       clearRadius();
                       drawRadius(homeBase, radiusMiles * 1609.34, 'Home Base');
@@ -10226,6 +10246,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     setAwaitingMapClick(true);
                   }}
                   style={{
@@ -10242,9 +10264,13 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
-                    clearRadius();
-                    clearDrawnArea();
-                    setDrawMode(true);
+                    if (drawMode) {
+                      setDrawMode(false);
+                    } else {
+                      clearRadius();
+                      clearDrawnArea();
+                      setDrawMode(true);
+                    }
                   }}
                   style={{
                     width: '100%',
