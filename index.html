@@ -2211,7 +2211,6 @@
             return c;
           }));
           propagateCustomerUpdate(customer.id, unscheduleUpdates);
-          syncCustomerToPipeline(customer, unscheduleUpdates);
           setSuggestedCustomers([]);
         } else {
           // Auto-schedule with 1 hour 15 minute spacing
@@ -2357,9 +2356,8 @@
               confirmedRouteDate: selectedDate.toISOString(),
               scheduledDate: selectedDate.toISOString()
             };
-            // Propagate to savedLists and pipeline
+            // Propagate to savedLists and savedRoutes
             propagateCustomerUpdate(c.id, scheduleUpdates);
-            syncCustomerToPipeline(c, scheduleUpdates);
             return { ...c, ...scheduleUpdates };
           }
           return c;
@@ -2775,8 +2773,6 @@
           ? { solarVerified: undefined, verifiedAt: undefined }
           : { solarVerified: status, verifiedAt: new Date().toISOString() };
         propagateCustomerUpdate(customerId, verifyUpdates);
-        const customer = customers.find(c => c.id === customerId);
-        if (customer) syncCustomerToPipeline(customer, verifyUpdates);
 
         // Force map redraw to show updated badge
         setTimeout(() => {
@@ -3118,8 +3114,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
         // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
         propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
-        syncCustomerToPipeline(selectedCustomer, jobUpdates);
-
         // Update selectedCustomer to show updated data
         setSelectedCustomer(updatedCustomer);
         
@@ -4086,9 +4080,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
       /**
        * Refresh Pipeline data from Google Sheets.
-       * Merges fresh sheet data with local customer state so that:
-       * 1. New/changed data from Google Sheets flows INTO the site (customers, map, etc.)
-       * 2. Local edits made on the site are preserved and re-applied to the pipeline view
+       * Google Sheets is the single source of truth. On each refresh:
+       * - Fresh sheet data replaces sheetData (pipeline view)
+       * - Changes from the sheet flow into all site views (map, recurring, saved routes, profile)
        */
       const refreshPipelineData = async () => {
         if (!sheetsConnected || !googleSheetId) return;
@@ -4096,9 +4090,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         try {
           const { headers, rows } = await fetchPipelineSheetData();
           setSheetHeaders(headers);
+          setSheetData(rows);
 
-          // --- STEP 1: Update customers from fresh sheet data ---
-          // Build column mapping from the fresh headers
+          // Push fresh sheet data into all customer stores across the site
           const getColIdx = (possibleNames) => {
             for (const name of possibleNames) {
               const idx = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
@@ -4112,8 +4106,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           const phoneCol = getColIdx(['Phone', 'Mobile', 'Customer Mobile']);
           const emailCol = getColIdx(['Email', 'Customer Email']);
 
-          // For each fresh row, find matching customer and push sheet changes into customers
-          const customerUpdatesFromSheet = []; // { customerId, updates }
+          // For each row, find matching customer and push sheet values into the site
+          const customerUpdatesFromSheet = [];
           rows.forEach(row => {
             const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
             const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
@@ -4135,10 +4129,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 const mappings = mapSheetHeaderToCustomerProps(header);
                 mappings.forEach(({ prop, transform }) => {
                   const sheetVal = row.values[colIdx] || '';
-                  const newVal = transform(sheetVal);
-                  // Only update if the sheet has a non-empty value
                   if (sheetVal !== '') {
-                    updates[prop] = newVal;
+                    updates[prop] = transform(sheetVal);
                   }
                 });
               });
@@ -4149,9 +4141,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             }
           });
 
-          // Apply sheet changes to all customer stores
+          // Apply sheet data to all customer stores
           if (customerUpdatesFromSheet.length > 0) {
-            // Batch update savedLists
             setSavedLists(prev => prev.map(list => ({
               ...list,
               customers: list.customers.map(c => {
@@ -4160,7 +4151,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               })
             })));
 
-            // Batch update uploadedFiles
             setUploadedFiles(prev => prev.map(file => ({
               ...file,
               customers: file.customers.map(c => {
@@ -4169,7 +4159,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               })
             })));
 
-            // Batch update savedRoutes
             setSavedRoutes(prev => prev.map(route => ({
               ...route,
               customers: (route.customers || []).map(c => {
@@ -4178,7 +4167,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               })
             })));
 
-            // Update profile if open
             if (profileCustomer) {
               const entry = customerUpdatesFromSheet.find(u => u.customerId === profileCustomer.id);
               if (entry) {
@@ -4186,15 +4174,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               }
             }
 
-            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets to site`);
+            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets → site`);
           }
-
-          // --- STEP 2: Set sheet data, then re-apply local customer overrides ---
-          // We set the fresh rows, then let the customers→pipeline useEffect
-          // re-apply any local overrides on the next render cycle.
-          setSheetData(rows);
-          // Force the sync useEffect to re-run by clearing the ref
-          lastSyncedCustomersRef.current = null;
 
           setLastSheetSync(new Date());
           console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
@@ -4214,74 +4195,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const interval = setInterval(refreshPipelineData, sheetRefreshInterval);
         return () => clearInterval(interval);
       }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
-
-      // Keep pipeline sheetData in sync when customers change from any view.
-      // Uses a ref to track last-synced customer state to avoid infinite loops.
-      const lastSyncedCustomersRef = useRef(null);
-      useEffect(() => {
-        if (!sheetHeaders.length || !sheetData.length || !customers.length) return;
-        // Avoid re-sync if customers haven't actually changed
-        if (lastSyncedCustomersRef.current === customers) return;
-        lastSyncedCustomersRef.current = customers;
-
-        // Build reverse mapping: customer prop → sheet column index
-        const propToColIndex = {};
-        sheetHeaders.forEach((header, colIdx) => {
-          const mappings = mapSheetHeaderToCustomerProps(header);
-          mappings.forEach(({ prop }) => {
-            if (!propToColIndex[prop]) propToColIndex[prop] = colIdx;
-          });
-        });
-
-        const nameColIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
-        const addressColIdx = findSheetHeaderIndex(['Address']);
-        const phoneColIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
-
-        // For each pipeline row, find matching customer and update values
-        setSheetData(prevSheetData => {
-          let changed = false;
-          const newSheetData = prevSheetData.map(row => {
-            const rowName = (nameColIdx >= 0 ? row.values[nameColIdx] : '').toLowerCase().trim();
-            const rowAddress = (addressColIdx >= 0 ? row.values[addressColIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-            const rowPhone = (phoneColIdx >= 0 ? row.values[phoneColIdx] : '').trim();
-
-            const matchedCustomer = customers.find(c => {
-              const cName = (c.name || '').toLowerCase().trim();
-              const cAddress = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-              if (rowName && rowAddress && cName === rowName && cAddress === rowAddress) return true;
-              if (rowPhone && c.phone && rowPhone === c.phone) return true;
-              return false;
-            });
-
-            if (!matchedCustomer) return row;
-
-            const newValues = [...row.values];
-            const newData = { ...row.data };
-            let rowChanged = false;
-
-            // Sync each mapped prop from customer to sheet column
-            Object.entries(propToColIndex).forEach(([prop, colIdx]) => {
-              let custValue = matchedCustomer[prop];
-              if (custValue === undefined || custValue === null) custValue = '';
-              if (typeof custValue === 'boolean') custValue = custValue ? 'TRUE' : 'FALSE';
-              const strValue = String(custValue);
-              if (newValues[colIdx] !== strValue) {
-                newValues[colIdx] = strValue;
-                newData[sheetHeaders[colIdx]] = strValue;
-                rowChanged = true;
-              }
-            });
-
-            if (rowChanged) {
-              changed = true;
-              return { ...row, values: newValues, data: newData };
-            }
-            return row;
-          });
-
-          return changed ? newSheetData : prevSheetData;
-        });
-      }, [customers, sheetHeaders]);
 
       /**
        * Map a Google Sheet header name to the corresponding customer object property.
@@ -4403,63 +4316,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         if (profileCustomer && profileCustomer.id === customerId) {
           setProfileCustomer(prev => ({ ...prev, ...updates }));
         }
-      };
-
-      /**
-       * Sync a customer update back to the pipeline sheetData.
-       * Maps customer property names back to sheet column headers and updates matching rows.
-       */
-      const syncCustomerToPipeline = (customer, updates) => {
-        if (!sheetHeaders.length || !sheetData.length) return;
-
-        // Build reverse mapping: customer prop → sheet column index
-        const propToColIndex = {};
-        sheetHeaders.forEach((header, colIdx) => {
-          const mappings = mapSheetHeaderToCustomerProps(header);
-          mappings.forEach(({ prop }) => {
-            if (!propToColIndex[prop]) propToColIndex[prop] = colIdx;
-          });
-        });
-
-        // Find the matching row by name+address or phone
-        const nameColIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
-        const addressColIdx = findSheetHeaderIndex(['Address']);
-        const phoneColIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
-
-        const customerName = (customer.name || '').toLowerCase().trim();
-        const customerAddress = (customer.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-        const customerPhone = (customer.phone || '').trim();
-
-        setSheetData(prev => prev.map(row => {
-          const rowName = (nameColIdx >= 0 ? row.values[nameColIdx] : '').toLowerCase().trim();
-          const rowAddress = (addressColIdx >= 0 ? row.values[addressColIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-          const rowPhone = (phoneColIdx >= 0 ? row.values[phoneColIdx] : '').trim();
-
-          const isMatch =
-            (customerName && customerAddress && rowName === customerName && rowAddress === customerAddress) ||
-            (customerPhone && rowPhone && customerPhone === rowPhone);
-
-          if (!isMatch) return row;
-
-          const newValues = [...row.values];
-          const newData = { ...row.data };
-
-          Object.entries(updates).forEach(([prop, value]) => {
-            const colIdx = propToColIndex[prop];
-            if (colIdx !== undefined) {
-              const strValue = String(value == null ? '' : value);
-              newValues[colIdx] = strValue;
-              newData[sheetHeaders[colIdx]] = strValue;
-
-              // Also sync to Google Sheets if API key available
-              if (googleApiKey) {
-                updateSheetCell(row.rowIndex, colIdx, strValue);
-              }
-            }
-          });
-
-          return { ...row, values: newValues, data: newData };
-        }));
       };
 
       /**
@@ -9317,10 +9173,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           })()}
                           onChange={(e) => {
                             const updatedCustomer = { ...profileCustomer, nextServiceDate: e.target.value };
-                            // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
+                            // Propagate to all views (savedLists, uploadedFiles, savedRoutes)
                             propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: e.target.value });
-                            // Also sync to pipeline sheetData if matching row exists
-                            syncCustomerToPipeline(profileCustomer, { nextServiceDate: e.target.value });
                             setProfileCustomer(updatedCustomer);
                           }}
                           style={{
@@ -9421,8 +9275,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             };
                             // Propagate to all views
                             propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
-                            // Also sync notes to pipeline sheetData
-                            syncCustomerToPipeline(profileCustomer, { notes: newNotes, customerNotes: newNotes });
                             setProfileCustomer(updatedCustomer);
                             setNewCustomerNote('');
                           }}
