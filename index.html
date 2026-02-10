@@ -2203,17 +2203,15 @@
             [dateKey]: currentDayRoute.filter(r => r.id !== customer.id)
           }));
           
+          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled' };
           setCustomers(prev => prev.map(c => {
             if (c.id === customer.id) {
-              return {
-                ...c,
-                scheduledDate: null,
-                scheduledTime: null,
-                status: 'unscheduled'
-              };
+              return { ...c, ...unscheduleUpdates };
             }
             return c;
           }));
+          propagateCustomerUpdate(customer.id, unscheduleUpdates);
+          syncCustomerToPipeline(customer, unscheduleUpdates);
           setSuggestedCustomers([]);
         } else {
           // Auto-schedule with 1 hour 15 minute spacing
@@ -2352,14 +2350,17 @@
         setCustomers(prev => prev.map(c => {
           const isInRoute = route.some(r => r.id === c.id);
           if (isInRoute) {
-            return {
-              ...c,
-              status: 'scheduled', // Change status to scheduled when route is saved
-              routeConfirmed: true, // Mark as confirmed
+            const scheduleUpdates = {
+              status: 'scheduled',
+              routeConfirmed: true,
               confirmedRouteName: routeName,
               confirmedRouteDate: selectedDate.toISOString(),
-              scheduledDate: selectedDate.toISOString() // Add scheduled date
+              scheduledDate: selectedDate.toISOString()
             };
+            // Propagate to savedLists and pipeline
+            propagateCustomerUpdate(c.id, scheduleUpdates);
+            syncCustomerToPipeline(c, scheduleUpdates);
+            return { ...c, ...scheduleUpdates };
           }
           return c;
         }));
@@ -2769,6 +2770,14 @@
           })
         );
         
+        // Propagate verification to all stores (savedLists, savedRoutes, pipeline)
+        const verifyUpdates = status === null
+          ? { solarVerified: undefined, verifiedAt: undefined }
+          : { solarVerified: status, verifiedAt: new Date().toISOString() };
+        propagateCustomerUpdate(customerId, verifyUpdates);
+        const customer = customers.find(c => c.id === customerId);
+        if (customer) syncCustomerToPipeline(customer, verifyUpdates);
+
         // Force map redraw to show updated badge
         setTimeout(() => {
           if (mapInstanceRef.current) {
@@ -3093,34 +3102,24 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       // Mark customer as existing job
       const handleMarkExisting = () => {
         if (!selectedCustomer) return;
-        
+
         // Update the customer with existing job data
-        const updatedCustomer = {
-          ...selectedCustomer,
+        const jobUpdates = {
           existingJob: true,
           totalPanels: existingJobData.totalPanels,
+          panelCount: existingJobData.totalPanels,
           lastServiceDate: existingJobData.lastServiceDate,
           amountPaid: existingJobData.amountPaid,
           isRecurring: existingJobData.isRecurring,
+          recurring: existingJobData.isRecurring ? 'TRUE' : '',
           nextScheduledDate: existingJobData.nextScheduledDate
         };
-        
-        // Update in uploadedFiles
-        setUploadedFiles(prev => prev.map(file => ({
-          ...file,
-          customers: file.customers.map(c => 
-            c.id === selectedCustomer.id ? updatedCustomer : c
-          )
-        })));
-        
-        // Update in savedLists if present
-        setSavedLists(prev => prev.map(list => ({
-          ...list,
-          customers: list.customers.map(c => 
-            c.id === selectedCustomer.id ? updatedCustomer : c
-          )
-        })));
-        
+        const updatedCustomer = { ...selectedCustomer, ...jobUpdates };
+
+        // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
+        propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
+        syncCustomerToPipeline(selectedCustomer, jobUpdates);
+
         // Update selectedCustomer to show updated data
         setSelectedCustomer(updatedCustomer);
         
@@ -4114,21 +4113,289 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         return () => clearInterval(interval);
       }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
 
+      // Keep pipeline sheetData in sync when customers change from any view.
+      // Uses a ref to track last-synced customer state to avoid infinite loops.
+      const lastSyncedCustomersRef = useRef(null);
+      useEffect(() => {
+        if (!sheetHeaders.length || !sheetData.length || !customers.length) return;
+        // Avoid re-sync if customers haven't actually changed
+        if (lastSyncedCustomersRef.current === customers) return;
+        lastSyncedCustomersRef.current = customers;
+
+        // Build reverse mapping: customer prop → sheet column index
+        const propToColIndex = {};
+        sheetHeaders.forEach((header, colIdx) => {
+          const mappings = mapSheetHeaderToCustomerProps(header);
+          mappings.forEach(({ prop }) => {
+            if (!propToColIndex[prop]) propToColIndex[prop] = colIdx;
+          });
+        });
+
+        const nameColIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+        const addressColIdx = findSheetHeaderIndex(['Address']);
+        const phoneColIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+
+        // For each pipeline row, find matching customer and update values
+        setSheetData(prevSheetData => {
+          let changed = false;
+          const newSheetData = prevSheetData.map(row => {
+            const rowName = (nameColIdx >= 0 ? row.values[nameColIdx] : '').toLowerCase().trim();
+            const rowAddress = (addressColIdx >= 0 ? row.values[addressColIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneColIdx >= 0 ? row.values[phoneColIdx] : '').trim();
+
+            const matchedCustomer = customers.find(c => {
+              const cName = (c.name || '').toLowerCase().trim();
+              const cAddress = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+              if (rowName && rowAddress && cName === rowName && cAddress === rowAddress) return true;
+              if (rowPhone && c.phone && rowPhone === c.phone) return true;
+              return false;
+            });
+
+            if (!matchedCustomer) return row;
+
+            const newValues = [...row.values];
+            const newData = { ...row.data };
+            let rowChanged = false;
+
+            // Sync each mapped prop from customer to sheet column
+            Object.entries(propToColIndex).forEach(([prop, colIdx]) => {
+              let custValue = matchedCustomer[prop];
+              if (custValue === undefined || custValue === null) custValue = '';
+              if (typeof custValue === 'boolean') custValue = custValue ? 'TRUE' : 'FALSE';
+              const strValue = String(custValue);
+              if (newValues[colIdx] !== strValue) {
+                newValues[colIdx] = strValue;
+                newData[sheetHeaders[colIdx]] = strValue;
+                rowChanged = true;
+              }
+            });
+
+            if (rowChanged) {
+              changed = true;
+              return { ...row, values: newValues, data: newData };
+            }
+            return row;
+          });
+
+          return changed ? newSheetData : prevSheetData;
+        });
+      }, [customers, sheetHeaders]);
+
       /**
-       * Handle Pipeline cell edit - update local state and sync to Google Sheets
+       * Map a Google Sheet header name to the corresponding customer object property.
+       * Returns { prop, transform } where transform converts the raw string value.
+       */
+      const mapSheetHeaderToCustomerProps = (headerName) => {
+        const h = (headerName || '').toLowerCase().trim();
+        const identity = v => v;
+        const toFloat = v => parseFloat(v) || 0;
+        const toInt = v => parseInt(v) || 0;
+        const toBool = v => v === 'TRUE' || v === 'true';
+
+        if (/customer\s*name|^name$/i.test(h)) return [
+          { prop: 'name', transform: identity },
+          { prop: 'firstname', transform: v => (v || '').trim().split(' ')[0] || '' },
+          { prop: 'lastname', transform: v => (v || '').trim().split(' ').slice(1).join(' ') || '' }
+        ];
+        if (/^email|customer\s*email/i.test(h)) return [{ prop: 'email', transform: identity }];
+        if (/^phone|mobile|customer\s*mobile/i.test(h)) return [{ prop: 'phone', transform: identity }];
+        if (/^address/i.test(h)) return [{ prop: 'address', transform: identity }];
+        if (/^street/i.test(h)) return [{ prop: 'street', transform: identity }];
+        if (/^city/i.test(h)) return [{ prop: 'city', transform: identity }];
+        if (/^state/i.test(h)) return [{ prop: 'state', transform: identity }];
+        if (/^zip|zipcode/i.test(h)) return [{ prop: 'zip', transform: identity }];
+        if (/panel|number\s*of\s*panel/i.test(h)) return [
+          { prop: 'totalPanels', transform: toInt },
+          { prop: 'panelCount', transform: toInt }
+        ];
+        if (/job\s*status|^status$/i.test(h)) return [{ prop: 'status', transform: identity }];
+        if (/job\s*description|^description$/i.test(h)) return [{ prop: 'jobDescription', transform: identity }];
+        if (/^amount|job\s*amount/i.test(h)) return [{ prop: 'amountPaid', transform: toFloat }];
+        if (/^tip/i.test(h)) return [{ prop: 'tipAmount', transform: toFloat }];
+        if (/^recurring$/i.test(h)) return [
+          { prop: 'isRecurring', transform: toBool },
+          { prop: 'recurring', transform: identity }
+        ];
+        if (/completed|completed\s*date|job\s*completed/i.test(h)) return [{ prop: 'lastServiceDate', transform: identity }];
+        if (/next\s*service|upcoming\s*date/i.test(h)) return [{ prop: 'nextServiceDate', transform: identity }];
+        if (/^notes|customer\s*notes/i.test(h)) return [{ prop: 'notes', transform: identity }];
+        if (/solar\s*verified|^verified$/i.test(h)) return [{ prop: 'solarVerified', transform: v => v === 'yes' ? 'yes' : (v === 'no' ? 'no' : null) }];
+        if (/^tags|job\s*tags/i.test(h)) return [{ prop: 'tags', transform: identity }];
+        if (/^employee|assigned/i.test(h)) return [{ prop: 'employee', transform: identity }];
+        return [];
+      };
+
+      /**
+       * Find the sheet header index for a given set of possible header names.
+       */
+      const findSheetHeaderIndex = (possibleNames) => {
+        for (const name of possibleNames) {
+          const idx = sheetHeaders.findIndex(h =>
+            h.toLowerCase().includes(name.toLowerCase())
+          );
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+
+      /**
+       * Given a pipeline row's data object, find the matching customer by name+address or phone.
+       */
+      const findCustomerFromPipelineRow = (rowData) => {
+        const nameIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+        const addressIdx = findSheetHeaderIndex(['Address']);
+        const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+        const emailIdx = findSheetHeaderIndex(['Email', 'Customer Email']);
+
+        const rowName = (nameIdx >= 0 ? rowData.values[nameIdx] : '').toLowerCase().trim();
+        const rowAddress = (addressIdx >= 0 ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const rowPhone = (phoneIdx >= 0 ? rowData.values[phoneIdx] : '').trim();
+        const rowEmail = (emailIdx >= 0 ? rowData.values[emailIdx] : '').toLowerCase().trim();
+
+        // Match by name+address first, then by phone, then by email
+        return customers.find(c => {
+          const cName = (c.name || '').toLowerCase().trim();
+          const cAddress = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+          if (rowName && rowAddress && cName === rowName && cAddress === rowAddress) return true;
+          if (rowPhone && c.phone && rowPhone === c.phone) return true;
+          if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
+          return false;
+        });
+      };
+
+      /**
+       * Apply customer property updates across all data stores:
+       * savedLists, uploadedFiles, savedRoutes, and pipelineCustomers.
+       */
+      const propagateCustomerUpdate = (customerId, updates) => {
+        // Update savedLists (triggers customers rebuild via useEffect)
+        setSavedLists(prev => prev.map(list => ({
+          ...list,
+          customers: list.customers.map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update uploadedFiles
+        setUploadedFiles(prev => prev.map(file => ({
+          ...file,
+          customers: file.customers.map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update savedRoutes
+        setSavedRoutes(prev => prev.map(route => ({
+          ...route,
+          customers: (route.customers || []).map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update pipelineCustomers (legacy)
+        setPipelineCustomers(prev => prev.map(c =>
+          c.id === customerId ? { ...c, ...updates } : c
+        ));
+
+        // Update profileCustomer if it's currently open
+        if (profileCustomer && profileCustomer.id === customerId) {
+          setProfileCustomer(prev => ({ ...prev, ...updates }));
+        }
+      };
+
+      /**
+       * Sync a customer update back to the pipeline sheetData.
+       * Maps customer property names back to sheet column headers and updates matching rows.
+       */
+      const syncCustomerToPipeline = (customer, updates) => {
+        if (!sheetHeaders.length || !sheetData.length) return;
+
+        // Build reverse mapping: customer prop → sheet column index
+        const propToColIndex = {};
+        sheetHeaders.forEach((header, colIdx) => {
+          const mappings = mapSheetHeaderToCustomerProps(header);
+          mappings.forEach(({ prop }) => {
+            if (!propToColIndex[prop]) propToColIndex[prop] = colIdx;
+          });
+        });
+
+        // Find the matching row by name+address or phone
+        const nameColIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+        const addressColIdx = findSheetHeaderIndex(['Address']);
+        const phoneColIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+
+        const customerName = (customer.name || '').toLowerCase().trim();
+        const customerAddress = (customer.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const customerPhone = (customer.phone || '').trim();
+
+        setSheetData(prev => prev.map(row => {
+          const rowName = (nameColIdx >= 0 ? row.values[nameColIdx] : '').toLowerCase().trim();
+          const rowAddress = (addressColIdx >= 0 ? row.values[addressColIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+          const rowPhone = (phoneColIdx >= 0 ? row.values[phoneColIdx] : '').trim();
+
+          const isMatch =
+            (customerName && customerAddress && rowName === customerName && rowAddress === customerAddress) ||
+            (customerPhone && rowPhone && customerPhone === rowPhone);
+
+          if (!isMatch) return row;
+
+          const newValues = [...row.values];
+          const newData = { ...row.data };
+
+          Object.entries(updates).forEach(([prop, value]) => {
+            const colIdx = propToColIndex[prop];
+            if (colIdx !== undefined) {
+              const strValue = String(value == null ? '' : value);
+              newValues[colIdx] = strValue;
+              newData[sheetHeaders[colIdx]] = strValue;
+
+              // Also sync to Google Sheets if API key available
+              if (googleApiKey) {
+                updateSheetCell(row.rowIndex, colIdx, strValue);
+              }
+            }
+          });
+
+          return { ...row, values: newValues, data: newData };
+        }));
+      };
+
+      /**
+       * Handle Pipeline cell edit - update local state, sync to Google Sheets,
+       * and propagate changes to all views (map, recurring, saved routes, profile).
        */
       const handlePipelineCellEdit = async (rowIndex, colIndex, newValue) => {
-        // Update local state immediately for responsiveness
+        // Capture the original row BEFORE editing to match against customers
+        let originalRow = null;
+        let editedRow = null;
         setSheetData(prev => prev.map(row => {
           if (row.rowIndex === rowIndex) {
+            originalRow = row;
             const newValues = [...row.values];
             newValues[colIndex] = newValue;
             const newData = { ...row.data };
             newData[sheetHeaders[colIndex]] = newValue;
-            return { ...row, values: newValues, data: newData };
+            editedRow = { ...row, values: newValues, data: newData };
+            return editedRow;
           }
           return row;
         }));
+
+        // Map the edited column to customer properties and propagate
+        const headerName = sheetHeaders[colIndex];
+        const propMappings = mapSheetHeaderToCustomerProps(headerName);
+
+        if (propMappings.length > 0 && originalRow) {
+          // Match using the original row data (before edit) so name/address edits still match
+          const matchedCustomer = findCustomerFromPipelineRow(originalRow);
+          if (matchedCustomer) {
+            const updates = {};
+            propMappings.forEach(({ prop, transform }) => {
+              updates[prop] = transform(newValue);
+            });
+            propagateCustomerUpdate(matchedCustomer.id, updates);
+          }
+        }
 
         // Sync to Google Sheets if API key is available
         if (googleApiKey) {
@@ -8948,17 +9215,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           })()}
                           onChange={(e) => {
                             const updatedCustomer = { ...profileCustomer, nextServiceDate: e.target.value };
-                            // Update in savedLists
-                            setSavedLists(prev => prev.map(list => ({
-                              ...list,
-                              customers: list.customers.map(c =>
-                                c.id === profileCustomer.id ? updatedCustomer : c
-                              )
-                            })));
-                            // Update in customers if exists there
-                            setCustomers(prev => prev.map(c =>
-                              c.id === profileCustomer.id ? updatedCustomer : c
-                            ));
+                            // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
+                            propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: e.target.value });
+                            // Also sync to pipeline sheetData if matching row exists
+                            syncCustomerToPipeline(profileCustomer, { nextServiceDate: e.target.value });
                             setProfileCustomer(updatedCustomer);
                           }}
                           style={{
@@ -9050,20 +9310,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         <button
                           onClick={() => {
                             if (!newCustomerNote.trim()) return;
-                            // Add note to customer
+                            const newNotes = (profileCustomer.customerNotes || '') +
+                              (profileCustomer.customerNotes ? '\n' : '') +
+                              `[${new Date().toLocaleDateString()}] ${newCustomerNote}`;
                             const updatedCustomer = {
                               ...profileCustomer,
-                              customerNotes: (profileCustomer.customerNotes || '') +
-                                (profileCustomer.customerNotes ? '\n' : '') +
-                                `[${new Date().toLocaleDateString()}] ${newCustomerNote}`
+                              customerNotes: newNotes
                             };
-                            // Update in savedLists
-                            setSavedLists(prev => prev.map(list => ({
-                              ...list,
-                              customers: list.customers.map(c =>
-                                c.id === profileCustomer.id ? updatedCustomer : c
-                              )
-                            })));
+                            // Propagate to all views
+                            propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
+                            // Also sync notes to pipeline sheetData
+                            syncCustomerToPipeline(profileCustomer, { notes: newNotes, customerNotes: newNotes });
                             setProfileCustomer(updatedCustomer);
                             setNewCustomerNote('');
                           }}
