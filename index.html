@@ -449,7 +449,7 @@
       const [awaitingMapClick, setAwaitingMapClick] = useState(false);
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [showSaveListModal, setShowSaveListModal] = useState(false);
-      const [showFilterPanel, setShowFilterPanel] = useState(false);
+      const [showFilterPanel, setShowFilterPanel] = useState(true);
       const [showExistingJobModal, setShowExistingJobModal] = useState(false);
       const [existingJobData, setExistingJobData] = useState({
         totalPanels: '',
@@ -1174,12 +1174,13 @@
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 30,
+            maxClusterRadius: 15,  // Very tight: only overlapping pins cluster
             spiderfyOnMaxZoom: true,
+            spiderfyDistanceMultiplier: 1.5,
             spiderLegPolylineOptions: { weight: 1.5, color: '#8b5cf6', opacity: 0.6 },
             showCoverageOnHover: false,
-            zoomToBoundsOnClick: false,  // Don't zoom - spiderfy instead
-            disableClusteringAtZoom: 12,
+            zoomToBoundsOnClick: false,
+            disableClusteringAtZoom: 9,  // Show individual pins from zoom 9+
             removeOutsideVisibleBounds: true,
             animate: false
           });
@@ -6967,6 +6968,37 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     flexDirection: 'column',
                     gap: '8px'
                   }}>
+                    {/* Collapsed: just a small toggle button */}
+                    {!showFilterPanel ? (
+                      <button
+                        onClick={() => setShowFilterPanel(true)}
+                        style={{
+                          alignSelf: 'flex-start',
+                          padding: '6px 14px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(10, 14, 39, 0.88)',
+                          backdropFilter: 'blur(16px)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '10px',
+                          color: '#a78bfa',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                      >
+                        Filters
+                        {(() => {
+                          const cnt = [statusFilter !== 'all', stateFilter, cityFilter, zipFilter, lastServiceFilter,
+                            activeFilters.verifiedSolar, activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels,
+                            preferredDateFilter.length > 0, preferredTimeFilter.length > 0].filter(Boolean).length;
+                          return cnt > 0 ? <span style={{ background: 'rgba(139,92,246,0.4)', padding: '1px 7px', borderRadius: '8px', fontSize: '10px', color: '#fff' }}>{cnt}</span> : null;
+                        })()}
+                        <span style={{ fontSize: '10px' }}>▼</span>
+                      </button>
+                    ) : (
+                    <>
                     {/* Row 1: Status pills + Location + Service date */}
                     <div style={{
                       display: 'flex',
@@ -6988,7 +7020,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       ].map(s => (
                         <button
                           key={s.value}
-                          onClick={() => setStatusFilter(s.value)}
+                          onClick={() => setStatusFilter(statusFilter === s.value ? 'all' : s.value)}
                           style={{
                             padding: '4px 10px',
                             fontSize: '11px',
@@ -7092,6 +7124,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         <option value="6months">6+ months ago</option>
                         <option value="12months">12+ months ago</option>
                       </select>
+
+                      <div style={{ flex: 1 }} />
+                      <button
+                        onClick={() => setShowFilterPanel(false)}
+                        title="Hide filters"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          border: '1px solid rgba(100, 116, 139, 0.3)',
+                          borderRadius: '6px',
+                          color: '#94a3b8',
+                          cursor: 'pointer'
+                        }}
+                      >▲ Hide</button>
                     </div>
 
                     {/* Row 2: Toggle chips + panels + results count */}
@@ -7299,9 +7347,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         )}
                       </div>
                     )}
+                    </>
+                    )}
                   </div>
                 )}
-                
+
                 {/* Map - takes remaining space */}
                 <div
                   ref={mapRef}
