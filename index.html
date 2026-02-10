@@ -689,7 +689,18 @@
         // Clear old pipeline data since we now use Google Sheets directly
         localStorage.removeItem('pipelineCustomers');
 
-        if (saved) setSavedRoutes(JSON.parse(saved));
+        if (saved) {
+          const parsedRoutes = JSON.parse(saved);
+          setSavedRoutes(parsedRoutes);
+          // Initialize saved view for days that have saved routes
+          const savedDays = {};
+          parsedRoutes.forEach(r => {
+            if (r.scheduledDate) {
+              savedDays[new Date(r.scheduledDate).toDateString()] = true;
+            }
+          });
+          setSavedViewDays(savedDays);
+        }
         if (sheetId) {
           setGoogleSheetId(sheetId);
           setSheetsConnected(true);
@@ -842,6 +853,46 @@
         setCustomers(uniqueCustomers);
         // filteredCustomers will be set by the unified filter useEffect reacting to customers change
       }, [uploadedFiles, savedLists]);
+
+      // Restore scheduling data from savedRoutes into customers on load
+      // This ensures scheduledTime/scheduledDate persist across page reloads
+      useEffect(() => {
+        if (customers.length === 0 || savedRoutes.length === 0) return;
+
+        // Build a map of customer scheduling data from saved routes
+        const scheduleMap = new Map();
+        savedRoutes.forEach(sr => {
+          sr.customers.forEach(c => {
+            if (c.scheduledTime || c.scheduledDate) {
+              scheduleMap.set(c.id, {
+                scheduledTime: c.scheduledTime,
+                scheduledDate: sr.scheduledDate || c.scheduledDate,
+                status: 'scheduled',
+                routeConfirmed: true,
+                confirmedRouteName: sr.name
+              });
+            }
+          });
+        });
+
+        if (scheduleMap.size === 0) return;
+
+        // Check if any customers are missing scheduling data
+        const needsUpdate = customers.some(c => {
+          const sched = scheduleMap.get(c.id);
+          return sched && !c.scheduledTime;
+        });
+
+        if (needsUpdate) {
+          setCustomers(prev => prev.map(c => {
+            const sched = scheduleMap.get(c.id);
+            if (sched && !c.scheduledTime) {
+              return { ...c, ...sched };
+            }
+            return c;
+          }));
+        }
+      }, [customers.length, savedRoutes.length]);
 
       // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
       
@@ -2287,11 +2338,17 @@
           return;
         }
 
-        const routeCustomers = route.map(c => ({
-          ...c,
-          customerNotes: c.notes || '',
-          distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
-        }));
+        // Merge route customers with latest data from customers state
+        // (route objects may be stale - customers state has scheduledTime etc.)
+        const routeCustomers = route.map(c => {
+          const latest = customers.find(cust => cust.id === c.id);
+          return {
+            ...c,
+            ...(latest || {}),
+            customerNotes: c.notes || c.customerNotes || (latest && latest.notes) || '',
+            distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+          };
+        });
 
         if (editingSavedRouteId) {
           // UPDATE existing saved route
