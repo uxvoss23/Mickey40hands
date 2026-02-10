@@ -481,6 +481,7 @@
       const [sortOrder, setSortOrder] = useState('asc'); // 'asc', 'desc'
       const [selectedDate, setSelectedDate] = useState(new Date());
       const [savedViewDays, setSavedViewDays] = useState({}); // Track which days show saved view: { 'dateString': true/false }
+      const [selectedRouteIndexByDay, setSelectedRouteIndexByDay] = useState({}); // Track which route is selected for each day: { 'dateString': 0, 1, 2... }
       const [weekStart, setWeekStart] = useState(() => {
         const today = new Date();
         const day = today.getDay();
@@ -609,6 +610,7 @@
       
       const mapRef = useRef(null);
       const mapInstanceRef = useRef(null);
+      const prevSelectedDateRef = useRef(null);
       const markerClusterRef = useRef(null);
       const heatLayerRef = useRef(null);
       const radiusCircleRef = useRef(null);
@@ -907,6 +909,53 @@
           }));
         }
       }, [customers.length, savedRoutes.length]);
+
+      // Clean up orphaned scheduling data when changing dates (edit mode cleanup)
+      useEffect(() => {
+        const currentDateKey = selectedDate.toDateString();
+        const prevDateKey = prevSelectedDateRef.current;
+
+        // If we changed dates and were not in saved view on the previous date
+        if (prevDateKey && prevDateKey !== currentDateKey && savedViewDays[prevDateKey] !== true) {
+          // Find saved routes for the previous date
+          const savedRoutesForPrevDay = savedRoutes.filter(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === prevDateKey;
+          });
+
+          // Get all customer IDs that are in saved routes for that day
+          const savedCustomerIds = new Set();
+          savedRoutesForPrevDay.forEach(r => {
+            if (r.customers) {
+              r.customers.forEach(c => savedCustomerIds.add(c.id));
+            }
+          });
+
+          // Clear scheduling for customers that were scheduled for prev day but aren't in any saved route
+          setCustomers(prev => prev.map(c => {
+            if (!c.scheduledDate) return c;
+            const custDate = new Date(c.scheduledDate);
+            if (custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id)) {
+              // This customer was scheduled for prev day but not in any saved route - orphaned
+              return {
+                ...c,
+                scheduledDate: null,
+                scheduledTime: null,
+                status: 'unscheduled',
+                routeConfirmed: false
+              };
+            }
+            return c;
+          }));
+
+          // Clear routesByDay for previous date
+          setRoutesByDay(prev => ({ ...prev, [prevDateKey]: [] }));
+          setEditingSavedRouteId(null);
+        }
+
+        // Update the ref for next change
+        prevSelectedDateRef.current = currentDateKey;
+      }, [selectedDate]);
 
       // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
       
@@ -2557,6 +2606,26 @@
       };
 
       const scheduleCustomerToTimeSlot = (customer, date, timeSlot) => {
+        // Check if customer is already on a DIFFERENT saved route for this day
+        const dateKey = date.toDateString();
+        const routesForDay = savedRoutes.filter(r => {
+          const rDate = new Date(r.scheduledDate);
+          return rDate.toDateString() === dateKey;
+        });
+
+        // If editing an existing route, exclude it from the check
+        const otherRoutesForDay = routesForDay.filter(r => r.id !== editingSavedRouteId);
+
+        // Check if customer is on any of the other routes for this day
+        const conflictingRoute = otherRoutesForDay.find(r =>
+          r.customers && r.customers.some(c => c.id === customer.id)
+        );
+
+        if (conflictingRoute) {
+          alert(`${customer.name} is already scheduled on "${conflictingRoute.name}" for this day. A customer cannot be on multiple routes for the same day.`);
+          return;
+        }
+
         setCustomers(prev => {
           // Check if customer already has a time slot on this day
           const existingCustomer = prev.find(c => c.id === customer.id);
@@ -4426,9 +4495,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const addressIdx = findSheetHeaderIndex(['Address']);
             const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
 
-            const rowName = (nameIdx >= 0 ? row.values[nameIdx] : '').toLowerCase().trim();
-            const rowAddress = (addressIdx >= 0 ? row.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-            const rowPhone = (phoneIdx >= 0 ? row.values[phoneIdx] : '').trim();
+            const rowName = (nameIdx >= 0 && row.values[nameIdx] ? String(row.values[nameIdx]) : '').toLowerCase().trim();
+            const rowAddress = (addressIdx >= 0 && row.values[addressIdx] ? String(row.values[addressIdx]) : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneIdx >= 0 && row.values[phoneIdx] ? String(row.values[phoneIdx]) : '').trim();
 
             const cName = (customer.name || '').toLowerCase().trim();
             const cAddress = (customer.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
@@ -5011,13 +5080,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           console.log(`🔍 CRITICAL: lat=${colMap.lat}, lng=${colMap.lng}, panels=${colMap.panels}`);
           console.log(`📊 Found ${data.length} data rows`);
 
-          // Import customers from sheet
+          // Import customers from sheet - ONLY add NEW customers, never update existing
           let imported = 0;
           let skipped = 0;
           let skipReasons = [];
-          const existingPhones = new Set(customers.map(c => c.phone));
+
+          // Build sets for duplicate detection (by phone, email, and name+address)
+          const existingPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
+          const existingEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const existingNameAddresses = new Set(customers.map(c => {
+            const name = (c.name || '').toLowerCase().trim();
+            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            return `${name}|${address}`;
+          }));
+
           const newCustomers = []; // Collect all new customers here
-          
+
           console.log(`📊 Starting sync... Found ${data.length} rows in sheet`);
           console.log(`📊 Existing customers: ${customers.length}`);
           
@@ -5092,10 +5170,25 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             // Build full address if not provided
             const addressToUse = fullAddress || (street ? `${street}, ${city}, ${state} ${zip}`.trim() : '');
             
-            // Skip if already exists
-            if (phone && existingPhones.has(phone)) {
+            // Skip if already exists (check phone, email, or name+address)
+            if (phone && existingPhones.has(phone.trim())) {
               skipped++;
-              skipReasons.push(`Row ${skipped + imported + 1}: Duplicate phone (${phone})`);
+              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (phone: ${phone})`);
+              continue;
+            }
+
+            if (email && existingEmails.has(email.toLowerCase().trim())) {
+              skipped++;
+              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (email: ${email})`);
+              continue;
+            }
+
+            const checkName = (name || '').toLowerCase().trim();
+            const checkAddress = (addressToUse || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const nameAddressKey = `${checkName}|${checkAddress}`;
+            if (checkName && checkAddress && existingNameAddresses.has(nameAddressKey)) {
+              skipped++;
+              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (name+address: ${name})`);
               continue;
             }
             
@@ -5124,7 +5217,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(totalPanels) || 0,
               panelCount: parseInt(totalPanels) || 0,
               name: `${firstname} ${lastname}`.trim(),
-              status: status || 'Not serviced',
+              status: 'unscheduled', // All new imports start as unscheduled
               jobDescription: jobDesc || '',
               isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
@@ -5153,7 +5246,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
             newCustomers.push(newCustomer); // Add to collection
             imported++;
-            existingPhones.add(phone); // Prevent duplicates in same sync
+
+            // Prevent duplicates in same sync batch
+            if (phone) existingPhones.add(phone.trim());
+            if (email) existingEmails.add(email.toLowerCase().trim());
+            existingNameAddresses.add(nameAddressKey);
           }
 
           // Add all customers to savedLists so they appear on map
@@ -5177,6 +5274,14 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               count: customersForList.length,
               type: 'sheets'
             }]);
+
+            // Also add to pipelineCustomers so they appear in Pipeline view
+            const pipelineEntries = newCustomers.map(c => ({
+              ...c,
+              pipelineId: Date.now().toString() + Math.random(),
+              addedDate: new Date().toISOString()
+            }));
+            setPipelineCustomers(prev => [...prev, ...pipelineEntries]);
 
             console.log(`✅ Added ${newCustomers.length} customers as "${listName}"`);
             console.log(`📍 Sample customer:`, newCustomers[0]);
@@ -6389,17 +6494,21 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       const dateKey = selectedDate.toDateString();
                       const inSavedView = savedViewDays[dateKey] === true;
 
-                      // Find saved route for this day first
-                      const savedRouteForDay = savedRoutes.find(r => {
+                      // Find ALL saved routes for this day (multiple technicians)
+                      const savedRoutesForDay = savedRoutes.filter(r => {
                         const rDate = new Date(r.scheduledDate);
                         return rDate.toDateString() === dateKey;
                       });
+
+                      // Get the currently selected route index for this day (default to 0)
+                      const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+                      const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
 
                       // Get jobs from saved route OR from customers state (fallback)
                       let jobsForDay = [];
                       if (inSavedView && savedRouteForDay && savedRouteForDay.customers) {
                         // Use customers from saved route (source of truth for saved view)
-                        jobsForDay = savedRouteForDay.customers.sort((a, b) => {
+                        jobsForDay = [...savedRouteForDay.customers].sort((a, b) => {
                           if (!a.scheduledTime || !b.scheduledTime) return 0;
                           const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
                           const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
@@ -6421,13 +6530,46 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           });
                       }
 
-                      // SAVED VIEW - Show compact list (only if there are jobs and in saved mode)
-                      if (inSavedView && jobsForDay.length > 0) {
-                        // savedRouteForDay already found above
-                        });
-
+                      // SAVED VIEW - Show compact list (only if in saved mode and has routes)
+                      if (inSavedView && savedRoutesForDay.length > 0) {
                         return (
                           <div>
+                            {/* Route Tabs - only show if multiple routes for this day */}
+                            {savedRoutesForDay.length > 1 && (
+                              <div style={{
+                                display: 'flex',
+                                gap: '4px',
+                                marginBottom: '12px',
+                                background: 'rgba(15, 23, 42, 0.5)',
+                                padding: '4px',
+                                borderRadius: '8px'
+                              }}>
+                                {savedRoutesForDay.map((route, idx) => (
+                                  <button
+                                    key={route.id}
+                                    onClick={() => setSelectedRouteIndexByDay(prev => ({ ...prev, [dateKey]: idx }))}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 12px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      background: idx === selectedIdx ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                                      border: idx === selectedIdx ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                                      borderRadius: '6px',
+                                      color: idx === selectedIdx ? '#a78bfa' : '#94a3b8',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}
+                                  >
+                                    {route.name || `Route ${idx + 1}`}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
                               <button
                                 onClick={() => {
@@ -6479,19 +6621,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </button>
                               <button
                                 onClick={() => {
-                                  // Start a fresh new route - clear everything for this day
+                                  // Start a fresh new route - DON'T clear other routes' customers
                                   setRoutesByDay(prev => ({
                                     ...prev,
                                     [dateKey]: []
-                                  }));
-                                  // Clear scheduling from customers for this day
-                                  setCustomers(prev => prev.map(c => {
-                                    if (!c.scheduledDate) return c;
-                                    const custDate = new Date(c.scheduledDate);
-                                    if (custDate.toDateString() === dateKey) {
-                                      return { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
-                                    }
-                                    return c;
                                   }));
                                   setEditingSavedRouteId(null);
                                   setSuggestedCustomers([]);
