@@ -2418,12 +2418,20 @@
         setShowSaveModal(false);
         setRouteName('');
 
+        // Clear routesByDay for this date so stale data doesn't accumulate
+        const dateKey = selectedDate.toDateString();
+        setRoutesByDay(prev => ({
+          ...prev,
+          [dateKey]: []
+        }));
+
         // Switch to saved view for this date
         setSavedViewDays(prev => ({
           ...prev,
-          [selectedDate.toDateString()]: true
+          [dateKey]: true
         }));
         setSuggestedCustomers([]);
+        setEditingSavedRouteId(null);
       };
 
       // Calendar helper functions
@@ -6316,13 +6324,35 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                     alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
                                     return;
                                   }
-                                  // Load the saved route into the editor via routesByDay (source of truth)
                                   if (savedRouteForDay) {
+                                    // Load into routesByDay
                                     setRoutesByDay(prev => ({
                                       ...prev,
                                       [dateKey]: savedRouteForDay.customers
                                     }));
                                     setEditingSavedRouteId(savedRouteForDay.id);
+
+                                    // Restore scheduledTime/scheduledDate into customers state
+                                    // so the time slots in edit view show the jobs
+                                    setCustomers(prev => {
+                                      const routeCustomerMap = new Map();
+                                      savedRouteForDay.customers.forEach(rc => {
+                                        routeCustomerMap.set(rc.id, rc);
+                                      });
+                                      return prev.map(c => {
+                                        const rc = routeCustomerMap.get(c.id);
+                                        if (rc) {
+                                          return {
+                                            ...c,
+                                            scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                            scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                            status: 'scheduled',
+                                            routeConfirmed: true
+                                          };
+                                        }
+                                        return c;
+                                      });
+                                    });
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                 }}
@@ -6338,12 +6368,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </button>
                               <button
                                 onClick={() => {
-                                  // Start a fresh new route for this day (don't load existing)
+                                  // Start a fresh new route - clear everything for this day
                                   setRoutesByDay(prev => ({
                                     ...prev,
                                     [dateKey]: []
                                   }));
+                                  // Clear scheduling from customers for this day
+                                  setCustomers(prev => prev.map(c => {
+                                    if (!c.scheduledDate) return c;
+                                    const custDate = new Date(c.scheduledDate);
+                                    if (custDate.toDateString() === dateKey) {
+                                      return { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
+                                    }
+                                    return c;
+                                  }));
                                   setEditingSavedRouteId(null);
+                                  setSuggestedCustomers([]);
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                 }}
                                 className="button-primary"
@@ -9597,7 +9637,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
                                   return;
                                 }
-                                // Load route into map editor via routesByDay (source of truth)
+                                // Load route into map editor
                                 const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                 setRoutesByDay(prev => ({
                                   ...prev,
@@ -9605,6 +9645,26 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                 }));
                                 setEditingSavedRouteId(savedRoute.id);
                                 setSelectedDate(new Date(savedRoute.scheduledDate));
+
+                                // Restore scheduledTime into customers state for time slot display
+                                setCustomers(prev => {
+                                  const rcMap = new Map();
+                                  savedRoute.customers.forEach(rc => rcMap.set(rc.id, rc));
+                                  return prev.map(c => {
+                                    const rc = rcMap.get(c.id);
+                                    if (rc) {
+                                      return {
+                                        ...c,
+                                        scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                        scheduledDate: savedRoute.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                        status: 'scheduled',
+                                        routeConfirmed: true
+                                      };
+                                    }
+                                    return c;
+                                  });
+                                });
+
                                 setSavedViewDays(prev => ({
                                   ...prev,
                                   [routeDateKey]: false
