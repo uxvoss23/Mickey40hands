@@ -4,6 +4,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>🛸 Galactic Navigation System - Alien Customer CRM 🦕</title>
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -446,7 +449,7 @@
       const [awaitingMapClick, setAwaitingMapClick] = useState(false);
       const [showSaveModal, setShowSaveModal] = useState(false);
       const [showSaveListModal, setShowSaveListModal] = useState(false);
-      const [showFilterPanel, setShowFilterPanel] = useState(false);
+      const [showFilterPanel, setShowFilterPanel] = useState(true);
       const [showExistingJobModal, setShowExistingJobModal] = useState(false);
       const [existingJobData, setExistingJobData] = useState({
         totalPanels: '',
@@ -513,6 +516,7 @@
       });
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
+      const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
       const [editedNotes, setEditedNotes] = useState('');
@@ -558,6 +562,13 @@
       const [autoSyncSheets, setAutoSyncSheets] = useState(false);
       const [lastSheetSync, setLastSheetSync] = useState(null);
       const [sheetSyncing, setSheetSyncing] = useState(false);
+
+      // Track local overrides so sheet sync doesn't overwrite site changes
+      // (e.g., lastServiceDate updated by emailRouteToTech stays protected)
+      const [localOverrides, setLocalOverrides] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('localOverrides') || '{}'); }
+        catch { return {}; }
+      });
 
       // Pipeline Google Sheets Live Sync
       const [sheetHeaders, setSheetHeaders] = useState([]); // Actual column headers from Google Sheet
@@ -685,7 +696,18 @@
         // Clear old pipeline data since we now use Google Sheets directly
         localStorage.removeItem('pipelineCustomers');
 
-        if (saved) setSavedRoutes(JSON.parse(saved));
+        if (saved) {
+          const parsedRoutes = JSON.parse(saved);
+          setSavedRoutes(parsedRoutes);
+          // Initialize saved view for days that have saved routes
+          const savedDays = {};
+          parsedRoutes.forEach(r => {
+            if (r.scheduledDate) {
+              savedDays[new Date(r.scheduledDate).toDateString()] = true;
+            }
+          });
+          setSavedViewDays(savedDays);
+        }
         if (sheetId) {
           setGoogleSheetId(sheetId);
           setSheetsConnected(true);
@@ -699,6 +721,11 @@
           localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
         }
       }, [savedRoutes]);
+
+      // Save localOverrides to localStorage
+      useEffect(() => {
+        localStorage.setItem('localOverrides', JSON.stringify(localOverrides));
+      }, [localOverrides]);
 
       // Update calculated price when panel count or tier changes
       useEffect(() => {
@@ -724,35 +751,7 @@
         return () => clearInterval(interval);
       }, [autoSyncSheets, sheetsConnected]);
 
-      // Keep filteredCustomers in sync with customers (if no active radius filter)
-      // PERFORMANCE: For large datasets (10k+), only show subset initially
-      useEffect(() => {
-        // Only auto-sync if there's no active radius filter
-        if (!referencePoint) {
-          // PERFORMANCE OPTIMIZATION for 20k+ customers
-          if (customers.length > 5000 && !showAllMarkers) {
-            // Only show today's scheduled + nearby unscheduled
-            const today = new Date().toISOString().split('T')[0];
-            const todayScheduled = customers.filter(c => 
-              c.scheduledDate === today || c.routeConfirmed
-            );
-            
-            // Add first 500 unscheduled as preview
-            const unscheduled = customers
-              .filter(c => !c.scheduledDate && !c.routeConfirmed)
-              .slice(0, 500);
-            
-            const subset = [...todayScheduled, ...unscheduled];
-            setFilteredCustomers(subset);
-            console.log(`⚡ PERFORMANCE MODE: Showing ${subset.length}/${customers.length} customers (${todayScheduled.length} scheduled today + ${unscheduled.length} unscheduled preview)`);
-            console.log(`💡 Click "Show All Markers" button or use filters to see more`);
-          } else {
-            // Show all (either under 5k OR user clicked "Show All")
-            setFilteredCustomers(customers);
-            console.log(`📊 Updated filteredCustomers: ${customers.length} total`);
-          }
-        }
-      }, [customers, referencePoint, showAllMarkers]);
+      // NOTE: filteredCustomers is managed by the unified filter useEffect below (search for "UNIFIED FILTER")
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 3959;
@@ -864,90 +863,52 @@
         console.log(`Loaded ${allCustomers.length} total customers, ${uniqueCustomers.length} unique by address (with merged contacts)`);
         
         setCustomers(uniqueCustomers);
-        setFilteredCustomers(uniqueCustomers);
+        // filteredCustomers will be set by the unified filter useEffect reacting to customers change
       }, [uploadedFiles, savedLists]);
 
-      // Apply active filters to customers
+      // Restore scheduling data from savedRoutes into customers on load
+      // This ensures scheduledTime/scheduledDate persist across page reloads
       useEffect(() => {
-        if (customers.length === 0) return;
-        
-        let filtered = [...customers];
-        
-        // Status filter (unscheduled, scheduled, completed)
-        if (statusFilter !== 'all') {
-          filtered = filtered.filter(c => c.status === statusFilter);
-        }
-        
-        // Preferred Date filter (multi-select)
-        if (preferredDateFilter.length > 0) {
-          filtered = filtered.filter(c => {
-            if (!c.preferredDate) return false;
-            const prefDate = new Date(c.preferredDate);
-            return preferredDateFilter.some(filterDate => {
-              const fDate = new Date(filterDate);
-              return prefDate.toDateString() === fDate.toDateString();
-            });
-          });
-        }
-        
-        // Preferred Time Window filter (multi-select)
-        if (preferredTimeFilter.length > 0) {
-          filtered = filtered.filter(c => 
-            preferredTimeFilter.includes(c.preferredTimeWindow)
-          );
-        }
-        
-        // 🛰️ Verified Solar System filter
-        if (activeFilters.verifiedSolar) {
-          filtered = filtered.filter(c => c.solarVerified === 'yes');
-        }
-        
-        // Past Customers filter (existingJob = true)
-        if (activeFilters.existingJob) {
-          filtered = filtered.filter(c => c.existingJob === true);
-        }
-        
-        // Recurring filter (isRecurring = true)
-        if (activeFilters.recurring) {
-          filtered = filtered.filter(c => c.isRecurring === true || c.recurring === true);
-        }
-        
-        // Min Panels filter
-        if (activeFilters.minPanels && !isNaN(parseInt(activeFilters.minPanels))) {
-          const minPanels = parseInt(activeFilters.minPanels);
-          filtered = filtered.filter(c => {
-            const panelCount = parseInt(c.panelCount) || 0;
-            return panelCount >= minPanels;
-          });
-        }
-        
-        // Last Service filter
-        if (activeFilters.lastService) {
-          const now = new Date();
-          filtered = filtered.filter(c => {
-            if (!c.lastServiceDate) return false;
-            
-            const lastService = new Date(c.lastServiceDate);
-            const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-            
-            switch (activeFilters.lastService) {
-              case '3months': return monthsDiff > 3;
-              case '6months': return monthsDiff > 6;
-              case '1year': return monthsDiff > 12;
-              case '18months': return monthsDiff > 18;
-              case '2years': return monthsDiff > 24;
-              default: return true;
+        if (customers.length === 0 || savedRoutes.length === 0) return;
+
+        // Build a map of customer scheduling data from saved routes
+        // Skip routes already sent to tech - those customers are no longer scheduled
+        const scheduleMap = new Map();
+        savedRoutes.forEach(sr => {
+          if (sr.sentToTech) return; // Don't restore scheduling for sent routes
+          sr.customers.forEach(c => {
+            if (c.scheduledTime || c.scheduledDate) {
+              scheduleMap.set(c.id, {
+                scheduledTime: c.scheduledTime,
+                scheduledDate: sr.scheduledDate || c.scheduledDate,
+                status: 'scheduled',
+                routeConfirmed: true,
+                confirmedRouteName: sr.name
+              });
             }
           });
+        });
+
+        if (scheduleMap.size === 0) return;
+
+        // Check if any customers are missing scheduling data
+        const needsUpdate = customers.some(c => {
+          const sched = scheduleMap.get(c.id);
+          return sched && !c.scheduledTime;
+        });
+
+        if (needsUpdate) {
+          setCustomers(prev => prev.map(c => {
+            const sched = scheduleMap.get(c.id);
+            if (sched && !c.scheduledTime) {
+              return { ...c, ...sched };
+            }
+            return c;
+          }));
         }
-        
-        // Recurring Auto-List filter (show only recurring customers when checked)
-        if (showRecurringList) {
-          filtered = filtered.filter(c => c.isRecurring === true || c.recurring === true);
-        }
-        
-        setFilteredCustomers(filtered);
-      }, [customers, activeFilters, showRecurringList, statusFilter, preferredDateFilter, preferredTimeFilter]);
+      }, [customers.length, savedRoutes.length]);
+
+      // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
       
       // Calculate statistics
       useEffect(() => {
@@ -1067,11 +1028,11 @@
         }
       };
 
-      // Draw radius circle on map
+      // Draw radius circle on map (visual only - filtering handled by unified filter useEffect)
       const drawRadius = (latlng, radiusMeters, displayName) => {
         const L = window.L;
         if (!mapInstanceRef.current) return;
-        
+
         // Remove existing circle
         if (radiusCircleRef.current) {
           mapInstanceRef.current.removeLayer(radiusCircleRef.current);
@@ -1090,14 +1051,8 @@
         setReferencePoint(latlng);
         setReferenceAddress(displayName);
 
-        // Filter customers in radius
-        const filtered = customers.filter(c => {
-          if (!c.lat || !c.lng) return false;
-          const distance = mapInstanceRef.current.distance([c.lat, c.lng], [latlng.lat, latlng.lng]);
-          return distance <= radiusMeters;
-        });
-
-        setFilteredCustomers(filtered);
+        // Filtering is now handled by the unified filter useEffect
+        // which reacts to referencePoint and radiusMiles changes
         mapInstanceRef.current.fitBounds(circle.getBounds(), { padding: [50, 50] });
       };
 
@@ -1113,6 +1068,7 @@
         }
         setReferencePoint(null);
         setReferenceAddress('');
+        // Filtering handled by unified filter useEffect reacting to referencePoint change
       };
 
       // Clear drawn area
@@ -1177,20 +1133,27 @@
 
           const markers = L.markerClusterGroup({
             chunkedLoading: true,
-            chunkInterval: 500,  // INCREASED: Process markers slower but smoother
-            chunkDelay: 100,     // INCREASED: More delay for large datasets
+            chunkInterval: 500,
+            chunkDelay: 100,
             chunkProgress: (processed, total, elapsed) => {
               if (processed % 1000 === 0) {
                 console.log(`📍 Loaded ${processed}/${total} markers (${Math.round(processed/total*100)}%)`);
               }
             },
-            maxClusterRadius: 30, // Further reduced: Pins spread apart sooner
+            maxClusterRadius: 10,  // Extremely tight: only nearly-overlapping pins cluster
             spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,  // Disabled for performance
-            zoomToBoundsOnClick: true,
-            disableClusteringAtZoom: 12,  // Further reduced: No clustering at zoom 12+
-            removeOutsideVisibleBounds: true,  // Critical for 20k+ markers
-            animate: false  // Disabled for performance
+            spiderfyDistanceMultiplier: 1.5,
+            spiderLegPolylineOptions: { weight: 1.5, color: '#8b5cf6', opacity: 0.6 },
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: false,
+            disableClusteringAtZoom: 7,  // Show individual pins from zoom 7+ (city-level)
+            removeOutsideVisibleBounds: true,
+            animate: false
+          });
+
+          // Click cluster → spiderfy to show individual pins (no zoom)
+          markers.on('clusterclick', function (e) {
+            e.layer.spiderfy();
           });
 
           map.addLayer(markers);
@@ -1333,16 +1296,30 @@
             map.getContainer().style.cursor = '';
           };
 
+          const onKeyDown = (e) => {
+            if (e.key === 'Escape') {
+              setDrawMode(false);
+            }
+          };
+
           map.on('mousedown', onMouseDown);
           map.on('mousemove', onMouseMove);
           map.on('mouseup', onMouseUp);
+          document.addEventListener('keydown', onKeyDown);
 
           return () => {
             map.off('mousedown', onMouseDown);
             map.off('mousemove', onMouseMove);
             map.off('mouseup', onMouseUp);
+            document.removeEventListener('keydown', onKeyDown);
             map.dragging.enable();
             map.getContainer().style.cursor = '';
+            // Clean up temporary drawing polyline
+            if (drawingLayerRef.current) {
+              map.removeLayer(drawingLayerRef.current);
+              drawingLayerRef.current = null;
+            }
+            drawingPointsRef.current = [];
           };
         } else {
           map.getContainer().style.cursor = '';
@@ -1730,7 +1707,7 @@
             // Determine icon type based on new logic:
             // - Green dinosaur 🦖 = Recurring customer
             // - Pink pin = Not recurring, but has upcoming job
-            // - Default purple pin = No upcoming job / completed
+            // - Default purple pin = No upcoming job
             const isRecurringCustomer = customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
 
             // Calculate next service date (12 months from last service if not manually set)
@@ -2078,11 +2055,43 @@
         }
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
 
-      // Handle search with smart features - ALL FILTERS COMBINED
+      // UNIFIED FILTER - Single useEffect that applies ALL filters together
+      // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
+      // active filters (solar, existing, recurring, panels), radius/drawn area, and text search
       useEffect(() => {
+        if (customers.length === 0) {
+          setFilteredCustomers([]);
+          return;
+        }
+
         let results = customers;
 
-        // Apply activeFilters first (recurring, existingJob, verifiedSolar, minPanels)
+        // --- Navigation bar filters ---
+        // Status filter (unscheduled, scheduled)
+        if (statusFilter !== 'all') {
+          results = results.filter(c => c.status === statusFilter);
+        }
+
+        // Preferred Date filter (multi-select)
+        if (preferredDateFilter.length > 0) {
+          results = results.filter(c => {
+            if (!c.preferredDate) return false;
+            const prefDate = new Date(c.preferredDate);
+            return preferredDateFilter.some(filterDate => {
+              const fDate = new Date(filterDate);
+              return prefDate.toDateString() === fDate.toDateString();
+            });
+          });
+        }
+
+        // Preferred Time Window filter (multi-select)
+        if (preferredTimeFilter.length > 0) {
+          results = results.filter(c =>
+            preferredTimeFilter.includes(c.preferredTimeWindow)
+          );
+        }
+
+        // --- Active toggle filters ---
         if (activeFilters.verifiedSolar) {
           results = results.filter(c => c.solarVerified === 'yes');
         }
@@ -2100,7 +2109,30 @@
           });
         }
 
-        // Apply city/state/zip filters
+        // Last Service filter (from activeFilters)
+        if (activeFilters.lastService) {
+          const now = new Date();
+          results = results.filter(c => {
+            if (!c.lastServiceDate) return false;
+            const lastService = new Date(c.lastServiceDate);
+            const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
+            switch (activeFilters.lastService) {
+              case '3months': return monthsDiff > 3;
+              case '6months': return monthsDiff > 6;
+              case '1year': return monthsDiff > 12;
+              case '18months': return monthsDiff > 18;
+              case '2years': return monthsDiff > 24;
+              default: return true;
+            }
+          });
+        }
+
+        // Recurring Auto-List filter
+        if (showRecurringList) {
+          results = results.filter(c => c.isRecurring === true || c.recurring === true);
+        }
+
+        // --- Location filters (city/state/zip dropdowns) ---
         if (cityFilter) {
           results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
         }
@@ -2111,7 +2143,7 @@
           results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
         }
 
-        // Apply time-based service filter
+        // --- Radius panel: time-based service filter ---
         if (lastServiceFilter) {
           const now = new Date();
           const monthsMap = { '3months': 3, '6months': 6, '12months': 12 };
@@ -2120,118 +2152,118 @@
             const cutoffDate = new Date(now);
             cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);
             results = results.filter(c => {
-              if (!c.lastServiceDate) return true; // Include if never serviced
+              if (!c.lastServiceDate) return true;
               const serviceDate = new Date(c.lastServiceDate);
-              return serviceDate < cutoffDate; // Last service was before cutoff
+              return serviceDate < cutoffDate;
             });
           }
         }
 
-        // Apply drawn area filter if active
+        // --- Spatial filters (radius circle & drawn polygon) ---
+        // Radius filter: only show customers within the radius circle
+        if (referencePoint && radiusMiles) {
+          results = results.filter(c => {
+            if (!c.lat || !c.lng) return false;
+            // calculateDistance returns miles
+            return calculateDistance(c.lat, c.lng, referencePoint.lat, referencePoint.lng) <= radiusMiles;
+          });
+        }
+
+        // Drawn area filter
         if (drawnArea && drawnPolygon) {
           results = results.filter(c => {
             if (!c.lat || !c.lng) return false;
-            // Check if point is inside drawn polygon
             const point = L.latLng(c.lat, c.lng);
             return drawnPolygon.getBounds().contains(point);
           });
         }
 
-        // If no search query, just apply filters
-        if (!searchQuery.trim()) {
-          setFilteredCustomers(results);
-          return;
+        // --- Text search ---
+        if (searchQuery.trim()) {
+          const query = searchQuery.toLowerCase().trim();
+
+          // Panel count search: p40 means 40+ panels
+          if (query.startsWith('p') && !isNaN(query.substring(1))) {
+            const minPanels = parseInt(query.substring(1));
+            results = results.filter(c => {
+              const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
+              return panelCount >= minPanels;
+            });
+          } else if (query === 'recurring') {
+            // Recurring keyword search
+            results = results.filter(c => c.isRecurring === true || c.recurring === true);
+          } else {
+            // State abbreviation normalization
+            const stateMap = {
+              'tx': 'texas', 'texas': 'texas',
+              'ca': 'california', 'california': 'california',
+              'fl': 'florida', 'florida': 'florida',
+              'ny': 'new york', 'newyork': 'new york',
+              'az': 'arizona', 'arizona': 'arizona'
+            };
+
+            const normalizedQuery = stateMap[query] || query;
+
+            // Regular search with state normalization
+            results = results.filter(c => {
+              const normalizedState = (c.state?.toLowerCase() || '');
+              const stateFullName = stateMap[normalizedState] || normalizedState;
+
+              return (c.name?.toLowerCase() || '').includes(query) ||
+                c.firstName?.toLowerCase().includes(query) ||
+                c.lastName?.toLowerCase().includes(query) ||
+                (c.address?.toLowerCase() || '').includes(query) ||
+                c.city?.toLowerCase().includes(query) ||
+                normalizedState.includes(query) ||
+                stateFullName.includes(normalizedQuery) ||
+                c.zip?.toLowerCase().includes(query) ||
+                c.email?.toLowerCase().includes(query) ||
+                c.phone?.toLowerCase().includes(query) ||
+                c.secondaryEmails?.some(email => email?.toLowerCase().includes(query)) ||
+                c.secondaryPhones?.some(phone => phone?.toLowerCase().includes(query));
+            });
+          }
         }
-
-        const query = searchQuery.toLowerCase().trim();
-
-        // Special search modes
-        // Panel count search: p40 means 40+ panels
-        if (query.startsWith('p') && !isNaN(query.substring(1))) {
-          const minPanels = parseInt(query.substring(1));
-          results = results.filter(c => {
-            const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
-            return panelCount >= minPanels;
-          });
-          setFilteredCustomers(results);
-          return;
-        }
-
-        // Recurring keyword search
-        if (query === 'recurring') {
-          results = results.filter(c => c.isRecurring === true || c.recurring === true);
-          setFilteredCustomers(results);
-          return;
-        }
-
-        // State abbreviation normalization
-        const stateMap = {
-          'tx': 'texas',
-          'texas': 'texas',
-          'ca': 'california',
-          'california': 'california',
-          'fl': 'florida',
-          'florida': 'florida',
-          'ny': 'new york',
-          'newyork': 'new york',
-          'az': 'arizona',
-          'arizona': 'arizona'
-          // Add more as needed
-        };
-
-        const normalizedQuery = stateMap[query] || query;
-
-        // Regular search with state normalization
-        results = results.filter(c => {
-          const normalizedState = (c.state?.toLowerCase() || '');
-          const stateFullName = stateMap[normalizedState] || normalizedState;
-
-          return (c.name?.toLowerCase() || '').includes(query) ||
-            c.firstName?.toLowerCase().includes(query) ||
-            c.lastName?.toLowerCase().includes(query) ||
-            (c.address?.toLowerCase() || '').includes(query) ||
-            c.city?.toLowerCase().includes(query) ||
-            normalizedState.includes(query) ||
-            stateFullName.includes(normalizedQuery) ||
-            c.zip?.toLowerCase().includes(query) ||
-            c.email?.toLowerCase().includes(query) ||
-            c.phone?.toLowerCase().includes(query) ||
-            c.secondaryEmails?.some(email => email?.toLowerCase().includes(query)) ||
-            c.secondaryPhones?.some(phone => phone?.toLowerCase().includes(query));
-        });
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter, drawnArea, drawnPolygon, activeFilters]);
+      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter,
+          drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
+          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
         const dateKey = selectedDate.toDateString();
         const currentDayRoute = routesByDay[dateKey] || [];
-        const isInRoute = currentDayRoute.some(r => r.id === customer.id);
-        
+
+        // Check BOTH routesByDay AND customers state for existing scheduling
+        const isInRoutesByDay = currentDayRoute.some(r => r.id === customer.id);
+        const isScheduledForDay = customers.some(c => {
+          if (c.id !== customer.id) return false;
+          if (!c.scheduledDate) return false;
+          return new Date(c.scheduledDate).toDateString() === dateKey;
+        });
+        const isInRoute = isInRoutesByDay || isScheduledForDay;
+
         if (isInRoute) {
           // Remove from THIS DAY'S route AND clear scheduling
           setRoutesByDay(prev => ({
             ...prev,
-            [dateKey]: currentDayRoute.filter(r => r.id !== customer.id)
+            [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
           }));
-          
+
+          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
           setCustomers(prev => prev.map(c => {
             if (c.id === customer.id) {
-              return {
-                ...c,
-                scheduledDate: null,
-                scheduledTime: null,
-                status: 'unscheduled'
-              };
+              return { ...c, ...unscheduleUpdates };
             }
             return c;
           }));
+          propagateCustomerUpdate(customer.id, unscheduleUpdates);
           setSuggestedCustomers([]);
         } else {
           // Auto-schedule with 1 hour 15 minute spacing
           const allSlots = generateTimeSlots();
-          
+
           // Get all jobs for THIS SPECIFIC DAY sorted by time
           const jobsForDay = customers
             .filter(c => {
@@ -2244,9 +2276,9 @@
               const [bH, bM] = b.scheduledTime.split(':').map(Number);
               return (aH * 60 + aM) - (bH * 60 + bM);
             });
-          
+
           let nextSlot = null;
-          
+
           if (jobsForDay.length === 0) {
             // First job for THIS DAY - start at 8:00 AM
             nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
@@ -2258,7 +2290,7 @@
             const nextMinutes = lastMinutes + 75; // 1 hour 15 minutes
             const nextH = Math.floor(nextMinutes / 60);
             const nextM = nextMinutes % 60;
-            
+
             // Make sure it's not past 8pm
             if (nextH < 20) {
               nextSlot = {
@@ -2268,17 +2300,18 @@
               };
             }
           }
-          
+
           // Schedule customer to the next slot
           if (nextSlot) {
             scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
           }
-          
-          // Add to THIS DAY'S route
-          setRoutesByDay(prev => ({
-            ...prev,
-            [dateKey]: [...currentDayRoute, customer]
-          }));
+
+          // Add to THIS DAY'S route (prevent duplicates)
+          setRoutesByDay(prev => {
+            const existing = prev[dateKey] || [];
+            if (existing.some(r => r.id === customer.id)) return prev;
+            return { ...prev, [dateKey]: [...existing, customer] };
+          });
           
           const availableCustomers = filteredCustomers.filter(c => 
             c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
@@ -2334,7 +2367,7 @@
         setDraggedIndex(null);
       };
 
-      // Save route
+      // Save route (handles both new and edit modes)
       const handleSaveRoute = () => {
         if (!routeName.trim()) {
           setError('Please enter a route name');
@@ -2342,48 +2375,80 @@
           return;
         }
 
-        const newRoute = {
-          id: Date.now().toString(),
-          name: routeName,
-          date: new Date().toISOString(),
-          scheduledDate: selectedDate.toISOString(), // Date route is scheduled for
-          customers: route.map(c => ({
-            ...c,
-            customerNotes: c.notes || '', // Preserve customer notes
-            distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
-          })),
-          totalDistance: stats.totalDistance,
-          confirmed: true, // Mark route as confirmed
-          sentToTech: false, // Track if emailed
-          sentDate: null // When emailed to tech
-        };
+        // Build route customers from the CUSTOMERS state (source of truth for scheduling)
+        // rather than from route/routesByDay which may have stale objects
+        const dateKey = selectedDate.toDateString();
+        const scheduledForDay = customers
+          .filter(c => {
+            if (!c.scheduledDate || !c.scheduledTime) return false;
+            return new Date(c.scheduledDate).toDateString() === dateKey;
+          })
+          .sort((a, b) => {
+            const [aH, aM] = a.scheduledTime.split(':').map(Number);
+            const [bH, bM] = b.scheduledTime.split(':').map(Number);
+            return (aH * 60 + aM) - (bH * 60 + bM);
+          });
 
-        setSavedRoutes(prev => [...prev, newRoute]);
-        
+        const routeCustomers = scheduledForDay.map(c => ({
+          ...c,
+          customerNotes: c.notes || c.customerNotes || '',
+          distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+        }));
+
+        if (editingSavedRouteId) {
+          // UPDATE existing saved route
+          setSavedRoutes(prev => prev.map(r => {
+            if (r.id === editingSavedRouteId) {
+              return {
+                ...r,
+                name: routeName,
+                scheduledDate: selectedDate.toISOString(),
+                customers: routeCustomers,
+                totalDistance: stats.totalDistance
+              };
+            }
+            return r;
+          }));
+          setEditingSavedRouteId(null);
+        } else {
+          // CREATE new saved route
+          const newRoute = {
+            id: Date.now().toString(),
+            name: routeName,
+            date: new Date().toISOString(),
+            scheduledDate: selectedDate.toISOString(),
+            customers: routeCustomers,
+            totalDistance: stats.totalDistance,
+            confirmed: true,
+            sentToTech: false,
+            sentDate: null
+          };
+          setSavedRoutes(prev => [...prev, newRoute]);
+        }
+
         // Mark all customers in route as "scheduled" when route is saved
-        // DO NOT update lastServiceDate here - only update when emailing to tech
+        const routeIds = new Set(routeCustomers.map(c => c.id));
         setCustomers(prev => prev.map(c => {
-          const isInRoute = route.some(r => r.id === c.id);
-          if (isInRoute) {
-            return {
-              ...c,
-              status: 'scheduled', // Change status to scheduled when route is saved
-              routeConfirmed: true, // Mark as confirmed
+          if (routeIds.has(c.id)) {
+            const scheduleUpdates = {
+              status: 'scheduled',
+              routeConfirmed: true,
               confirmedRouteName: routeName,
-              confirmedRouteDate: selectedDate.toISOString(),
-              scheduledDate: selectedDate.toISOString() // Add scheduled date
+              confirmedRouteDate: selectedDate.toISOString()
             };
+            propagateCustomerUpdate(c.id, scheduleUpdates);
+            return { ...c, ...scheduleUpdates };
           }
           return c;
         }));
-        
+
         // Add to pipeline
-        const newPipelineCustomers = route.filter(c => 
+        const newPipelineCustomers = routeCustomers.filter(c =>
           !pipelineCustomers.some(pc => pc.id === c.id)
         ).map(c => ({
           ...c,
           pipelineId: Date.now().toString() + Math.random(),
-          status: 'scheduled', // Change to scheduled (not 'new')
+          status: 'scheduled',
           lastCustomer: null,
           customerMethod: null,
           notes: '',
@@ -2396,14 +2461,20 @@
 
         setShowSaveModal(false);
         setRouteName('');
-        
+
+        // Clear routesByDay for this date so stale data doesn't accumulate
+        setRoutesByDay(prev => ({
+          ...prev,
+          [dateKey]: []
+        }));
+
         // Switch to saved view for this date
         setSavedViewDays(prev => ({
           ...prev,
-          [selectedDate.toDateString()]: true
+          [dateKey]: true
         }));
-        // Don't clear route - keep it on the day after saving
         setSuggestedCustomers([]);
+        setEditingSavedRouteId(null);
       };
 
       // Calendar helper functions
@@ -2537,8 +2608,7 @@
                   return {
                     ...c,
                     scheduledDate: date.toISOString(),
-                    scheduledTime: timeSlot,
-                    status: 'scheduled'
+                    scheduledTime: timeSlot
                     // DO NOT set lastServiceDate - only update when emailing to tech
                   };
                 }
@@ -2608,14 +2678,19 @@
           day: 'numeric'
         });
         
-        // CRITICAL: Update service dates when emailing to tech (NOT when saving route)
-        // Status is already 'scheduled' from saving route, so don't change it
+        // When sent to tech: drop scheduled status, set lastServiceDate to the scheduled date
+        const scheduledDate = savedRoute.scheduledDate || today;
         setCustomers(prev => prev.map(c => {
           const isInRoute = routeCustomers.some(rc => rc.id === c.id);
           if (isInRoute) {
             return {
               ...c,
-              lastServiceDate: today, // Update service date when emailing to tech
+              lastServiceDate: scheduledDate, // Use the scheduled date from the route, not today
+              status: 'unscheduled', // Drop scheduled status when sent to tech
+              routeConfirmed: false,
+              confirmedRouteName: null,
+              scheduledDate: null,
+              scheduledTime: null,
               serviceHistory: [
                 ...(c.serviceHistory || []),
                 {
@@ -2634,11 +2709,17 @@
           return c;
         }));
         
+        // Track local overrides so sheet sync doesn't overwrite these changes
+        routeCustomers.forEach(rc => {
+          trackLocalOverride(rc.id, 'lastServiceDate', scheduledDate);
+          trackLocalOverride(rc.id, 'status', 'unscheduled');
+        });
+
         // Mark route as sent
-        setSavedRoutes(prev => prev.map(r => 
+        setSavedRoutes(prev => prev.map(r =>
           r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
         ));
-        
+
         // Calculate totals
         const totalRevenue = routeCustomers.reduce((sum, c) => {
           return sum + (parseFloat(c.amountPaid) || 0);
@@ -2782,6 +2863,12 @@
           })
         );
         
+        // Propagate verification to all stores (savedLists, savedRoutes, pipeline)
+        const verifyUpdates = status === null
+          ? { solarVerified: undefined, verifiedAt: undefined }
+          : { solarVerified: status, verifiedAt: new Date().toISOString() };
+        propagateCustomerUpdate(customerId, verifyUpdates);
+
         // Force map redraw to show updated badge
         setTimeout(() => {
           if (mapInstanceRef.current) {
@@ -3106,37 +3193,31 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       // Mark customer as existing job
       const handleMarkExisting = () => {
         if (!selectedCustomer) return;
-        
+
         // Update the customer with existing job data
-        const updatedCustomer = {
-          ...selectedCustomer,
+        const jobUpdates = {
           existingJob: true,
           totalPanels: existingJobData.totalPanels,
+          panelCount: existingJobData.totalPanels,
           lastServiceDate: existingJobData.lastServiceDate,
           amountPaid: existingJobData.amountPaid,
           isRecurring: existingJobData.isRecurring,
+          recurring: existingJobData.isRecurring ? 'TRUE' : '',
           nextScheduledDate: existingJobData.nextScheduledDate
         };
-        
-        // Update in uploadedFiles
-        setUploadedFiles(prev => prev.map(file => ({
-          ...file,
-          customers: file.customers.map(c => 
-            c.id === selectedCustomer.id ? updatedCustomer : c
-          )
-        })));
-        
-        // Update in savedLists if present
-        setSavedLists(prev => prev.map(list => ({
-          ...list,
-          customers: list.customers.map(c => 
-            c.id === selectedCustomer.id ? updatedCustomer : c
-          )
-        })));
-        
+        const updatedCustomer = { ...selectedCustomer, ...jobUpdates };
+
+        // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
+        propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
         // Update selectedCustomer to show updated data
         setSelectedCustomer(updatedCustomer);
-        
+
+        // Protect edited fields from sheet sync overwriting them
+        if (existingJobData.lastServiceDate) trackLocalOverride(selectedCustomer.id, 'lastServiceDate', existingJobData.lastServiceDate);
+        if (existingJobData.totalPanels) trackLocalOverride(selectedCustomer.id, 'totalPanels', existingJobData.totalPanels);
+        if (existingJobData.amountPaid) trackLocalOverride(selectedCustomer.id, 'amountPaid', existingJobData.amountPaid);
+        trackLocalOverride(selectedCustomer.id, 'isRecurring', existingJobData.isRecurring);
+
         // Reset form and close modal
         setExistingJobData({
           totalPanels: '',
@@ -4054,52 +4135,23 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
-       * Update a cell in Google Sheets
+       * Track a local override for a customer field so sheet sync won't overwrite it
        */
-      const updateSheetCell = async (rowIndex, colIndex, value) => {
-        if (!googleApiKey || !googleSheetId) {
-          console.log('⚠️ Cannot update Google Sheet - API key required for write access');
-          return false;
-        }
-
-        try {
-          // Get the actual sheet ID (not published URL)
-          let actualSheetId = googleSheetId;
-          if (googleSheetId.includes('docs.google.com')) {
-            const match = googleSheetId.match(/\/d\/([a-zA-Z0-9-_]+)/);
-            if (match) actualSheetId = match[1];
+      const trackLocalOverride = (customerId, fieldName, value) => {
+        setLocalOverrides(prev => ({
+          ...prev,
+          [customerId]: {
+            ...(prev[customerId] || {}),
+            [fieldName]: { value, timestamp: Date.now() }
           }
-
-          // Convert column index to letter (A, B, C, etc.)
-          const colLetter = String.fromCharCode(65 + colIndex);
-          const range = `Sheet1!${colLetter}${rowIndex}`;
-
-          const response = await fetch(
-            `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/${range}?valueInputOption=RAW&key=${googleApiKey}`,
-            {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                values: [[value]]
-              })
-            }
-          );
-
-          if (response.ok) {
-            console.log(`✅ Updated cell ${range} to: ${value}`);
-            return true;
-          } else {
-            console.error('Failed to update cell:', await response.text());
-            return false;
-          }
-        } catch (error) {
-          console.error('Error updating Google Sheet:', error);
-          return false;
-        }
+        }));
       };
 
       /**
-       * Refresh Pipeline data from Google Sheets
+       * Refresh Pipeline data from Google Sheets.
+       * Google Sheets is the single source of truth. On each refresh:
+       * - Fresh sheet data replaces sheetData (pipeline view)
+       * - Changes from the sheet flow into all site views (map, recurring, saved routes, profile)
        */
       const refreshPipelineData = async () => {
         if (!sheetsConnected || !googleSheetId) return;
@@ -4108,6 +4160,95 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           const { headers, rows } = await fetchPipelineSheetData();
           setSheetHeaders(headers);
           setSheetData(rows);
+
+          // Push fresh sheet data into all customer stores across the site
+          const getColIdx = (possibleNames) => {
+            for (const name of possibleNames) {
+              const idx = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+              if (idx !== -1) return idx;
+            }
+            return -1;
+          };
+
+          const nameCol = getColIdx(['Customer Name', 'Name']);
+          const addressCol = getColIdx(['Address']);
+          const phoneCol = getColIdx(['Phone', 'Mobile', 'Customer Mobile']);
+          const emailCol = getColIdx(['Email', 'Customer Email']);
+
+          // For each row, find matching customer and push sheet values into the site
+          const customerUpdatesFromSheet = [];
+          rows.forEach(row => {
+            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
+
+            const matched = customers.find(c => {
+              const cName = (c.name || '').toLowerCase().trim();
+              const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+              if (rowName && rowAddress && cName === rowName && cAddr === rowAddress) return true;
+              if (rowPhone && c.phone && rowPhone === c.phone) return true;
+              if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
+              return false;
+            });
+
+            if (matched) {
+              const updates = {};
+              const customerOverrides = localOverrides[matched.id] || {};
+              headers.forEach((header, colIdx) => {
+                const mappings = mapSheetHeaderToCustomerProps(header);
+                mappings.forEach(({ prop, transform }) => {
+                  // Skip fields that were overridden locally (site changes take priority)
+                  if (customerOverrides[prop]) return;
+                  const sheetVal = row.values[colIdx] || '';
+                  if (sheetVal !== '') {
+                    updates[prop] = transform(sheetVal);
+                  }
+                });
+              });
+
+              if (Object.keys(updates).length > 0) {
+                customerUpdatesFromSheet.push({ customerId: matched.id, updates });
+              }
+            }
+          });
+
+          // Apply sheet data to all customer stores
+          if (customerUpdatesFromSheet.length > 0) {
+            setSavedLists(prev => prev.map(list => ({
+              ...list,
+              customers: list.customers.map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            setUploadedFiles(prev => prev.map(file => ({
+              ...file,
+              customers: file.customers.map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            setSavedRoutes(prev => prev.map(route => ({
+              ...route,
+              customers: (route.customers || []).map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            if (profileCustomer) {
+              const entry = customerUpdatesFromSheet.find(u => u.customerId === profileCustomer.id);
+              if (entry) {
+                setProfileCustomer(prev => prev ? { ...prev, ...entry.updates } : prev);
+              }
+            }
+
+            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets → site`);
+          }
+
           setLastSheetSync(new Date());
           console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
         } catch (error) {
@@ -4128,24 +4269,164 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
 
       /**
-       * Handle Pipeline cell edit - update local state and sync to Google Sheets
+       * Map a Google Sheet header name to the corresponding customer object property.
+       * Returns { prop, transform } where transform converts the raw string value.
+       */
+      const mapSheetHeaderToCustomerProps = (headerName) => {
+        const h = (headerName || '').toLowerCase().trim();
+        const identity = v => v;
+        const toFloat = v => parseFloat(v) || 0;
+        const toInt = v => parseInt(v) || 0;
+        const toBool = v => v === 'TRUE' || v === 'true';
+
+        if (/customer\s*name|^name$/i.test(h)) return [
+          { prop: 'name', transform: identity },
+          { prop: 'firstname', transform: v => (v || '').trim().split(' ')[0] || '' },
+          { prop: 'lastname', transform: v => (v || '').trim().split(' ').slice(1).join(' ') || '' }
+        ];
+        if (/^email|customer\s*email/i.test(h)) return [{ prop: 'email', transform: identity }];
+        if (/^phone|mobile|customer\s*mobile/i.test(h)) return [{ prop: 'phone', transform: identity }];
+        if (/^address/i.test(h)) return [{ prop: 'address', transform: identity }];
+        if (/^street/i.test(h)) return [{ prop: 'street', transform: identity }];
+        if (/^city/i.test(h)) return [{ prop: 'city', transform: identity }];
+        if (/^state/i.test(h)) return [{ prop: 'state', transform: identity }];
+        if (/^zip|zipcode/i.test(h)) return [{ prop: 'zip', transform: identity }];
+        if (/panel|number\s*of\s*panel/i.test(h)) return [
+          { prop: 'totalPanels', transform: toInt },
+          { prop: 'panelCount', transform: toInt }
+        ];
+        if (/job\s*status|^status$/i.test(h)) return [{ prop: 'status', transform: identity }];
+        if (/job\s*description|^description$/i.test(h)) return [{ prop: 'jobDescription', transform: identity }];
+        if (/^amount|job\s*amount/i.test(h)) return [{ prop: 'amountPaid', transform: toFloat }];
+        if (/^tip/i.test(h)) return [{ prop: 'tipAmount', transform: toFloat }];
+        if (/^recurring$/i.test(h)) return [
+          { prop: 'isRecurring', transform: toBool },
+          { prop: 'recurring', transform: identity }
+        ];
+        if (/completed|completed\s*date|job\s*completed/i.test(h)) return [{ prop: 'lastServiceDate', transform: identity }];
+        if (/next\s*service|upcoming\s*date/i.test(h)) return [{ prop: 'nextServiceDate', transform: identity }];
+        if (/^notes|customer\s*notes/i.test(h)) return [{ prop: 'notes', transform: identity }];
+        if (/solar\s*verified|^verified$/i.test(h)) return [{ prop: 'solarVerified', transform: v => v === 'yes' ? 'yes' : (v === 'no' ? 'no' : null) }];
+        if (/^tags|job\s*tags/i.test(h)) return [{ prop: 'tags', transform: identity }];
+        if (/^employee|assigned/i.test(h)) return [{ prop: 'employee', transform: identity }];
+        return [];
+      };
+
+      /**
+       * Find the sheet header index for a given set of possible header names.
+       */
+      const findSheetHeaderIndex = (possibleNames) => {
+        for (const name of possibleNames) {
+          const idx = sheetHeaders.findIndex(h =>
+            h.toLowerCase().includes(name.toLowerCase())
+          );
+          if (idx !== -1) return idx;
+        }
+        return -1;
+      };
+
+      /**
+       * Given a pipeline row's data object, find the matching customer by name+address or phone.
+       */
+      const findCustomerFromPipelineRow = (rowData) => {
+        const nameIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+        const addressIdx = findSheetHeaderIndex(['Address']);
+        const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+        const emailIdx = findSheetHeaderIndex(['Email', 'Customer Email']);
+
+        const rowName = (nameIdx >= 0 ? rowData.values[nameIdx] : '').toLowerCase().trim();
+        const rowAddress = (addressIdx >= 0 ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const rowPhone = (phoneIdx >= 0 ? rowData.values[phoneIdx] : '').trim();
+        const rowEmail = (emailIdx >= 0 ? rowData.values[emailIdx] : '').toLowerCase().trim();
+
+        // Match by name+address first, then by phone, then by email
+        return customers.find(c => {
+          const cName = (c.name || '').toLowerCase().trim();
+          const cAddress = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+          if (rowName && rowAddress && cName === rowName && cAddress === rowAddress) return true;
+          if (rowPhone && c.phone && rowPhone === c.phone) return true;
+          if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
+          return false;
+        });
+      };
+
+      /**
+       * Apply customer property updates across all data stores:
+       * savedLists, uploadedFiles, savedRoutes, and pipelineCustomers.
+       */
+      const propagateCustomerUpdate = (customerId, updates) => {
+        // Update savedLists (triggers customers rebuild via useEffect)
+        setSavedLists(prev => prev.map(list => ({
+          ...list,
+          customers: list.customers.map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update uploadedFiles
+        setUploadedFiles(prev => prev.map(file => ({
+          ...file,
+          customers: file.customers.map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update savedRoutes
+        setSavedRoutes(prev => prev.map(route => ({
+          ...route,
+          customers: (route.customers || []).map(c =>
+            c.id === customerId ? { ...c, ...updates } : c
+          )
+        })));
+
+        // Update pipelineCustomers (legacy)
+        setPipelineCustomers(prev => prev.map(c =>
+          c.id === customerId ? { ...c, ...updates } : c
+        ));
+
+        // Update profileCustomer if it's currently open
+        if (profileCustomer && profileCustomer.id === customerId) {
+          setProfileCustomer(prev => ({ ...prev, ...updates }));
+        }
+      };
+
+      /**
+       * Handle Pipeline cell edit - update local state, sync to Google Sheets,
+       * and propagate changes to all views (map, recurring, saved routes, profile).
        */
       const handlePipelineCellEdit = async (rowIndex, colIndex, newValue) => {
-        // Update local state immediately for responsiveness
+        // Capture the original row BEFORE editing to match against customers
+        let originalRow = null;
+        let editedRow = null;
         setSheetData(prev => prev.map(row => {
           if (row.rowIndex === rowIndex) {
+            originalRow = row;
             const newValues = [...row.values];
             newValues[colIndex] = newValue;
             const newData = { ...row.data };
             newData[sheetHeaders[colIndex]] = newValue;
-            return { ...row, values: newValues, data: newData };
+            editedRow = { ...row, values: newValues, data: newData };
+            return editedRow;
           }
           return row;
         }));
 
-        // Sync to Google Sheets if API key is available
-        if (googleApiKey) {
-          await updateSheetCell(rowIndex, colIndex, newValue);
+        // Map the edited column to customer properties and propagate
+        const headerName = sheetHeaders[colIndex];
+        const propMappings = mapSheetHeaderToCustomerProps(headerName);
+
+        if (propMappings.length > 0 && originalRow) {
+          // Match using the original row data (before edit) so name/address edits still match
+          const matchedCustomer = findCustomerFromPipelineRow(originalRow);
+          if (matchedCustomer) {
+            const updates = {};
+            propMappings.forEach(({ prop, transform }) => {
+              updates[prop] = transform(newValue);
+              // Protect each edited field from sheet sync overwriting it
+              trackLocalOverride(matchedCustomer.id, prop, transform(newValue));
+            });
+            propagateCustomerUpdate(matchedCustomer.id, updates);
+          }
         }
       };
 
@@ -4289,22 +4570,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  values: [rowData]
-                })
+                body: JSON.stringify({ values: [rowData] })
               }
             );
 
             if (response.ok) {
-              console.log('✅ Row added to Google Sheet');
+              console.log('Row added to Google Sheet');
               return true;
             } else {
               console.error('Failed to add row to sheet:', await response.text());
               return false;
             }
           } else {
-            // Can't write without API key
-            console.log('⚠️ Need API key to write to sheet. Row not added.');
+            console.log('Need API key to write to sheet. Row not added.');
             return false;
           }
         } catch (error) {
@@ -5041,7 +5319,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             // Update customer status filter will show it
             setCustomers(prev => prev.map(c => 
               c.id === customerId 
-                ? { ...c, status: c.status === 'completed' ? c.status : 'unscheduled' }
+                ? { ...c, status: 'unscheduled' }
                 : c
             ));
           }
@@ -5134,7 +5412,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const newCustomers = customers.filter(c => c.fileName !== fileName);
         setFiles(newFiles);
         setCustomers(newCustomers);
-        setFilteredCustomers(newCustomers);
+        // filteredCustomers will be updated by unified filter reacting to customers change
       };
 
       return (
@@ -6055,21 +6333,94 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       
                       // SAVED VIEW - Show compact list (only if there are jobs and in saved mode)
                       if (inSavedView && jobsForDay.length > 0) {
+                        // Find the saved route for this day to check sentToTech status
+                        const savedRouteForDay = savedRoutes.find(r => {
+                          const rDate = new Date(r.scheduledDate);
+                          return rDate.toDateString() === selectedDate.toDateString();
+                        });
+
                         return (
                           <div>
-                            <button
-                              onClick={() => setSavedViewDays(prev => ({ ...prev, [dateKey]: false }))}
-                              className="button-secondary"
-                              style={{ 
-                                width: '100%',
-                                padding: '8px 10px', 
-                                fontSize: '11px',
-                                justifyContent: 'center',
-                                marginBottom: '12px'
-                              }}
-                            >
-                              ✏️ Edit Route
-                            </button>
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                              <button
+                                onClick={() => {
+                                  if (savedRouteForDay && savedRouteForDay.sentToTech) {
+                                    alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                    return;
+                                  }
+                                  if (savedRouteForDay) {
+                                    // Load into routesByDay
+                                    setRoutesByDay(prev => ({
+                                      ...prev,
+                                      [dateKey]: savedRouteForDay.customers
+                                    }));
+                                    setEditingSavedRouteId(savedRouteForDay.id);
+
+                                    // Restore scheduledTime/scheduledDate into customers state
+                                    // so the time slots in edit view show the jobs
+                                    setCustomers(prev => {
+                                      const routeCustomerMap = new Map();
+                                      savedRouteForDay.customers.forEach(rc => {
+                                        routeCustomerMap.set(rc.id, rc);
+                                      });
+                                      return prev.map(c => {
+                                        const rc = routeCustomerMap.get(c.id);
+                                        if (rc) {
+                                          return {
+                                            ...c,
+                                            scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                            scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                            status: 'scheduled',
+                                            routeConfirmed: true
+                                          };
+                                        }
+                                        return c;
+                                      });
+                                    });
+                                  }
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-secondary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                ✏️ Edit Route
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Start a fresh new route - clear everything for this day
+                                  setRoutesByDay(prev => ({
+                                    ...prev,
+                                    [dateKey]: []
+                                  }));
+                                  // Clear scheduling from customers for this day
+                                  setCustomers(prev => prev.map(c => {
+                                    if (!c.scheduledDate) return c;
+                                    const custDate = new Date(c.scheduledDate);
+                                    if (custDate.toDateString() === dateKey) {
+                                      return { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
+                                    }
+                                    return c;
+                                  }));
+                                  setEditingSavedRouteId(null);
+                                  setSuggestedCustomers([]);
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-primary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                + New Route
+                              </button>
+                            </div>
                             
                             <div style={{ 
                               padding: '12px',
@@ -6089,15 +6440,26 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </h4>
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                                 {jobsForDay.map((job, idx) => (
-                                  <div key={job.id} style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '8px',
-                                    background: 'rgba(15, 23, 42, 0.6)',
-                                    borderRadius: '6px',
-                                    border: '1px solid rgba(139, 92, 246, 0.2)'
-                                  }}>
+                                  <div key={job.id}
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === job.id) || job;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '10px',
+                                      padding: '8px',
+                                      background: 'rgba(15, 23, 42, 0.6)',
+                                      borderRadius: '6px',
+                                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)'}
+                                  >
                                     <div style={{
                                       fontSize: '11px',
                                       fontWeight: 700,
@@ -6112,17 +6474,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       color: '#22c55e',
                                       minWidth: '65px'
                                     }}>
-                                      {job.scheduledTime ? 
-                                        new Date(`2000-01-01T${job.scheduledTime}`).toLocaleTimeString('en-US', { 
-                                          hour: 'numeric', 
-                                          minute: '2-digit', 
-                                          hour12: true 
+                                      {job.scheduledTime ?
+                                        new Date(`2000-01-01T${job.scheduledTime}`).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true
                                         }) : 'N/A'}
                                     </div>
                                     <div style={{ flex: 1, overflow: 'hidden' }}>
-                                      <div style={{ 
-                                        fontSize: '12px', 
-                                        fontWeight: 600, 
+                                      <div style={{
+                                        fontSize: '12px',
+                                        fontWeight: 600,
                                         color: '#f1f5f9',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
@@ -6130,8 +6492,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       }}>
                                         {job.name}
                                       </div>
-                                      <div style={{ 
-                                        fontSize: '10px', 
+                                      <div style={{
+                                        fontSize: '10px',
                                         color: '#64748b',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
@@ -6155,10 +6517,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           {jobsForDay.length > 0 && (
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                               <button
-                                onClick={() => setShowSaveModal(true)}
+                                onClick={() => {
+                                  // Pre-fill name if editing existing route
+                                  if (editingSavedRouteId) {
+                                    const existingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    if (existingRoute) setRouteName(existingRoute.name);
+                                  }
+                                  setShowSaveModal(true);
+                                }}
                                 className="button-primary"
-                                style={{ 
-                                  padding: '6px 10px', 
+                                style={{
+                                  padding: '6px 10px',
                                   fontSize: '10px',
                                   flex: 1,
                                   justifyContent: 'center'
@@ -6178,6 +6547,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                         scheduledDate: null,
                                         scheduledTime: null
                                         // Status preserved - user can change manually
+                                        scheduledTime: null,
+                                        status: 'unscheduled',
+                                        routeConfirmed: false
                                       };
                                     }
                                     return c;
@@ -6489,6 +6861,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                                   scheduledDate: null,
                                                   scheduledTime: null
                                                   // Status preserved - user can change manually if needed
+                                                  scheduledTime: null,
+                                                  status: 'unscheduled',
+                                                  routeConfirmed: false
                                                 };
                                               }
                                               return c;
@@ -6734,115 +7109,33 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
               {/* Map Container */}
               <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                {/* Filter Button - Top Right */}
+                {/* Compact Filter Bar - Top of Map */}
                 {currentView === 'map' && customers.length > 0 && (
-                  <>
-                    <button
-                      onClick={() => setShowFilterPanel(!showFilterPanel)}
-                      style={{
-                        position: 'absolute',
-                        top: '20px',
-                        right: '420px',
-                        zIndex: 1001,
-                        padding: '10px 16px',
-                        background: 'rgba(15, 23, 42, 0.95)',
-                        backdropFilter: 'blur(20px)',
-                        border: '2px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '10px',
-                        color: '#f1f5f9',
-                        fontSize: '13px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      🔍 Filters
-                      {(() => {
-                        const activeCount = [
-                          statusFilter !== 'all',
-                          preferredDateFilter.length > 0,
-                          preferredTimeFilter.length > 0,
-                          activeFilters.verifiedSolar,
-                          activeFilters.existingJob,
-                          activeFilters.recurring,
-                          activeFilters.minPanels,
-                          activeFilters.lastService
-                        ].filter(Boolean).length;
-                        
-                        return activeCount > 0 ? (
-                          <span style={{
-                            background: 'rgba(139, 92, 246, 0.4)',
-                            color: '#fff',
-                            padding: '2px 8px',
-                            borderRadius: '10px',
-                            fontSize: '11px',
-                            fontWeight: 700
-                          }}>
-                            {activeCount}
-                          </span>
-                        ) : null;
-                      })()}
-                      <span style={{ fontSize: '10px', opacity: 0.7 }}>
-                        {showFilterPanel ? '▲' : '▼'}
-                      </span>
-                    </button>
-
-                    {/* Filter Dropdown Panel - Non-blocking Floating Overlay */}
-                    {showFilterPanel && (
-                      <div style={{
-                        position: 'absolute',
-                        top: '80px',
-                        right: '340px',
-                        zIndex: 1001,
-                        width: '320px',
-                        maxHeight: '500px',
-                        background: 'rgba(15, 23, 42, 0.98)',
-                        backdropFilter: 'blur(20px)',
-                        border: '2px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '16px',
-                        boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}>
-                        {/* Header */}
-                        <div style={{
-                          padding: '16px',
-                          borderBottom: '1px solid rgba(139, 92, 246, 0.2)',
-                          background: 'rgba(139, 92, 246, 0.05)'
-                        }}>
-                          <div style={{ 
-                            fontSize: '14px', 
-                            fontWeight: 700, 
-                            color: '#f1f5f9',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between'
-                          }}>
-                            <span>Navigation Control</span>
-                            <button
-                              onClick={() => setShowFilterPanel(false)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: '#94a3b8',
-                                fontSize: '18px',
-                                cursor: 'pointer',
-                                padding: 0
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Filter Options */}
-                        <div style={{ 
-                          padding: '16px',
+                  <div style={{
+                    position: 'absolute',
+                    top: '12px',
+                    left: '12px',
+                    right: '420px',
+                    zIndex: 1001,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '8px'
+                  }}>
+                    {/* Collapsed: just a small toggle button */}
+                    {!showFilterPanel ? (
+                      <button
+                        onClick={() => setShowFilterPanel(true)}
+                        style={{
+                          alignSelf: 'flex-start',
+                          padding: '6px 14px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          background: 'rgba(10, 14, 39, 0.88)',
+                          backdropFilter: 'blur(16px)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '10px',
+                          color: '#a78bfa',
+                          cursor: 'pointer',
                           display: 'flex',
                           flexDirection: 'column',
                           gap: '16px',
@@ -7260,151 +7553,373 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </div>
                             </div>
                           </label>
-
-                          {/* Past Customers */}
-                          <label style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            padding: '12px',
-                            background: activeFilters.existingJob ? 'rgba(34, 197, 94, 0.15)' : 'rgba(30, 41, 59, 0.3)',
-                            border: `2px solid ${activeFilters.existingJob ? 'rgba(34, 197, 94, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                            borderRadius: '8px',
-                            transition: 'all 0.2s'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={activeFilters.existingJob}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, existingJob: e.target.checked }))}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#22c55e' }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
-                                🦕 Past Customers
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                Customers we've serviced
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Recurring */}
-                          <label style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '10px',
-                            cursor: 'pointer',
-                            padding: '12px',
-                            background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.3)',
-                            border: `2px solid ${activeFilters.recurring ? 'rgba(59, 130, 246, 0.5)' : 'rgba(100, 116, 139, 0.2)'}`,
-                            borderRadius: '8px',
-                            transition: 'all 0.2s'
-                          }}>
-                            <input
-                              type="checkbox"
-                              checked={activeFilters.recurring}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, recurring: e.target.checked }))}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#3b82f6' }}
-                            />
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9', marginBottom: '2px' }}>
-                                🦖 Recurring
-                              </div>
-                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                Customers on recurring plan
-                              </div>
-                            </div>
-                          </label>
-
-                          {/* Min Panels */}
-                          <div style={{
-                            padding: '12px',
-                            background: 'rgba(30, 41, 59, 0.3)',
-                            border: '2px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '8px'
-                          }}>
-                            <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '8px', display: 'block' }}>
-                              Minimum Panels
-                            </label>
-                            <input
-                              type="number"
-                              value={activeFilters.minPanels}
-                              onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
-                              placeholder="Enter minimum panel count"
-                              min="0"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(15, 23, 42, 0.6)',
-                                border: '1px solid rgba(139, 92, 246, 0.3)',
-                                borderRadius: '6px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Footer with Results and Clear */}
-                        <div style={{
-                          padding: '16px',
-                          borderTop: '1px solid rgba(139, 92, 246, 0.2)',
-                          background: 'rgba(139, 92, 246, 0.05)',
-                          display: 'flex',
                           alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '12px'
-                        }}>
-                          {(activeFilters.verifiedSolar || activeFilters.existingJob || activeFilters.recurring || activeFilters.minPanels || activeFilters.lastService) ? (
-                            <>
-                              <div style={{
-                                fontSize: '13px',
-                                color: '#22c55e',
-                                fontWeight: 700
-                              }}>
-                                📊 {filteredCustomers.length} matches
-                              </div>
+                          gap: '6px'
+                        }}
+                      >
+                        Filters
+                        {(() => {
+                          const cnt = [statusFilter !== 'all', stateFilter, cityFilter, zipFilter, lastServiceFilter,
+                            activeFilters.verifiedSolar, activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels,
+                            preferredDateFilter.length > 0, preferredTimeFilter.length > 0].filter(Boolean).length;
+                          return cnt > 0 ? <span style={{ background: 'rgba(139,92,246,0.4)', padding: '1px 7px', borderRadius: '8px', fontSize: '10px', color: '#fff' }}>{cnt}</span> : null;
+                        })()}
+                        <span style={{ fontSize: '10px' }}>▼</span>
+                      </button>
+                    ) : (
+                    <>
+                    {/* Row 1: Status pills + Location + Service date */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
+                      background: 'rgba(10, 14, 39, 0.88)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                      borderRadius: '12px',
+                      padding: '8px 12px'
+                    }}>
+                      {/* Status pills */}
+                      {[
+                        { value: 'all', label: 'All' },
+                        { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
+                      ].map(s => (
+                        <button
+                          key={s.value}
+                          onClick={() => setStatusFilter(statusFilter === s.value ? 'all' : s.value)}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: statusFilter === s.value
+                              ? (s.color ? `${s.color}33` : 'rgba(139, 92, 246, 0.3)')
+                              : 'rgba(30, 41, 59, 0.4)',
+                            color: statusFilter === s.value
+                              ? (s.color || '#a78bfa')
+                              : '#94a3b8',
+                            boxShadow: statusFilter === s.value
+                              ? `0 0 0 1px ${s.color || 'rgba(139, 92, 246, 0.5)'}`
+                              : 'none'
+                          }}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+
+                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
+
+                      {/* Location selects - inline */}
+                      <select
+                        value={stateFilter}
+                        onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: stateFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: stateFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '90px'
+                        }}
+                      >
+                        <option value="">State</option>
+                        {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                          <option key={state} value={state}>{state}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={cityFilter}
+                        onChange={(e) => setCityFilter(e.target.value)}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: cityFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: cityFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '110px'
+                        }}
+                      >
+                        <option value="">City</option>
+                        {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={zipFilter}
+                        onChange={(e) => setZipFilter(e.target.value)}
+                        placeholder="ZIP"
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: zipFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: zipFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: '#f1f5f9',
+                          width: '60px',
+                          boxSizing: 'border-box'
+                        }}
+                      />
+
+                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
+
+                      {/* Last service dropdown */}
+                      <select
+                        value={lastServiceFilter}
+                        onChange={(e) => setLastServiceFilter(e.target.value)}
+                        style={{
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          background: lastServiceFilter ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                          border: lastServiceFilter ? '1px solid rgba(251, 191, 36, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                          borderRadius: '6px',
+                          color: lastServiceFilter ? '#fbbf24' : '#f1f5f9',
+                          cursor: 'pointer',
+                          maxWidth: '130px'
+                        }}
+                      >
+                        <option value="">Last Service</option>
+                        <option value="3months">3+ months ago</option>
+                        <option value="6months">6+ months ago</option>
+                        <option value="12months">12+ months ago</option>
+                      </select>
+
+                      <div style={{ flex: 1 }} />
+                      <button
+                        onClick={() => setShowFilterPanel(false)}
+                        title="Hide filters"
+                        style={{
+                          padding: '3px 8px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          border: '1px solid rgba(100, 116, 139, 0.3)',
+                          borderRadius: '6px',
+                          color: '#94a3b8',
+                          cursor: 'pointer'
+                        }}
+                      >▲ Hide</button>
+                    </div>
+
+                    {/* Row 2: Toggle chips + panels + results count */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      flexWrap: 'wrap',
+                      background: 'rgba(10, 14, 39, 0.88)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(139, 92, 246, 0.15)',
+                      borderRadius: '12px',
+                      padding: '6px 12px'
+                    }}>
+                      {/* Toggle chips */}
+                      {[
+                        { key: 'verifiedSolar', label: '🛰 Verified', color: '#8b5cf6' },
+                        { key: 'existingJob', label: '🦕 Past', color: '#22c55e' },
+                        { key: 'recurring', label: '🦖 Recurring', color: '#3b82f6' }
+                      ].map(chip => (
+                        <button
+                          key={chip.key}
+                          onClick={() => setActiveFilters(prev => ({ ...prev, [chip.key]: !prev[chip.key] }))}
+                          style={{
+                            padding: '3px 10px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            border: 'none',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: activeFilters[chip.key] ? `${chip.color}30` : 'rgba(30, 41, 59, 0.4)',
+                            color: activeFilters[chip.key] ? chip.color : '#94a3b8',
+                            boxShadow: activeFilters[chip.key] ? `0 0 0 1px ${chip.color}80` : 'none'
+                          }}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+
+                      <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+
+                      {/* Min panels inline */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Min panels:</span>
+                        <input
+                          type="number"
+                          value={activeFilters.minPanels}
+                          onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
+                          placeholder="0"
+                          min="0"
+                          style={{
+                            width: '48px',
+                            padding: '3px 6px',
+                            fontSize: '11px',
+                            background: activeFilters.minPanels ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: activeFilters.minPanels ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                      </div>
+
+                      {/* Preferred time chips - only when unscheduled */}
+                      {statusFilter === 'unscheduled' && (
+                        <>
+                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+                          {['morning', 'afternoon', 'evening'].map(tw => {
+                            const isOn = preferredTimeFilter.includes(tw);
+                            const icon = tw === 'morning' ? '🌅' : tw === 'afternoon' ? '☀️' : '🌆';
+                            return (
                               <button
+                                key={tw}
                                 onClick={() => {
-                                  setActiveFilters({
-                                    verifiedSolar: false,
-                                    existingJob: false,
-                                    recurring: false,
-                                    minPanels: '',
-                                    lastService: ''
-                                  });
+                                  if (isOn) setPreferredTimeFilter(prev => prev.filter(t => t !== tw));
+                                  else setPreferredTimeFilter(prev => [...prev, tw]);
                                 }}
                                 style={{
-                                  padding: '8px 16px',
-                                  background: 'rgba(239, 68, 68, 0.2)',
-                                  border: '1px solid rgba(239, 68, 68, 0.4)',
-                                  borderRadius: '6px',
-                                  color: '#fca5a5',
-                                  fontSize: '12px',
+                                  padding: '3px 8px',
+                                  fontSize: '11px',
                                   fontWeight: 600,
-                                  cursor: 'pointer'
+                                  border: 'none',
+                                  borderRadius: '6px',
+                                  cursor: 'pointer',
+                                  background: isOn ? 'rgba(239, 68, 68, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                  color: isOn ? '#fca5a5' : '#94a3b8',
+                                  boxShadow: isOn ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none'
                                 }}
+                                title={tw === 'morning' ? '8am-12pm' : tw === 'afternoon' ? '12pm-4pm' : '4pm-8pm'}
                               >
-                                ✕ Clear All
+                                {icon} {tw.charAt(0).toUpperCase() + tw.slice(1, 3)}
                               </button>
-                            </>
-                          ) : (
-                            <div style={{
-                              fontSize: '12px',
-                              color: '#64748b',
-                              fontStyle: 'italic'
-                            }}>
-                              No filters applied
-                            </div>
-                          )}
-                        </div>
+                            );
+                          })}
+                        </>
+                      )}
+
+                      {/* Spacer + results + clear */}
+                      <div style={{ flex: 1 }} />
+                      <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 700 }}>
+                        {filteredCustomers.length} results
+                      </span>
+                      {(() => {
+                        const hasAny = statusFilter !== 'all' || stateFilter || cityFilter || zipFilter ||
+                          lastServiceFilter || activeFilters.verifiedSolar || activeFilters.existingJob ||
+                          activeFilters.recurring || activeFilters.minPanels || preferredDateFilter.length > 0 ||
+                          preferredTimeFilter.length > 0;
+                        return hasAny ? (
+                          <button
+                            onClick={() => {
+                              setStatusFilter('all');
+                              setStateFilter('');
+                              setCityFilter('');
+                              setZipFilter('');
+                              setLastServiceFilter('');
+                              setPreferredDateFilter([]);
+                              setPreferredTimeFilter([]);
+                              setActiveFilters({ verifiedSolar: false, existingJob: false, recurring: false, minPanels: '', lastService: '' });
+                            }}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              background: 'rgba(239, 68, 68, 0.2)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '6px',
+                              color: '#fca5a5',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Clear all
+                          </button>
+                        ) : null;
+                      })()}
+                    </div>
+
+                    {/* Row 3: Date picker - only when unscheduled */}
+                    {statusFilter === 'unscheduled' && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(10, 14, 39, 0.88)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(239, 68, 68, 0.2)',
+                        borderRadius: '12px',
+                        padding: '6px 12px'
+                      }}>
+                        <span style={{ fontSize: '11px', color: '#fca5a5', fontWeight: 600, whiteSpace: 'nowrap' }}>Preferred dates:</span>
+                        <button
+                          onClick={() => {
+                            const newWeek = new Date(filterWeekStart);
+                            newWeek.setDate(newWeek.getDate() - 7);
+                            setFilterWeekStart(newWeek);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
+                        >◀</button>
+                        {getWeekDays(filterWeekStart).map((date, index) => {
+                          const dateStr = date.toISOString().split('T')[0];
+                          const isSelected = preferredDateFilter.includes(dateStr);
+                          const isToday = date.toDateString() === new Date().toDateString();
+                          return (
+                            <button
+                              key={index}
+                              onClick={() => {
+                                if (isSelected) setPreferredDateFilter(prev => prev.filter(d => d !== dateStr));
+                                else setPreferredDateFilter(prev => [...prev, dateStr]);
+                              }}
+                              style={{
+                                padding: '4px 8px',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                background: isSelected ? 'rgba(239, 68, 68, 0.3)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
+                                color: isSelected ? '#fca5a5' : '#f1f5f9',
+                                boxShadow: isSelected ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                lineHeight: 1.2,
+                                minWidth: '36px'
+                              }}
+                            >
+                              <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 600 }}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                              <span>{date.getDate()}</span>
+                            </button>
+                          );
+                        })}
+                        <button
+                          onClick={() => {
+                            const newWeek = new Date(filterWeekStart);
+                            newWeek.setDate(newWeek.getDate() + 7);
+                            setFilterWeekStart(newWeek);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
+                        >▶</button>
+                        {preferredDateFilter.length > 0 && (
+                          <button
+                            onClick={() => setPreferredDateFilter([])}
+                            style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer', fontWeight: 600 }}
+                          >Clear</button>
+                        )}
                       </div>
                     )}
-                  </>
+                    </>
+                    )}
+                  </div>
                 )}
-                
+
                 {/* Map - takes remaining space */}
                 <div
                   ref={mapRef}
@@ -7825,19 +8340,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                       ✓ Route Saved
                                     </span>
                                   )}
-                                  {customer.status === 'completed' && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.2)',
-                                      border: '1px solid rgba(34, 197, 94, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#86efac',
-                                      fontWeight: 600
-                                    }}>
-                                      🟢 Completed
-                                    </span>
-                                  )}
                                   {customer.panelCount && (
                                     <span style={{
                                       fontSize: '11px',
@@ -8212,6 +8714,23 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                          selectedCustomer.preferredTimeWindow}
                                       </div>
                                     )}
+                              {selectedCustomer.status && (
+                                <div style={{
+                                  padding: '12px 16px',
+                                  background: selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
+                                             'rgba(239, 68, 68, 0.1)',
+                                  border: selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
+                                         '1px solid rgba(239, 68, 68, 0.3)',
+                                  borderRadius: '8px',
+                                  marginBottom: '12px'
+                                }}>
+                                  <div style={{ 
+                                    fontSize: '14px', 
+                                    fontWeight: 600,
+                                    color: selectedCustomer.status === 'scheduled' ? '#fbbf24' : '#fca5a5',
+                                    marginBottom: '8px'
+                                  }}>
+                                    {selectedCustomer.status === 'scheduled' ? '🟡 Scheduled' : '🔴 Unscheduled'}
                                   </div>
                                 )}
                               </div>
@@ -8960,7 +9479,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       <div style={{ padding: '16px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Status</div>
                         <div style={{ fontSize: '14px', color: '#22c55e' }}>
-                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' : profileCustomer.status || 'Active'}
+                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' :
+                            (profileCustomer.status === 'scheduled' ? 'Scheduled' :
+                            profileCustomer.status === 'unscheduled' ? 'Unscheduled' : 'Active')}
                         </div>
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
@@ -8987,18 +9508,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           })()}
                           onChange={(e) => {
                             const updatedCustomer = { ...profileCustomer, nextServiceDate: e.target.value };
-                            // Update in savedLists
-                            setSavedLists(prev => prev.map(list => ({
-                              ...list,
-                              customers: list.customers.map(c =>
-                                c.id === profileCustomer.id ? updatedCustomer : c
-                              )
-                            })));
-                            // Update in customers if exists there
-                            setCustomers(prev => prev.map(c =>
-                              c.id === profileCustomer.id ? updatedCustomer : c
-                            ));
+                            // Propagate to all views (savedLists, uploadedFiles, savedRoutes)
+                            propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: e.target.value });
                             setProfileCustomer(updatedCustomer);
+                            // Protect from sheet sync overwriting this change
+                            trackLocalOverride(profileCustomer.id, 'nextServiceDate', e.target.value);
                           }}
                           style={{
                             width: '100%',
@@ -9089,22 +9603,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         <button
                           onClick={() => {
                             if (!newCustomerNote.trim()) return;
-                            // Add note to customer
+                            const newNotes = (profileCustomer.customerNotes || '') +
+                              (profileCustomer.customerNotes ? '\n' : '') +
+                              `[${new Date().toLocaleDateString()}] ${newCustomerNote}`;
                             const updatedCustomer = {
                               ...profileCustomer,
-                              customerNotes: (profileCustomer.customerNotes || '') +
-                                (profileCustomer.customerNotes ? '\n' : '') +
-                                `[${new Date().toLocaleDateString()}] ${newCustomerNote}`
+                              customerNotes: newNotes
                             };
-                            // Update in savedLists
-                            setSavedLists(prev => prev.map(list => ({
-                              ...list,
-                              customers: list.customers.map(c =>
-                                c.id === profileCustomer.id ? updatedCustomer : c
-                              )
-                            })));
+                            // Propagate to all views
+                            propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
                             setProfileCustomer(updatedCustomer);
                             setNewCustomerNote('');
+                            // Protect from sheet sync overwriting notes
+                            trackLocalOverride(profileCustomer.id, 'notes', newNotes);
                           }}
                           disabled={!newCustomerNote.trim()}
                           style={{
@@ -9596,7 +10107,52 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </div>
                             )}
                           </div>
-                          <div style={{ display: 'flex', gap: '12px' }}>
+                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                            <button
+                              onClick={() => {
+                                if (savedRoute.sentToTech) {
+                                  alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                  return;
+                                }
+                                // Load route into map editor
+                                const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                setRoutesByDay(prev => ({
+                                  ...prev,
+                                  [routeDateKey]: savedRoute.customers
+                                }));
+                                setEditingSavedRouteId(savedRoute.id);
+                                setSelectedDate(new Date(savedRoute.scheduledDate));
+
+                                // Restore scheduledTime into customers state for time slot display
+                                setCustomers(prev => {
+                                  const rcMap = new Map();
+                                  savedRoute.customers.forEach(rc => rcMap.set(rc.id, rc));
+                                  return prev.map(c => {
+                                    const rc = rcMap.get(c.id);
+                                    if (rc) {
+                                      return {
+                                        ...c,
+                                        scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                        scheduledDate: savedRoute.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                        status: 'scheduled',
+                                        routeConfirmed: true
+                                      };
+                                    }
+                                    return c;
+                                  });
+                                });
+
+                                setSavedViewDays(prev => ({
+                                  ...prev,
+                                  [routeDateKey]: false
+                                }));
+                                setCurrentView('map');
+                              }}
+                              className="button-secondary"
+                              style={{ padding: '12px 16px', fontSize: '14px', fontWeight: 600 }}
+                            >
+                              ✏️ Edit Route
+                            </button>
                             <button
                               onClick={() => emailRouteToTech(savedRoute)}
                               className="button-primary"
@@ -9606,6 +10162,25 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
+                                  // Unschedule all customers in this route
+                                  const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
+                                  setCustomers(prev => prev.map(c => {
+                                    if (routeCustomerIds.has(c.id)) {
+                                      return {
+                                        ...c,
+                                        scheduledDate: null,
+                                        scheduledTime: null,
+                                        status: 'unscheduled',
+                                        routeConfirmed: false,
+                                        confirmedRouteName: null
+                                      };
+                                    }
+                                    return c;
+                                  }));
+                                  // Clear routesByDay for this route's date
+                                  const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                  setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
+                                  setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                   setSavedRoutes(prev => prev.filter(r => r.id !== savedRoute.id));
                                 }
                               }}
@@ -9660,7 +10235,16 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                                   {index + 1}
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: '#f1f5f9' }}>
+                                  <div
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === customer.id) || customer;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: '#c4b5fd', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(139, 92, 246, 0.3)' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                    onMouseLeave={(e) => e.currentTarget.style.color = '#c4b5fd'}
+                                  >
                                     {customer.name}
                                   </div>
                                   <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
@@ -10050,21 +10634,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       </tbody>
                     </table>
 
-                    {/* API Key Notice for Write Access */}
-                    {!googleApiKey && (
-                      <div style={{
-                        marginTop: '20px',
-                        padding: '16px',
-                        background: 'rgba(251, 191, 36, 0.1)',
-                        border: '1px solid rgba(251, 191, 36, 0.3)',
-                        borderRadius: '8px',
-                        fontSize: '12px',
-                        color: '#fbbf24'
-                      }}>
-                        <strong>💡 Read-only mode:</strong> Edits are saved locally but not synced back to Google Sheets.
-                        To enable two-way sync, add a Google API key in settings with Sheets API write access.
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -10207,6 +10776,13 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>🎯 Radius Search</h3>
                 <button
                   onClick={exitRadiusMode}
+                  onClick={() => {
+                    setRadiusMode(false);
+                    setAwaitingMapClick(false);
+                    setDrawMode(false);
+                    clearRadius();
+                    clearDrawnArea();
+                  }}
                   style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '20px' }}
                 >
                   ✕
@@ -10280,6 +10856,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-primary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     if (radiusAddress) {
                       handleRadiusSearch(false);
                     }
@@ -10297,6 +10875,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     if (homeBase) {
                       clearRadius();
                       drawRadius(homeBase, radiusMiles * 1609.34, 'Home Base');
@@ -10311,6 +10891,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
+                    setDrawMode(false);
+                    clearDrawnArea();
                     setAwaitingMapClick(true);
                   }}
                   style={{
@@ -10327,9 +10909,13 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <button
                   className="button-secondary"
                   onClick={() => {
-                    clearRadius();
-                    clearDrawnArea();
-                    setDrawMode(true);
+                    if (drawMode) {
+                      setDrawMode(false);
+                    } else {
+                      clearRadius();
+                      clearDrawnArea();
+                      setDrawMode(true);
+                    }
                   }}
                   style={{
                     width: '100%',
@@ -10594,7 +11180,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>Save Route</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{editingSavedRouteId ? 'Update Route' : 'Save Route'}</h2>
                   <button
                     onClick={() => setShowSaveModal(false)}
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '24px' }}
@@ -10652,7 +11238,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     onClick={handleSaveRoute}
                     style={{ flex: 1, justifyContent: 'center' }}
                   >
-                    💾 Save Route
+                    {editingSavedRouteId ? '💾 Update Route' : '💾 Save Route'}
                   </button>
                 </div>
               </div>
