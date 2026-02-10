@@ -4085,7 +4085,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
-       * Refresh Pipeline data from Google Sheets
+       * Refresh Pipeline data from Google Sheets.
+       * Merges fresh sheet data with local customer state so that:
+       * 1. New/changed data from Google Sheets flows INTO the site (customers, map, etc.)
+       * 2. Local edits made on the site are preserved and re-applied to the pipeline view
        */
       const refreshPipelineData = async () => {
         if (!sheetsConnected || !googleSheetId) return;
@@ -4093,7 +4096,106 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         try {
           const { headers, rows } = await fetchPipelineSheetData();
           setSheetHeaders(headers);
+
+          // --- STEP 1: Update customers from fresh sheet data ---
+          // Build column mapping from the fresh headers
+          const getColIdx = (possibleNames) => {
+            for (const name of possibleNames) {
+              const idx = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
+              if (idx !== -1) return idx;
+            }
+            return -1;
+          };
+
+          const nameCol = getColIdx(['Customer Name', 'Name']);
+          const addressCol = getColIdx(['Address']);
+          const phoneCol = getColIdx(['Phone', 'Mobile', 'Customer Mobile']);
+          const emailCol = getColIdx(['Email', 'Customer Email']);
+
+          // For each fresh row, find matching customer and push sheet changes into customers
+          const customerUpdatesFromSheet = []; // { customerId, updates }
+          rows.forEach(row => {
+            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
+
+            const matched = customers.find(c => {
+              const cName = (c.name || '').toLowerCase().trim();
+              const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+              if (rowName && rowAddress && cName === rowName && cAddr === rowAddress) return true;
+              if (rowPhone && c.phone && rowPhone === c.phone) return true;
+              if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
+              return false;
+            });
+
+            if (matched) {
+              const updates = {};
+              headers.forEach((header, colIdx) => {
+                const mappings = mapSheetHeaderToCustomerProps(header);
+                mappings.forEach(({ prop, transform }) => {
+                  const sheetVal = row.values[colIdx] || '';
+                  const newVal = transform(sheetVal);
+                  // Only update if the sheet has a non-empty value
+                  if (sheetVal !== '') {
+                    updates[prop] = newVal;
+                  }
+                });
+              });
+
+              if (Object.keys(updates).length > 0) {
+                customerUpdatesFromSheet.push({ customerId: matched.id, updates });
+              }
+            }
+          });
+
+          // Apply sheet changes to all customer stores
+          if (customerUpdatesFromSheet.length > 0) {
+            // Batch update savedLists
+            setSavedLists(prev => prev.map(list => ({
+              ...list,
+              customers: list.customers.map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            // Batch update uploadedFiles
+            setUploadedFiles(prev => prev.map(file => ({
+              ...file,
+              customers: file.customers.map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            // Batch update savedRoutes
+            setSavedRoutes(prev => prev.map(route => ({
+              ...route,
+              customers: (route.customers || []).map(c => {
+                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
+                return entry ? { ...c, ...entry.updates } : c;
+              })
+            })));
+
+            // Update profile if open
+            if (profileCustomer) {
+              const entry = customerUpdatesFromSheet.find(u => u.customerId === profileCustomer.id);
+              if (entry) {
+                setProfileCustomer(prev => prev ? { ...prev, ...entry.updates } : prev);
+              }
+            }
+
+            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets to site`);
+          }
+
+          // --- STEP 2: Set sheet data, then re-apply local customer overrides ---
+          // We set the fresh rows, then let the customers→pipeline useEffect
+          // re-apply any local overrides on the next render cycle.
           setSheetData(rows);
+          // Force the sync useEffect to re-run by clearing the ref
+          lastSyncedCustomersRef.current = null;
+
           setLastSheetSync(new Date());
           console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
         } catch (error) {
