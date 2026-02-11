@@ -2292,8 +2292,11 @@
             });
           }
         } else if (statusFilter === 'unscheduled') {
-          // Only show customers explicitly marked as needing scheduling
-          results = results.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
+          // Show customers with 'unscheduled' status OR empty/no status
+          results = results.filter(c => {
+            const s = (c.status || '').toLowerCase();
+            return s === 'unscheduled' || s === '';
+          });
         } else if (statusFilter !== 'all') {
           results = results.filter(c => (c.status || '').toLowerCase() === statusFilter);
         }
