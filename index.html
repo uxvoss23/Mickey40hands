@@ -952,16 +952,37 @@
               const newJobDesc = customer.jobDescription || customer.job_description || '';
               const newJobDate = customer.lastServiceDate || customer.last_service_date || '';
               const alreadyHasJob = existing.serviceHistory.some(j => j.jobDescription === newJobDesc && j.date === newJobDate);
-              if (!alreadyHasJob) existing.serviceHistory.push({
-                jobDescription: customer.jobDescription || customer.job_description || '',
-                status: customer.status || '',
-                date: customer.lastServiceDate || customer.last_service_date || '',
-                amount: parseFloat(customer.amountPaid || customer.amount_paid || 0) || 0,
-                tip: parseFloat(customer.tipAmount || customer.tip_amount || 0) || 0,
-                panelCount: parseInt(customer.panelCount || customer.panel_count || 0) || 0,
-                isRecurring: customer.isRecurring || customer.is_recurring || false,
-                notes: customer.notes || ''
-              });
+              if (!alreadyHasJob) {
+                existing.serviceHistory.push({
+                  jobDescription: customer.jobDescription || customer.job_description || '',
+                  status: customer.status || '',
+                  date: customer.lastServiceDate || customer.last_service_date || '',
+                  amount: parseFloat(customer.amountPaid || customer.amount_paid || 0) || 0,
+                  tip: parseFloat(customer.tipAmount || customer.tip_amount || 0) || 0,
+                  panelCount: parseInt(customer.panelCount || customer.panel_count || 0) || 0,
+                  isRecurring: customer.isRecurring || customer.is_recurring || false,
+                  notes: customer.notes || ''
+                });
+                const mergedDate = customer.lastServiceDate || customer.last_service_date || '';
+                if (mergedDate && (!existing.lastServiceDate || new Date(mergedDate) > new Date(existing.lastServiceDate || existing.last_service_date || ''))) {
+                  existing.lastServiceDate = mergedDate;
+                  existing.last_service_date = mergedDate;
+                  existing.status = customer.status || existing.status;
+                  existing.jobDescription = customer.jobDescription || customer.job_description || existing.jobDescription;
+                  existing.job_description = existing.jobDescription;
+                }
+                existing.amountPaid = (parseFloat(existing.amountPaid || existing.amount_paid || 0) || 0) + (parseFloat(customer.amountPaid || customer.amount_paid || 0) || 0);
+                existing.amount_paid = existing.amountPaid;
+                existing.tipAmount = (parseFloat(existing.tipAmount || existing.tip_amount || 0) || 0) + (parseFloat(customer.tipAmount || customer.tip_amount || 0) || 0);
+                existing.tip_amount = existing.tipAmount;
+                const mergedPanels = parseInt(customer.panelCount || customer.panel_count || 0) || 0;
+                if (mergedPanels > (parseInt(existing.panelCount || existing.panel_count || 0) || 0)) {
+                  existing.panelCount = mergedPanels;
+                  existing.panel_count = mergedPanels;
+                  existing.totalPanels = mergedPanels;
+                  existing.total_panels = mergedPanels;
+                }
+              }
             }
             
             console.log('Merged duplicate address:', customer.address, '- Added job to history');
@@ -991,6 +1012,7 @@
 
       useEffect(() => {
         if (!profileCustomer || !profileCustomer.id) return;
+        if (typeof profileCustomer.id !== 'number') return;
         const fetchJobs = async () => {
           try {
             const data = await apiFetch('/jobs?customer_id=' + profileCustomer.id);
@@ -1011,7 +1033,19 @@
                 const isDup = combined.some(dj => dj.jobDescription === eh.jobDescription && dj.date === eh.date);
                 if (!isDup) combined.push(eh);
               });
-              setProfileCustomer(prev => ({ ...prev, serviceHistory: combined }));
+              combined.sort((a, b) => {
+                const da = a.date ? new Date(a.date).getTime() : 0;
+                const db = b.date ? new Date(b.date).getTime() : 0;
+                return db - da;
+              });
+              const mostRecent = combined.find(j => j.date) || combined[0];
+              setProfileCustomer(prev => ({
+                ...prev,
+                serviceHistory: combined,
+                lastServiceDate: mostRecent ? mostRecent.date : prev.lastServiceDate,
+                status: mostRecent && mostRecent.status ? mostRecent.status : prev.status,
+                jobDescription: mostRecent && mostRecent.jobDescription ? mostRecent.jobDescription : prev.jobDescription
+              }));
             }
           } catch (err) {
             console.error('Failed to fetch jobs for customer:', err);
@@ -6160,7 +6194,51 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               }]);
               
               try {
-                const dbCustomers = customersWithFileId.map(c => ({
+                const addrMap = new Map();
+                customersWithFileId.forEach(c => {
+                  const normAddr = (c.address || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
+                  if (!normAddr) return;
+                  const jobEntry = {
+                    jobDescription: c.jobDescription || '',
+                    status: c.status || '',
+                    date: c.lastServiceDate || '',
+                    amount: parseFloat(c.amountPaid) || 0,
+                    tip: parseFloat(c.tipAmount) || 0,
+                    panelCount: parseInt(c.panelCount) || 0,
+                    isRecurring: c.isRecurring || false,
+                    notes: c.notes || ''
+                  };
+                  if (addrMap.has(normAddr)) {
+                    const ex = addrMap.get(normAddr);
+                    if (jobEntry.jobDescription || jobEntry.date) {
+                      const dup = ex.serviceHistory.some(j => j.jobDescription === jobEntry.jobDescription && j.date === jobEntry.date);
+                      if (!dup) ex.serviceHistory.push(jobEntry);
+                    }
+                    const mDate = c.lastServiceDate || '';
+                    if (mDate && (!ex.lastServiceDate || new Date(mDate) > new Date(ex.lastServiceDate))) {
+                      ex.lastServiceDate = mDate;
+                      ex.status = c.status || ex.status;
+                      ex.jobDescription = c.jobDescription || ex.jobDescription;
+                    }
+                    ex.amountPaid = (parseFloat(ex.amountPaid) || 0) + (parseFloat(c.amountPaid) || 0);
+                    ex.tipAmount = (parseFloat(ex.tipAmount) || 0) + (parseFloat(c.tipAmount) || 0);
+                    const mp = parseInt(c.panelCount) || 0;
+                    if (mp > (parseInt(ex.panelCount) || 0)) ex.panelCount = mp;
+                    if (c.phone && !ex.secondaryPhones?.includes(c.phone) && c.phone !== ex.phone) {
+                      if (!ex.secondaryPhones) ex.secondaryPhones = [];
+                      ex.secondaryPhones.push(c.phone);
+                    }
+                    if (c.email && !ex.secondaryEmails?.includes(c.email) && c.email !== ex.email) {
+                      if (!ex.secondaryEmails) ex.secondaryEmails = [];
+                      ex.secondaryEmails.push(c.email);
+                    }
+                  } else {
+                    c.serviceHistory = (jobEntry.jobDescription || jobEntry.date) ? [jobEntry] : [];
+                    addrMap.set(normAddr, c);
+                  }
+                });
+                const dedupedCustomers = Array.from(addrMap.values());
+                const dbCustomers = dedupedCustomers.map(c => ({
                   first_name: c.firstName || '',
                   last_name: c.lastName || '',
                   full_name: c.name || '',
@@ -6173,6 +6251,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   lng: c.lng || null,
                   phone: c.phone || '',
                   email: c.email || '',
+                  secondary_phones: c.secondaryPhones || [],
+                  secondary_emails: c.secondaryEmails || [],
                   status: c.status || '',
                   notes: c.notes || '',
                   panel_count: parseInt(c.panelCount) || 0,
@@ -6193,7 +6273,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   method: 'POST',
                   body: JSON.stringify({ customers: dbCustomers })
                 });
-                console.log(`Saved ${dbCustomers.length} customers to database from CSV`);
+                console.log(`Saved ${dbCustomers.length} deduplicated customers (from ${customersWithFileId.length} rows) to database from CSV`);
               } catch (dbErr) {
                 console.error('Failed to save CSV customers to database:', dbErr);
               }
@@ -10433,7 +10513,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       </h3>
                       {(profileCustomer.serviceHistory && profileCustomer.serviceHistory.length > 0) ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {profileCustomer.serviceHistory.map((job, idx) => (
+                          {[...profileCustomer.serviceHistory].sort((a, b) => {
+                            const da = a.date ? new Date(a.date).getTime() : 0;
+                            const db = b.date ? new Date(b.date).getTime() : 0;
+                            return db - da;
+                          }).map((job, idx) => (
                             <div key={idx} style={{
                               padding: '16px',
                               background: 'rgba(30, 41, 59, 0.5)',
@@ -10442,8 +10526,18 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
                                 <div>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9' }}>
-                                    {job.jobDescription || 'Service'}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <span style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9' }}>
+                                      {job.jobDescription || 'Service'}
+                                    </span>
+                                    {job.status && (
+                                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, background: job.status.toLowerCase() === 'completed' ? 'rgba(34,197,94,0.2)' : job.status.toLowerCase() === 'scheduled' ? 'rgba(251,191,36,0.2)' : 'rgba(100,116,139,0.2)', color: job.status.toLowerCase() === 'completed' ? '#22c55e' : job.status.toLowerCase() === 'scheduled' ? '#fbbf24' : '#94a3b8' }}>
+                                        {job.status}
+                                      </span>
+                                    )}
+                                    {idx === 0 && (
+                                      <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(59,130,246,0.2)', color: '#60a5fa', fontWeight: 600 }}>MOST RECENT</span>
+                                    )}
                                   </div>
                                   <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
                                     📅 {job.date ? new Date(job.date).toLocaleDateString() : 'Unknown date'}

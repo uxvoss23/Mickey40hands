@@ -94,3 +94,7 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-11: Upgraded pipeline view with global search, quick filters, per-column filters, and CSV export
 - 2026-02-11: Frontend auto-loads from database on startup, syncs updates via PATCH
 - 2026-02-11: Fixed status filtering bug (case-sensitivity normalization)
+- 2026-02-11: CSV/Google Sheets import now deduplicates by address and merges job history
+- 2026-02-11: Bulk save to database includes deduplicated customers with full service history as job records
+- 2026-02-11: Customer profile shows most recent job date/status and sorted Job History with status badges
+- 2026-02-11: Added dedup guards to prevent duplicate job entries with same date and description
