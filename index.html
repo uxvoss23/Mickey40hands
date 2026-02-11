@@ -4184,7 +4184,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       const fetchPipelineSheetData = async () => {
         if (!googleSheetId) return { headers: [], rows: [] };
 
-        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        // Cache-bust to avoid stale Google Sheets CSV responses
+        const baseCsvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        const cacheBuster = `_cb=${Date.now()}`;
+        const csvUrl = baseCsvUrl + (baseCsvUrl.includes('?') ? '&' : '?') + cacheBuster;
         let response;
 
         try {
@@ -4249,7 +4252,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
           // Expire old pending edits (>15s) and re-apply recent ones
           const now = Date.now();
-          const PENDING_TTL = 15000; // 15 seconds protection window
+          const PENDING_TTL = 300000; // 5 minutes — covers Google's CSV cache delay
           const pending = pendingEditsRef.current;
           for (const [key, edit] of pending) {
             if (now - edit.timestamp > PENDING_TTL) {
