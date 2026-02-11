@@ -1950,7 +1950,6 @@
                 <div style="margin-bottom: 8px; border-radius: 4px; overflow: hidden; border: 1px solid rgba(139, 92, 246, 0.3); position: relative;">
                   <img src="https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${zoom}" style="width: 180px; height: 180px; display: block;" />
                   <div style="position: absolute; top: 4px; left: 4px; background: rgba(0,0,0,0.7); padding: 3px 6px; border-radius: 3px; font-size: 8px; font-weight: 600;">🛰️</div>
-                  ${customer.existingJob ? `<div style="position: absolute; top: 4px; right: 4px; background: rgba(34, 197, 94, 0.9); padding: 3px 6px; border-radius: 3px; font-size: 8px; font-weight: 600; color: white;">🦕 Past Customer</div>` : ''}
                 </div>
                 
                 <div style="margin-bottom: 8px;">
@@ -1972,13 +1971,7 @@
                 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
 
-                  ${!customer.existingJob && !isRecurringCustomer ? `
-                  <button
-                    onclick="window.dispatchEvent(new CustomEvent('markRecurring', {detail: '${customer.id}'}))"
-                    style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
-                    🦕 Past Customer?
-                  </button>
-                  ` : ''}
+
                   <a 
                     href="https://www.google.com/maps/@${customer.lat},${customer.lng},20z/data=!3m1!1e3"
                     target="_blank"
