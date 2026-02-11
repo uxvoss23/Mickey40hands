@@ -2249,7 +2249,7 @@
 
           // Filter to scheduled customers (with day info), optionally include unscheduled
           if (showNeedScheduling) {
-            results = results.filter(c => scheduledIds.has(c.id) || c.status === 'unscheduled');
+            results = results.filter(c => scheduledIds.has(c.id) || (c.status || '').toLowerCase() === 'unscheduled');
             // Merge day info into scheduled customers
             results = results.map(c => {
               const info = dayInfoMap.get(c.id);
@@ -2267,9 +2267,9 @@
           results = results.filter(c => c.lastServiceDate);
         } else if (statusFilter === 'unscheduled') {
           // Only show customers explicitly marked as needing scheduling
-          results = results.filter(c => c.status === 'unscheduled');
+          results = results.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
         } else if (statusFilter !== 'all') {
-          results = results.filter(c => c.status === statusFilter);
+          results = results.filter(c => (c.status || '').toLowerCase() === statusFilter);
         }
 
         // Preferred Date filter (multi-select)
@@ -3355,7 +3355,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   email: email,
                   phone: phone,
                   panelCount: '0',
-                  status: customer['status'] || '', // Default: blank (no action needed)
+                  status: (customer['status'] || '').toLowerCase(), // Default: blank (no action needed)
                   preferredDate: customer['preferreddate'] || customer['preferredservicedate'] || '',
                   preferredTimeWindow: customer['preferredtimewindow'] || customer['preferredtime'] || customer['arrivalwindow'] || '',
                   scheduledDate: customer['scheduleddate'] || '',
@@ -4465,7 +4465,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           { prop: 'totalPanels', transform: toInt },
           { prop: 'panelCount', transform: toInt }
         ];
-        if (/job\s*status|^status$/i.test(h)) return [{ prop: 'status', transform: identity }];
+        if (/job\s*status|^status$/i.test(h)) return [{ prop: 'status', transform: v => (v || '').toLowerCase() }];
         if (/job\s*description|^description$/i.test(h)) return [{ prop: 'jobDescription', transform: identity }];
         if (/^amount|job\s*amount/i.test(h)) return [{ prop: 'amountPaid', transform: toFloat }];
         if (/^tip/i.test(h)) return [{ prop: 'tipAmount', transform: toFloat }];
@@ -5585,7 +5585,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               amount: parseFloat(amount) || 0,
               tip: parseFloat(tip) || 0,
               notes: customerNotes || '',
-              status: status || 'completed'
+              status: (status || 'completed').toLowerCase()
             };
 
             if (isDuplicate) {
@@ -5653,7 +5653,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(totalPanels) || 0,
               panelCount: parseInt(totalPanels) || 0,
               name: `${firstname} ${lastname}`.trim(),
-              status: status || '',
+              status: (status || '').toLowerCase(),
               jobDescription: jobDesc || '',
               isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
