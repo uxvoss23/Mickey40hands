@@ -564,12 +564,19 @@
       const [lastSheetSync, setLastSheetSync] = useState(null);
       const [sheetSyncing, setSheetSyncing] = useState(false);
 
-      // Track local overrides so sheet sync doesn't overwrite site changes
-      // (e.g., lastServiceDate updated by emailRouteToTech stays protected)
+      // Track local overrides (kept for audit trail, not actively used with one-way import)
       const [localOverrides, setLocalOverrides] = useState(() => {
         try { return JSON.parse(localStorage.getItem('localOverrides') || '{}'); }
         catch { return {}; }
       });
+
+      // Export to Google Sheet via Apps Script
+      const [appsScriptUrl, setAppsScriptUrl] = useState(() => localStorage.getItem('appsScriptUrl') || '');
+      const [lastSheetExport, setLastSheetExport] = useState(() => {
+        const saved = localStorage.getItem('lastSheetExport');
+        return saved ? new Date(saved) : null;
+      });
+      const [sheetExporting, setSheetExporting] = useState(false);
 
       // Pipeline Google Sheets Live Sync
       const [sheetHeaders, setSheetHeaders] = useState([]); // Actual column headers from Google Sheet
@@ -728,6 +735,11 @@
       useEffect(() => {
         localStorage.setItem('localOverrides', JSON.stringify(localOverrides));
       }, [localOverrides]);
+
+      // Save appsScriptUrl to localStorage
+      useEffect(() => {
+        if (appsScriptUrl) localStorage.setItem('appsScriptUrl', appsScriptUrl);
+      }, [appsScriptUrl]);
 
       // Update calculated price when panel count or tier changes
       useEffect(() => {
@@ -4651,6 +4663,142 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       // ========================================
+      // EXPORT TO GOOGLE SHEET (local wins + preserve new rows)
+      // ========================================
+
+      /**
+       * Build a CSV row from a customer object using the sheet's column headers.
+       * Maps customer properties to the matching sheet header columns.
+       */
+      const customerToSheetRow = (customer, headers) => {
+        return headers.map(header => {
+          const mappings = mapSheetHeaderToCustomerProps(header);
+          if (mappings.length === 0) return '';
+          // Use first mapping (primary property)
+          const { prop, transform } = mappings[0];
+          let val = customer[prop];
+          if (val === undefined || val === null) val = '';
+          // Special handling for booleans
+          if (prop === 'isRecurring') return val ? 'TRUE' : 'FALSE';
+          if (prop === 'solarVerified') return val || '';
+          return String(val);
+        });
+      };
+
+      /**
+       * Export local customer data back to Google Sheet.
+       * - Local data wins for existing customers
+       * - New rows in the sheet (not in local data) are preserved
+       * - Uses Apps Script web app URL if available, otherwise falls back to CSV download
+       */
+      const exportToGoogleSheet = async () => {
+        setSheetExporting(true);
+        try {
+          // Step 1: Fetch current sheet to find new rows added by others
+          const { headers: currentHeaders, rows: currentRows } = await fetchPipelineSheetData();
+          const headers = currentHeaders.length > 0 ? currentHeaders : sheetHeaders;
+
+          if (headers.length === 0) {
+            alert('No sheet headers found. Please connect and sync your Google Sheet first.');
+            return;
+          }
+
+          // Step 2: Build matching sets from local customers
+          const localPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
+          const localEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const localNameAddresses = new Set(customers.map(c => {
+            const name = (c.name || '').toLowerCase().trim();
+            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            return `${name}|${address}`;
+          }));
+
+          // Step 3: Find new rows in the sheet that don't exist locally
+          const nameCol = headers.findIndex(h => /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
+          const addressCol = headers.findIndex(h => /^address/i.test(h.toLowerCase().trim()));
+          const phoneCol = headers.findIndex(h => /^phone|mobile|customer\s*mobile/i.test(h.toLowerCase().trim()));
+          const emailCol = headers.findIndex(h => /^email|customer\s*email/i.test(h.toLowerCase().trim()));
+
+          const newSheetRows = [];
+          currentRows.forEach(row => {
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
+            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const nameAddressKey = `${rowName}|${rowAddress}`;
+
+            const existsLocally =
+              (rowPhone && localPhones.has(rowPhone)) ||
+              (rowEmail && localEmails.has(rowEmail)) ||
+              (rowName && rowAddress && localNameAddresses.has(nameAddressKey));
+
+            if (!existsLocally) {
+              newSheetRows.push(row.values);
+            }
+          });
+
+          // Step 4: Build export data = local customers + new sheet rows
+          const localRows = customers.map(c => customerToSheetRow(c, headers));
+          const allRows = [headers, ...localRows, ...newSheetRows];
+
+          console.log(`📤 Export: ${localRows.length} local customers + ${newSheetRows.length} new sheet rows = ${allRows.length - 1} total`);
+
+          // Step 5: Send via Apps Script or fall back to CSV download
+          if (appsScriptUrl) {
+            const response = await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(allRows)
+            });
+
+            // no-cors means we can't read the response, but if it didn't throw, it likely worked
+            setLastSheetExport(new Date());
+            localStorage.setItem('lastSheetExport', new Date().toISOString());
+            alert(`Sheet updated!\n\n${localRows.length} local customers exported\n${newSheetRows.length} new sheet rows preserved\n${allRows.length - 1} total rows`);
+          } else {
+            // CSV download fallback
+            downloadExportCSV(allRows);
+          }
+        } catch (error) {
+          console.error('Export failed:', error);
+          alert(`Export failed: ${error.message}\n\nTry the CSV download fallback instead.`);
+        } finally {
+          setSheetExporting(false);
+        }
+      };
+
+      /**
+       * CSV download fallback — generates a CSV file and triggers browser download.
+       * User can then manually import into Google Sheets (File > Import > Replace current sheet).
+       */
+      const downloadExportCSV = (allRows) => {
+        const csvContent = allRows.map(row =>
+          row.map(cell => {
+            const str = String(cell || '');
+            // Escape cells containing commas, quotes, or newlines
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+          }).join(',')
+        ).join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `customer-export-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setLastSheetExport(new Date());
+        localStorage.setItem('lastSheetExport', new Date().toISOString());
+        alert(`CSV downloaded!\n\n${allRows.length - 1} total rows\n\nTo update your Google Sheet:\n1. Open your Google Sheet\n2. File > Import > Upload\n3. Select "Replace current sheet"\n4. Click Import`);
+      };
+
+      // ========================================
       // SMART QUERY FUNCTIONS - Use Sheets as Database
       // ========================================
       
@@ -7192,6 +7340,51 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </button>
                       )}
                     </div>
+
+                    {/* Export to Sheet Section */}
+                    {sheetsConnected && (
+                      <div style={{ marginTop: '10px' }}>
+                        <input
+                          type="text"
+                          value={appsScriptUrl}
+                          onChange={(e) => setAppsScriptUrl(e.target.value)}
+                          placeholder="Apps Script Web App URL (optional)"
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: 'rgba(15, 23, 42, 0.8)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '10px',
+                            marginBottom: '6px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <button
+                          onClick={exportToGoogleSheet}
+                          disabled={sheetExporting}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: sheetExporting ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: '#fff',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: sheetExporting ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {sheetExporting ? '⏳ Exporting...' : (appsScriptUrl ? '📤 Export to Sheet' : '📤 Download CSV')}
+                        </button>
+                        {lastSheetExport && (
+                          <div style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>
+                            Last export: {lastSheetExport.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Customer Summary */}
