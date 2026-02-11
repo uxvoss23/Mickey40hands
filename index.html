@@ -419,6 +419,16 @@
 
     const HOME_BASE_ADDRESS = "1444 Mountain Air Trail, Fort Worth, TX 76131";
 
+    const API_BASE = '';  // Same origin
+    const apiFetch = async (endpoint, options = {}) => {
+      const response = await fetch(`${API_BASE}/api${endpoint}`, {
+        headers: { 'Content-Type': 'application/json', ...options.headers },
+        ...options
+      });
+      if (!response.ok) throw new Error(`API Error: ${response.status}`);
+      return response.json();
+    };
+
     const CustomerMap = () => {
       // PERFORMANCE: Disable logs in production mode
       const PRODUCTION_MODE = true; // Set to true to boost performance
@@ -743,6 +753,14 @@
           setSheetsConnected(true);
         }
         if (sheetsApiKey) setGoogleApiKey(sheetsApiKey);
+
+        // Auto-load from database on startup
+        setTimeout(async () => {
+          const count = await loadFromDatabase();
+          if (count > 0) {
+            console.log(`📦 Auto-loaded ${count} customers from database`);
+          }
+        }, 500);
       }, []);
 
       // Save data
@@ -4730,6 +4748,20 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         if (profileCustomer && profileCustomer.id === customerId) {
           setProfileCustomer(prev => ({ ...prev, ...updates }));
         }
+
+        // Also save to database
+        try {
+          apiFetch(`/customers/${customerId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
+          }).then(() => {
+            console.log(`💾 Saved update for customer ${customerId} to database`);
+          }).catch(dbErr => {
+            console.error('Failed to save customer update to database:', dbErr);
+          });
+        } catch (dbErr) {
+          console.error('Failed to save customer update to database:', dbErr);
+        }
       };
 
       /**
@@ -5308,6 +5340,84 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         });
       };
 
+      const loadFromDatabase = async () => {
+        try {
+          const data = await apiFetch('/customers?limit=10000');
+          if (data.customers && data.customers.length > 0) {
+            const mappedCustomers = data.customers.map(c => ({
+              id: c.id,
+              name: c.full_name,
+              firstName: c.first_name,
+              lastName: c.last_name,
+              address: c.address,
+              street: c.street,
+              city: c.city,
+              state: c.state,
+              zip: c.zip,
+              lat: c.lat,
+              lng: c.lng,
+              phone: c.phone,
+              email: c.email,
+              secondaryPhones: c.secondary_phones || [],
+              secondaryEmails: c.secondary_emails || [],
+              status: c.status || '',
+              notes: c.notes || '',
+              customerNotes: c.customer_notes || '',
+              panelCount: c.panel_count,
+              totalPanels: c.total_panels,
+              pricingTier: c.pricing_tier,
+              preferredDate: c.preferred_date || '',
+              preferredTimeWindow: c.preferred_time_window || '',
+              scheduledDate: c.scheduled_date || '',
+              scheduledTime: c.scheduled_time || '',
+              solarVerified: c.solar_verified,
+              isRecurring: c.is_recurring,
+              amountPaid: c.amount_paid,
+              tipAmount: c.tip_amount,
+              lastServiceDate: c.last_service_date || '',
+              nextServiceDate: c.next_service_date || '',
+              jobDescription: c.job_description || '',
+              tags: c.tags || '',
+              employee: c.employee || '',
+              existingJob: c.existing_job,
+              routeConfirmed: c.route_confirmed,
+              notesHistory: c.notes_history || [],
+              serviceHistory: [],
+              source: c.source || 'database'
+            }));
+
+            const listId = Date.now() + Math.random();
+            const listName = 'Database Import';
+            const customersForList = mappedCustomers.map(c => ({
+              ...c, fileId: listId, fileName: listName
+            }));
+
+            setSavedLists(prev => {
+              const filtered = prev.filter(l => l.name !== 'Database Import');
+              return [...filtered, {
+                id: listId, name: listName, customers: customersForList,
+                visible: true, count: customersForList.length, type: 'database'
+              }];
+            });
+
+            console.log(`📦 Loaded ${mappedCustomers.length} customers from database`);
+            return mappedCustomers.length;
+          }
+          return 0;
+        } catch (err) {
+          console.error('Failed to load from database:', err);
+          return 0;
+        }
+      };
+
+      const exportToCSV = async () => {
+        try {
+          window.open('/api/export/csv', '_blank');
+        } catch (err) {
+          console.error('Export failed:', err);
+          alert('Export failed');
+        }
+      };
       const syncFromGoogleSheet = async (options = {}) => {
         if (!sheetsConnected || !googleSheetId) {
           console.log('Sheets not connected');
@@ -5704,6 +5814,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               type: 'sheets'
             }]);
 
+
+            // Also save to database
+            try {
+              await apiFetch('/customers/bulk', {
+                method: 'POST',
+                body: JSON.stringify({ customers: newCustomers })
+              });
+              console.log(`💾 Saved ${newCustomers.length} customers to database`);
+            } catch (dbErr) {
+              console.error('Failed to save to database:', dbErr);
+            }
             // Also add to pipelineCustomers so they appear in Pipeline view
             const pipelineEntries = newCustomers.map(c => ({
               ...c,
