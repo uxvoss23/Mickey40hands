@@ -296,7 +296,28 @@ router.post('/bulk', async (req, res) => {
         JSON.stringify(c.notes_history || c.notesHistory || []),
         c.source || ''
       ]);
+      const customerId = result.rows[0].id;
       results.push(result.rows[0]);
+
+      const serviceHistory = c.serviceHistory || c.service_history || [];
+      for (const job of serviceHistory) {
+        await client.query(`
+          INSERT INTO jobs (
+            customer_id, job_description, status, completed_date,
+            amount, tip, notes, is_recurring, panel_count
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+          customerId,
+          job.jobDescription || job.job_description || '',
+          (job.status || '').toLowerCase(),
+          job.date || job.completed_date || '',
+          parseFloat(job.amount) || 0,
+          parseFloat(job.tip) || 0,
+          job.notes || '',
+          job.isRecurring || job.is_recurring || false,
+          parseInt(job.panelCount || job.panel_count) || 0
+        ]);
+      }
     }
 
     await client.query('COMMIT');

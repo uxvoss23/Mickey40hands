@@ -931,10 +931,8 @@
             .replace(/\s+/g, ' ');
           
           if (addressMap.has(normalizedAddress)) {
-            // Address already exists - merge as secondary contact
             const existing = addressMap.get(normalizedAddress);
             
-            // Add secondary phone if different
             if (customer.phone && customer.phone !== existing.phone) {
               if (!existing.secondaryPhones) existing.secondaryPhones = [];
               if (!existing.secondaryPhones.includes(customer.phone)) {
@@ -942,7 +940,6 @@
               }
             }
             
-            // Add secondary email if different
             if (customer.email && customer.email !== existing.email) {
               if (!existing.secondaryEmails) existing.secondaryEmails = [];
               if (!existing.secondaryEmails.includes(customer.email)) {
@@ -950,9 +947,36 @@
               }
             }
             
-            console.log('Merged duplicate address:', customer.address, '- Added secondary contacts');
+            if (customer.jobDescription || customer.job_description || customer.lastServiceDate || customer.last_service_date) {
+              if (!existing.serviceHistory) existing.serviceHistory = [];
+              const newJobDesc = customer.jobDescription || customer.job_description || '';
+              const newJobDate = customer.lastServiceDate || customer.last_service_date || '';
+              const alreadyHasJob = existing.serviceHistory.some(j => j.jobDescription === newJobDesc && j.date === newJobDate);
+              if (!alreadyHasJob) existing.serviceHistory.push({
+                jobDescription: customer.jobDescription || customer.job_description || '',
+                status: customer.status || '',
+                date: customer.lastServiceDate || customer.last_service_date || '',
+                amount: parseFloat(customer.amountPaid || customer.amount_paid || 0) || 0,
+                tip: parseFloat(customer.tipAmount || customer.tip_amount || 0) || 0,
+                panelCount: parseInt(customer.panelCount || customer.panel_count || 0) || 0,
+                isRecurring: customer.isRecurring || customer.is_recurring || false,
+                notes: customer.notes || ''
+              });
+            }
+            
+            console.log('Merged duplicate address:', customer.address, '- Added job to history');
           } else {
-            // First occurrence of this address
+            const jobEntry = {
+              jobDescription: customer.jobDescription || customer.job_description || '',
+              status: customer.status || '',
+              date: customer.lastServiceDate || customer.last_service_date || '',
+              amount: parseFloat(customer.amountPaid || customer.amount_paid || 0) || 0,
+              tip: parseFloat(customer.tipAmount || customer.tip_amount || 0) || 0,
+              panelCount: parseInt(customer.panelCount || customer.panel_count || 0) || 0,
+              isRecurring: customer.isRecurring || customer.is_recurring || false,
+              notes: customer.notes || ''
+            };
+            customer.serviceHistory = (jobEntry.jobDescription || jobEntry.date) ? [jobEntry] : [];
             addressMap.set(normalizedAddress, customer);
           }
         });
@@ -964,6 +988,37 @@
         setCustomers(uniqueCustomers);
         // filteredCustomers will be set by the unified filter useEffect reacting to customers change
       }, [uploadedFiles, savedLists]);
+
+      useEffect(() => {
+        if (!profileCustomer || !profileCustomer.id) return;
+        const fetchJobs = async () => {
+          try {
+            const data = await apiFetch('/jobs?customer_id=' + profileCustomer.id);
+            if (data && data.jobs && data.jobs.length > 0) {
+              const dbJobs = data.jobs.map(j => ({
+                jobDescription: j.job_description || '',
+                status: j.status || '',
+                date: j.completed_date || '',
+                amount: parseFloat(j.amount) || 0,
+                tip: parseFloat(j.tip) || 0,
+                panelCount: j.panel_count || 0,
+                isRecurring: j.is_recurring || false,
+                notes: j.notes || ''
+              }));
+              const existingHistory = profileCustomer.serviceHistory || [];
+              const combined = [...dbJobs];
+              existingHistory.forEach(eh => {
+                const isDup = combined.some(dj => dj.jobDescription === eh.jobDescription && dj.date === eh.date);
+                if (!isDup) combined.push(eh);
+              });
+              setProfileCustomer(prev => ({ ...prev, serviceHistory: combined }));
+            }
+          } catch (err) {
+            console.error('Failed to fetch jobs for customer:', err);
+          }
+        };
+        fetchJobs();
+      }, [profileCustomer?.id]);
 
       // Restore scheduling data from savedRoutes into customers on load
       // This ensures scheduledTime/scheduledDate persist across page reloads
@@ -5721,6 +5776,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     existing.panelCount = rowPanels;
                   }
                   console.log(`🔄 Merged job into ${name}: "${jobDesc}" (${completed}) — ${existing.serviceHistory.length} total jobs`);
+                  if (existing.id && typeof existing.id === 'number') {
+                    apiFetch('/jobs', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        customer_id: existing.id,
+                        job_description: jobEntry.jobDescription,
+                        status: jobEntry.status,
+                        completed_date: jobEntry.date,
+                        amount: jobEntry.amount,
+                        tip: jobEntry.tip,
+                        notes: jobEntry.notes,
+                        is_recurring: false,
+                        panel_count: parseInt(totalPanels) || 0
+                      })
+                    }).catch(err => console.error('Failed to save merged job:', err));
+                  }
                 }
               }
               skipped++;
@@ -6115,7 +6186,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   scheduled_time: c.scheduledTime || '',
                   preferred_date: c.preferredDate || '',
                   preferred_time_window: c.preferredTimeWindow || '',
-                  source: 'csv_upload'
+                  source: 'csv_upload',
+                  serviceHistory: c.serviceHistory || []
                 }));
                 await apiFetch('/customers/bulk', {
                   method: 'POST',
