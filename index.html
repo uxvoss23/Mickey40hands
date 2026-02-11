@@ -570,6 +570,9 @@
         catch { return {}; }
       });
 
+      // Track pending cell edits so refreshes don't overwrite them
+      const pendingEditsRef = useRef(new Map()); // key: "row-col", value: { value, timestamp }
+
       // Export to Google Sheet via Apps Script
       const [appsScriptUrl, setAppsScriptUrl] = useState(() => localStorage.getItem('appsScriptUrl') || '');
       const [lastSheetExport, setLastSheetExport] = useState(() => {
@@ -4181,7 +4184,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       const fetchPipelineSheetData = async () => {
         if (!googleSheetId) return { headers: [], rows: [] };
 
-        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        // Cache-bust to avoid stale Google Sheets CSV responses
+        const baseCsvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        const cacheBuster = `_cb=${Date.now()}`;
+        const csvUrl = baseCsvUrl + (baseCsvUrl.includes('?') ? '&' : '?') + cacheBuster;
         let response;
 
         try {
@@ -4243,14 +4249,41 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         try {
           const { headers, rows } = await fetchPipelineSheetData();
           setSheetHeaders(headers);
-          setSheetData(rows);
+
+          // Expire old pending edits (>15s) and re-apply recent ones
+          const now = Date.now();
+          const PENDING_TTL = 300000; // 5 minutes — covers Google's CSV cache delay
+          const pending = pendingEditsRef.current;
+          for (const [key, edit] of pending) {
+            if (now - edit.timestamp > PENDING_TTL) {
+              pending.delete(key);
+            }
+          }
+
+          // Merge: overlay pending edits onto refreshed rows
+          const mergedRows = rows.map(row => {
+            let modified = false;
+            const newValues = [...row.values];
+            const newData = { ...row.data };
+            for (const [key, edit] of pending) {
+              const [r, c] = key.split('-').map(Number);
+              if (r === row.rowIndex) {
+                newValues[c] = edit.value;
+                if (headers[c]) newData[headers[c]] = edit.value;
+                modified = true;
+              }
+            }
+            return modified ? { ...row, values: newValues, data: newData } : row;
+          });
+
+          setSheetData(mergedRows);
 
           // Pipeline view uses sheetData directly — no push into local customer stores.
           // Local customer data (savedLists, uploadedFiles, savedRoutes, profileCustomer)
           // is owned by the site and never overwritten by sheet refreshes.
 
           setLastSheetSync(new Date());
-          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns (view-only, no local overwrite)`);
+          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns (${pending.size} pending edits preserved)`);
         } catch (error) {
           console.error('Error refreshing pipeline:', error);
         }
@@ -4480,6 +4513,31 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           }
           return row;
         }));
+
+        // Track this edit so the next refresh won't overwrite it
+        pendingEditsRef.current.set(`${rowIndex}-${colIndex}`, {
+          value: newValue,
+          timestamp: Date.now()
+        });
+
+        // Push the cell edit to Google Sheets via Apps Script
+        if (appsScriptUrl) {
+          try {
+            await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'cellUpdate',
+                row: rowIndex,
+                col: colIndex + 1, // Convert to 1-indexed for Google Sheets
+                value: newValue
+              })
+            });
+          } catch (err) {
+            console.error('Failed to sync cell edit to sheet:', err);
+          }
+        }
 
         // Map the edited column to customer properties and propagate
         const headerName = sheetHeaders[colIndex];
@@ -4720,10 +4778,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
           const newSheetRows = [];
           currentRows.forEach(row => {
-            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
-            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
-            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
-            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] || '' : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] || '' : '').toLowerCase().trim();
+            const rowName = (nameCol >= 0 ? row.values[nameCol] || '' : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] || '' : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             const nameAddressKey = `${rowName}|${rowAddress}`;
 
             const existsLocally =
