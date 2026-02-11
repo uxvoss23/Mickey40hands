@@ -4481,6 +4481,25 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           return row;
         }));
 
+        // Push the cell edit to Google Sheets via Apps Script
+        if (appsScriptUrl) {
+          try {
+            await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'cellUpdate',
+                row: rowIndex,
+                col: colIndex + 1, // Convert to 1-indexed for Google Sheets
+                value: newValue
+              })
+            });
+          } catch (err) {
+            console.error('Failed to sync cell edit to sheet:', err);
+          }
+        }
+
         // Map the edited column to customer properties and propagate
         const headerName = sheetHeaders[colIndex];
         const propMappings = mapSheetHeaderToCustomerProps(headerName);
