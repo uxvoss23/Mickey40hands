@@ -15,7 +15,10 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use((req, res, next) => {
+  res.removeHeader('X-Frame-Options');
   if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  } else {
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   }
   next();
