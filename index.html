@@ -1522,6 +1522,17 @@
           }
         };
         
+        const handleViewProfile = (event) => {
+          const customerId = event.detail;
+          const customer = customers.find(c => c.id === customerId);
+          if (customer) {
+            setSelectedCustomer(customer);
+            if (mapInstanceRef.current) {
+              mapInstanceRef.current.closePopup();
+            }
+          }
+        };
+
         const handleMarkRecurring = (event) => {
           const customerId = event.detail;
           const customer = customers.find(c => c.id === customerId);
@@ -1600,6 +1611,7 @@
         };
         
         window.addEventListener('addToRoute', handleAddToRoute);
+        window.addEventListener('viewCustomerProfile', handleViewProfile);
         window.addEventListener('verifySolar', handleVerifySolar);
         window.addEventListener('markVerified', handleMarkVerified);
         window.addEventListener('markRecurring', handleMarkRecurring);
@@ -1607,6 +1619,7 @@
         
         return () => {
           window.removeEventListener('addToRoute', handleAddToRoute);
+          window.removeEventListener('viewCustomerProfile', handleViewProfile);
           window.removeEventListener('verifySolar', handleVerifySolar);
           window.removeEventListener('markVerified', handleMarkVerified);
           window.removeEventListener('markRecurring', handleMarkRecurring);
@@ -1970,8 +1983,11 @@
                 ` : ''}
                 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-
-
+                  <button 
+                    onclick="window.dispatchEvent(new CustomEvent('viewCustomerProfile', {detail: '${customer.id}'}))"
+                    style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
+                    👤 View Profile
+                  </button>
                   <a 
                     href="https://www.google.com/maps/@${customer.lat},${customer.lng},20z/data=!3m1!1e3"
                     target="_blank"
