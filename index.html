@@ -942,7 +942,7 @@
           }
         });
         
-        const uniqueCustomers = Array.from(addressMap.values());
+        const uniqueCustomers = Array.from(addressMap.values()).map(c => ({ ...c, status: (c.status || "").toLowerCase() }));
         
         console.log(`Loaded ${allCustomers.length} total customers, ${uniqueCustomers.length} unique by address (with merged contacts)`);
         
