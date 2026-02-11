@@ -4342,6 +4342,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         if (/solar\s*verified|^verified$/i.test(h)) return [{ prop: 'solarVerified', transform: v => v === 'yes' ? 'yes' : (v === 'no' ? 'no' : null) }];
         if (/^tags|job\s*tags/i.test(h)) return [{ prop: 'tags', transform: identity }];
         if (/^employee|assigned/i.test(h)) return [{ prop: 'employee', transform: identity }];
+        if (/^lat|latitude/i.test(h)) return [{ prop: 'lat', transform: toFloat }];
+        if (/^lng|lon|longitude/i.test(h)) return [{ prop: 'lng', transform: toFloat }];
         return [];
       };
 
