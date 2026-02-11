@@ -576,6 +576,18 @@
         catch { return {}; }
       });
 
+      // Track unsynced local changes - blocks import until all changes are written back to sheet
+      const [unsyncedChanges, setUnsyncedChanges] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('unsyncedChanges') || '{}'); }
+        catch { return {}; }
+      });
+      const [lastSyncCompleted, setLastSyncCompleted] = useState(() => {
+        const saved = localStorage.getItem('lastSyncCompleted');
+        return saved ? parseInt(saved) : 0;
+      });
+      const syncWriteQueueRef = useRef([]); // Queue of write-back operations
+      const syncWritingRef = useRef(false); // Whether a write-back is in progress
+
       // Track pending cell edits so refreshes don't overwrite them
       const pendingEditsRef = useRef(new Map()); // key: "row-col", value: { value, timestamp }
 
@@ -750,6 +762,16 @@
         if (appsScriptUrl) localStorage.setItem('appsScriptUrl', appsScriptUrl);
       }, [appsScriptUrl]);
 
+      // Save unsyncedChanges to localStorage
+      useEffect(() => {
+        localStorage.setItem('unsyncedChanges', JSON.stringify(unsyncedChanges));
+      }, [unsyncedChanges]);
+
+      // Save lastSyncCompleted to localStorage
+      useEffect(() => {
+        localStorage.setItem('lastSyncCompleted', String(lastSyncCompleted));
+      }, [lastSyncCompleted]);
+
       // Update calculated price when panel count or tier changes
       useEffect(() => {
         if (!jobForm.useCustomPrice && jobForm.panelCount) {
@@ -768,7 +790,7 @@
         if (!autoSyncSheets || !sheetsConnected) return;
         
         const interval = setInterval(() => {
-          syncFromGoogleSheet();
+          syncFromGoogleSheet({ silent: true });
         }, 30000); // Every 30 seconds
         
         return () => clearInterval(interval);
@@ -788,11 +810,16 @@
       };
 
       // Get customers from saved routes for a date range
+      // Includes sentToTech routes for past dates (history/reporting)
       const getScheduledCustomersForRange = (startDate, endDate) => {
         const result = new Map(); // customerId -> { customer, routeDate, routeName, dayOfWeek }
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         savedRoutes.forEach(sr => {
-          if (sr.sentToTech) return;
           const routeDate = new Date(sr.scheduledDate);
+          // For future dates, skip sentToTech (those customers are unscheduled now)
+          // For past dates, include sentToTech (historical record for reporting)
+          if (sr.sentToTech && routeDate >= today) return;
           if (routeDate >= startDate && routeDate <= endDate) {
             sr.customers.forEach(c => {
               if (c.lat && c.lng) {
@@ -2202,6 +2229,14 @@
             rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23, 59, 59, 999);
           }
 
+          // Cap range to 3 months from today max (far-future recurring jobs are hidden)
+          const threeMonthsOut = new Date();
+          threeMonthsOut.setMonth(threeMonthsOut.getMonth() + 3);
+          threeMonthsOut.setHours(23, 59, 59, 999);
+          if (rangeEnd > threeMonthsOut) {
+            rangeEnd = threeMonthsOut;
+          }
+
           // Get scheduled customers from saved routes in this range
           const scheduledInRange = getScheduledCustomersForRange(rangeStart, rangeEnd);
           const scheduledIds = new Set(scheduledInRange.map(c => c.id));
@@ -2214,7 +2249,7 @@
 
           // Filter to scheduled customers (with day info), optionally include unscheduled
           if (showNeedScheduling) {
-            results = results.filter(c => scheduledIds.has(c.id) || c.status === 'unscheduled' || !c.status);
+            results = results.filter(c => scheduledIds.has(c.id) || c.status === 'unscheduled');
             // Merge day info into scheduled customers
             results = results.map(c => {
               const info = dayInfoMap.get(c.id);
@@ -2227,6 +2262,12 @@
               return info ? { ...c, ...info } : c;
             });
           }
+        } else if (statusFilter === 'completed') {
+          // "Completed" is a filter view, not a status - shows customers with service history
+          results = results.filter(c => c.lastServiceDate);
+        } else if (statusFilter === 'unscheduled') {
+          // Only show customers explicitly marked as needing scheduling
+          results = results.filter(c => c.status === 'unscheduled');
         } else if (statusFilter !== 'all') {
           results = results.filter(c => c.status === statusFilter);
         }
@@ -2866,7 +2907,7 @@
             return {
               ...c,
               lastServiceDate: scheduledDate, // Use the scheduled date from the route, not today
-              status: 'unscheduled', // Drop scheduled status when sent to tech
+              status: '', // Clear status - job complete (recurring will get re-scheduled via saved routes)
               routeConfirmed: false,
               confirmedRouteName: null,
               scheduledDate: null,
@@ -2892,7 +2933,7 @@
         // Track local overrides so sheet sync doesn't overwrite these changes
         routeCustomers.forEach(rc => {
           trackLocalOverride(rc.id, 'lastServiceDate', scheduledDate);
-          trackLocalOverride(rc.id, 'status', 'unscheduled');
+          trackLocalOverride(rc.id, 'status', '');
         });
 
         // Mark route as sent
@@ -3314,7 +3355,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   email: email,
                   phone: phone,
                   panelCount: '0',
-                  status: customer['status'] || 'unscheduled', // Default to unscheduled
+                  status: customer['status'] || '', // Default: blank (no action needed)
                   preferredDate: customer['preferreddate'] || customer['preferredservicedate'] || '',
                   preferredTimeWindow: customer['preferredtimewindow'] || customer['preferredtime'] || customer['arrivalwindow'] || '',
                   scheduledDate: customer['scheduleddate'] || '',
@@ -4257,7 +4298,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             city: getValue('city'),
             state: getValue('state'),
             zip: getValue('zip'),
-            status: getValue('status') || 'Not serviced',
+            status: getValue('status') || '',
             lat: parseFloat(getValue('lat')) || null,
             lng: parseFloat(getValue('lng')) || null,
             latitude: parseFloat(getValue('lat')) || null,
@@ -4517,10 +4558,106 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
+       * Write a customer field update back to Google Sheet via Apps Script.
+       * Queues writes and processes them sequentially to avoid race conditions.
+       * Tracks unsynced changes so imports are blocked until all writes complete.
+       */
+      const writeBackToSheet = (customer, updates) => {
+        if (!appsScriptUrl) return; // No Apps Script URL configured, skip write-back
+
+        // Build the write payload - include identifiers so Apps Script can find the row
+        const payload = {
+          type: 'customerUpdate',
+          match: {
+            name: customer.name || `${customer.firstname || ''} ${customer.lastname || ''}`.trim(),
+            phone: customer.phone || '',
+            email: customer.email || '',
+            address: customer.address || customer.street || ''
+          },
+          updates: {}
+        };
+
+        // Map customer properties to sheet column names
+        Object.entries(updates).forEach(([prop, value]) => {
+          const headers = mapCustomerPropToSheetHeaders(prop);
+          if (headers.length > 0) {
+            payload.updates[headers[0]] = String(value ?? '');
+          }
+        });
+
+        // Only write if there are actual sheet-mappable updates
+        if (Object.keys(payload.updates).length === 0) return;
+
+        // Track as unsynced
+        const changeKey = `${customer.id}_${Date.now()}`;
+        setUnsyncedChanges(prev => ({
+          ...prev,
+          [changeKey]: { customerId: customer.id, updates: payload.updates, timestamp: Date.now() }
+        }));
+
+        // Add to write queue
+        syncWriteQueueRef.current.push({ payload, changeKey });
+        processWriteQueue();
+      };
+
+      const processWriteQueue = async () => {
+        if (syncWritingRef.current) return; // Already processing
+        syncWritingRef.current = true;
+
+        while (syncWriteQueueRef.current.length > 0) {
+          const { payload, changeKey } = syncWriteQueueRef.current.shift();
+          try {
+            await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            console.log(`✅ Synced to sheet: ${payload.match.name} → ${Object.keys(payload.updates).join(', ')}`);
+            // Remove from unsynced on success
+            setUnsyncedChanges(prev => {
+              const next = { ...prev };
+              delete next[changeKey];
+              return next;
+            });
+            setLastSyncCompleted(Date.now());
+          } catch (err) {
+            console.error(`❌ Write-back failed for ${payload.match.name}:`, err);
+            // Leave in unsyncedChanges so import stays blocked
+          }
+        }
+        syncWritingRef.current = false;
+      };
+
+      /**
+       * Check if import is safe: no unsynced changes AND 30s cooldown since last sync.
+       * Returns { safe: boolean, reason: string }
+       */
+      const canImportFromSheet = () => {
+        const unsyncedCount = Object.keys(unsyncedChanges).length;
+        if (unsyncedCount > 0) {
+          return { safe: false, reason: `${unsyncedCount} local change${unsyncedCount !== 1 ? 's' : ''} haven't been synced to the sheet yet. Please wait for sync to complete.` };
+        }
+        const timeSinceSync = Date.now() - lastSyncCompleted;
+        const COOLDOWN_MS = 30000; // 30 seconds
+        if (lastSyncCompleted > 0 && timeSinceSync < COOLDOWN_MS) {
+          const remaining = Math.ceil((COOLDOWN_MS - timeSinceSync) / 1000);
+          return { safe: false, reason: `Waiting for sheet cache to update. Import available in ${remaining}s.` };
+        }
+        return { safe: true, reason: '' };
+      };
+
+      /**
        * Apply customer property updates across all data stores:
        * savedLists, uploadedFiles, savedRoutes, pipelineCustomers, and sheetData.
+       * Also writes changes back to Google Sheet via Apps Script.
        */
       const propagateCustomerUpdate = (customerId, updates) => {
+        // Write back to Google Sheet
+        const customer = customers.find(c => c.id === customerId);
+        if (customer) {
+          writeBackToSheet(customer, updates);
+        }
         // Update savedLists (triggers customers rebuild via useEffect)
         setSavedLists(prev => prev.map(list => ({
           ...list,
@@ -4771,7 +4908,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           // Prepare row data matching user's EXACT column order
           const rowData = [
             jobData?.jobType || 'Panel Cleaning',                          // 1. Job Description
-            customerData.status || 'Not serviced',                         // 2. Job Status
+            customerData.status || '',                                      // 2. Job Status
             `${customerData.firstname} ${customerData.lastname}`,          // 3. Customer Name
             customerData.address || '',                                    // 4. Address (full)
             customerData.street || '',                                     // 5. Street
@@ -5120,7 +5257,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         
         // Load some unscheduled (for preview)
         const unscheduled = await queryGoogleSheet({
-          status: 'Not serviced',
+          status: 'unscheduled',
           limit: 500,
           offset: 0
         });
@@ -5174,6 +5311,15 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       const syncFromGoogleSheet = async (options = {}) => {
         if (!sheetsConnected || !googleSheetId) {
           console.log('Sheets not connected');
+          return;
+        }
+
+        // IMPORT GUARD: Block import if there are unsynced local changes
+        const importCheck = canImportFromSheet();
+        if (!importCheck.safe && !options.forceImport) {
+          if (!options.silent) {
+            alert(`⚠️ Import blocked\n\n${importCheck.reason}\n\nYour local changes must be saved to the sheet first to prevent data loss.`);
+          }
           return;
         }
 
@@ -5439,7 +5585,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               amount: parseFloat(amount) || 0,
               tip: parseFloat(tip) || 0,
               notes: customerNotes || '',
-              status: status || (completed ? 'Completed' : 'unscheduled')
+              status: status || 'completed'
             };
 
             if (isDuplicate) {
@@ -5507,7 +5653,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(totalPanels) || 0,
               panelCount: parseInt(totalPanels) || 0,
               name: `${firstname} ${lastname}`.trim(),
-              status: (status && status.toLowerCase() === 'scheduled') ? 'scheduled' : 'unscheduled', // Use sheet status if 'scheduled', otherwise 'unscheduled'
+              status: status || '',
               jobDescription: jobDesc || '',
               isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
@@ -5647,7 +5793,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(jobForm.panelCount) || 0,
               lastServiceDate: '',
               amountPaid: 0,
-              status: 'Not serviced', // Default status
+              status: '', // Default: no status (blank = no action needed)
               existingJob: false,
               isRecurring: jobForm.isRecurring,
               solarVerified: null,
@@ -7540,25 +7686,31 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       >
                         {sheetSyncing ? '⏳...' : '🔗 Test'}
                       </button>
-                      {sheetsConnected && (
-                        <button
-                          onClick={() => syncFromGoogleSheet()}
-                          disabled={sheetSyncing}
-                          style={{
-                            flex: 1,
-                            padding: '8px',
-                            background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                            border: 'none',
-                            borderRadius: '6px',
-                            color: '#fff',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: 'pointer'
-                          }}
-                        >
-                          📥 Import
-                        </button>
-                      )}
+                      {sheetsConnected && (() => {
+                        const importCheck = canImportFromSheet();
+                        return (
+                          <button
+                            onClick={() => syncFromGoogleSheet()}
+                            disabled={sheetSyncing}
+                            title={importCheck.safe ? 'Import customers from Google Sheet' : importCheck.reason}
+                            style={{
+                              flex: 1,
+                              padding: '8px',
+                              background: importCheck.safe
+                                ? 'linear-gradient(135deg, #8b5cf6, #7c3aed)'
+                                : 'rgba(239, 68, 68, 0.3)',
+                              border: importCheck.safe ? 'none' : '1px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: '6px',
+                              color: '#fff',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            {!importCheck.safe ? '⚠️ ' : '📥 '}Import
+                          </button>
+                        );
+                      })()}
                     </div>
 
                     {/* Export to Sheet Section */}
@@ -7603,6 +7755,59 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             Last export: {lastSheetExport.toLocaleString()}
                           </div>
                         )}
+                        {/* Sync status indicator */}
+                        {(() => {
+                          const unsyncedCount = Object.keys(unsyncedChanges).length;
+                          if (unsyncedCount > 0) {
+                            return (
+                              <div style={{
+                                marginTop: '6px',
+                                padding: '6px 10px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                fontSize: '10px',
+                                color: '#fca5a5',
+                                textAlign: 'center'
+                              }}>
+                                ⏳ {unsyncedCount} change{unsyncedCount !== 1 ? 's' : ''} syncing to sheet...
+                                <br/>
+                                <span style={{ fontSize: '9px', color: '#94a3b8' }}>Import blocked until sync completes</span>
+                              </div>
+                            );
+                          }
+                          const importCheck = canImportFromSheet();
+                          if (!importCheck.safe) {
+                            return (
+                              <div style={{
+                                marginTop: '6px',
+                                padding: '6px 10px',
+                                background: 'rgba(234, 179, 8, 0.1)',
+                                border: '1px solid rgba(234, 179, 8, 0.3)',
+                                borderRadius: '6px',
+                                fontSize: '10px',
+                                color: '#fbbf24',
+                                textAlign: 'center'
+                              }}>
+                                ⏳ Waiting for sheet cache to update...
+                              </div>
+                            );
+                          }
+                          if (appsScriptUrl) {
+                            return (
+                              <div style={{
+                                marginTop: '6px',
+                                padding: '4px 10px',
+                                fontSize: '9px',
+                                color: '#4ade80',
+                                textAlign: 'center'
+                              }}>
+                                ✓ All changes synced to sheet
+                              </div>
+                            );
+                          }
+                          return null;
+                        })()}
                       </div>
                     )}
                   </div>
@@ -7717,7 +7922,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       {[
                         { value: 'all', label: 'All' },
                         { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
-                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' },
+                        { value: 'completed', label: 'Completed', color: '#22c55e' }
                       ].map(s => (
                         <button
                           key={s.value}
