@@ -481,6 +481,7 @@
       const [sortOrder, setSortOrder] = useState('asc'); // 'asc', 'desc'
       const [selectedDate, setSelectedDate] = useState(new Date());
       const [savedViewDays, setSavedViewDays] = useState({}); // Track which days show saved view: { 'dateString': true/false }
+      const [selectedRouteIndexByDay, setSelectedRouteIndexByDay] = useState({}); // Track which route is selected for each day: { 'dateString': 0, 1, 2... }
       const [weekStart, setWeekStart] = useState(() => {
         const today = new Date();
         const day = today.getDay();
@@ -569,12 +570,22 @@
       const [lastSheetSync, setLastSheetSync] = useState(null);
       const [sheetSyncing, setSheetSyncing] = useState(false);
 
-      // Track local overrides so sheet sync doesn't overwrite site changes
-      // (e.g., lastServiceDate updated by emailRouteToTech stays protected)
+      // Track local overrides (kept for audit trail, not actively used with one-way import)
       const [localOverrides, setLocalOverrides] = useState(() => {
         try { return JSON.parse(localStorage.getItem('localOverrides') || '{}'); }
         catch { return {}; }
       });
+
+      // Track pending cell edits so refreshes don't overwrite them
+      const pendingEditsRef = useRef(new Map()); // key: "row-col", value: { value, timestamp }
+
+      // Export to Google Sheet via Apps Script
+      const [appsScriptUrl, setAppsScriptUrl] = useState(() => localStorage.getItem('appsScriptUrl') || '');
+      const [lastSheetExport, setLastSheetExport] = useState(() => {
+        const saved = localStorage.getItem('lastSheetExport');
+        return saved ? new Date(saved) : null;
+      });
+      const [sheetExporting, setSheetExporting] = useState(false);
 
       // Pipeline Google Sheets Live Sync
       const [sheetHeaders, setSheetHeaders] = useState([]); // Actual column headers from Google Sheet
@@ -615,6 +626,7 @@
       
       const mapRef = useRef(null);
       const mapInstanceRef = useRef(null);
+      const prevSelectedDateRef = useRef(null);
       const markerClusterRef = useRef(null);
       const heatLayerRef = useRef(null);
       const radiusCircleRef = useRef(null);
@@ -732,6 +744,11 @@
       useEffect(() => {
         localStorage.setItem('localOverrides', JSON.stringify(localOverrides));
       }, [localOverrides]);
+
+      // Save appsScriptUrl to localStorage
+      useEffect(() => {
+        if (appsScriptUrl) localStorage.setItem('appsScriptUrl', appsScriptUrl);
+      }, [appsScriptUrl]);
 
       // Update calculated price when panel count or tier changes
       useEffect(() => {
@@ -948,6 +965,53 @@
         }
       }, [customers.length, savedRoutes.length]);
 
+      // Clean up orphaned scheduling data when changing dates (edit mode cleanup)
+      useEffect(() => {
+        const currentDateKey = selectedDate.toDateString();
+        const prevDateKey = prevSelectedDateRef.current;
+
+        // If we changed dates and were not in saved view on the previous date
+        if (prevDateKey && prevDateKey !== currentDateKey && savedViewDays[prevDateKey] !== true) {
+          // Find saved routes for the previous date
+          const savedRoutesForPrevDay = savedRoutes.filter(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === prevDateKey;
+          });
+
+          // Get all customer IDs that are in saved routes for that day
+          const savedCustomerIds = new Set();
+          savedRoutesForPrevDay.forEach(r => {
+            if (r.customers) {
+              r.customers.forEach(c => savedCustomerIds.add(c.id));
+            }
+          });
+
+          // Clear scheduling for customers that were scheduled for prev day but aren't in any saved route
+          setCustomers(prev => prev.map(c => {
+            if (!c.scheduledDate) return c;
+            const custDate = new Date(c.scheduledDate);
+            if (custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id)) {
+              // This customer was scheduled for prev day but not in any saved route - orphaned
+              return {
+                ...c,
+                scheduledDate: null,
+                scheduledTime: null,
+                status: 'unscheduled',
+                routeConfirmed: false
+              };
+            }
+            return c;
+          }));
+
+          // Clear routesByDay for previous date
+          setRoutesByDay(prev => ({ ...prev, [prevDateKey]: [] }));
+          setEditingSavedRouteId(null);
+        }
+
+        // Update the ref for next change
+        prevSelectedDateRef.current = currentDateKey;
+      }, [selectedDate]);
+
       // NOTE: All customer filtering is handled in the unified filter useEffect below (search for "UNIFIED FILTER")
       
       // Calculate statistics
@@ -1108,7 +1172,7 @@
         }
         setReferencePoint(null);
         setReferenceAddress('');
-        // Filtering handled by unified filter useEffect reacting to referencePoint change
+        // Filtering handled by unified filter useEffect
       };
 
       // Clear drawn area
@@ -1119,6 +1183,20 @@
         setDrawnPolygon(null);
         setDrawnArea(null);
         setDrawMode(false);
+        // Reset filtered customers if no other filters active
+        if (!referencePoint) {
+          setFilteredCustomers(customers);
+        }
+      };
+
+      // Completely exit radius mode and reset view
+      const exitRadiusMode = () => {
+        clearRadius();
+        clearDrawnArea();
+        setRadiusMode(false);
+        setAwaitingMapClick(false);
+        setLastServiceFilter('');
+        setFilteredCustomers(customers);
       };
 
       // Drawing state for freehand polygon
@@ -2639,6 +2717,26 @@
       };
 
       const scheduleCustomerToTimeSlot = (customer, date, timeSlot) => {
+        // Check if customer is already on a DIFFERENT saved route for this day
+        const dateKey = date.toDateString();
+        const routesForDay = savedRoutes.filter(r => {
+          const rDate = new Date(r.scheduledDate);
+          return rDate.toDateString() === dateKey;
+        });
+
+        // If editing an existing route, exclude it from the check
+        const otherRoutesForDay = routesForDay.filter(r => r.id !== editingSavedRouteId);
+
+        // Check if customer is on any of the other routes for this day
+        const conflictingRoute = otherRoutesForDay.find(r =>
+          r.customers && r.customers.some(c => c.id === customer.id)
+        );
+
+        if (conflictingRoute) {
+          alert(`${customer.name} is already scheduled on "${conflictingRoute.name}" for this day. A customer cannot be on multiple routes for the same day.`);
+          return;
+        }
+
         setCustomers(prev => {
           // Check if customer already has a time slot on this day
           const existingCustomer = prev.find(c => c.id === customer.id);
@@ -4182,7 +4280,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       const fetchPipelineSheetData = async () => {
         if (!googleSheetId) return { headers: [], rows: [] };
 
-        const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        // Cache-bust to avoid stale Google Sheets CSV responses
+        const baseCsvUrl = getGoogleSheetsCsvUrl(googleSheetId);
+        const cacheBuster = `_cb=${Date.now()}`;
+        const csvUrl = baseCsvUrl + (baseCsvUrl.includes('?') ? '&' : '?') + cacheBuster;
         let response;
 
         try {
@@ -4217,7 +4318,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
-       * Track a local override for a customer field so sheet sync won't overwrite it
+       * Track a local override for a customer field.
+       * NOTE: With one-way import architecture, sheet refreshes no longer overwrite local data,
+       * so these overrides are stored but not actively checked. Kept for potential future use.
        */
       const trackLocalOverride = (customerId, fieldName, value) => {
         setLocalOverrides(prev => ({
@@ -4231,9 +4334,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
       /**
        * Refresh Pipeline data from Google Sheets.
-       * Google Sheets is the single source of truth. On each refresh:
-       * - Fresh sheet data replaces sheetData (pipeline view)
-       * - Changes from the sheet flow into all site views (map, recurring, saved routes, profile)
+       * ONE-WAY IMPORT: Sheet is for intake only; local state is authoritative after import.
+       * - Fresh sheet data replaces sheetData (pipeline table view only)
+       * - Local customer stores (map, routes, profiles) are NEVER overwritten by sheet data
+       * - New customers from the sheet are imported via syncFromGoogleSheet, not here
        */
       const refreshPipelineData = async () => {
         if (!sheetsConnected || !googleSheetId) return;
@@ -4241,98 +4345,41 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         try {
           const { headers, rows } = await fetchPipelineSheetData();
           setSheetHeaders(headers);
-          setSheetData(rows);
 
-          // Push fresh sheet data into all customer stores across the site
-          const getColIdx = (possibleNames) => {
-            for (const name of possibleNames) {
-              const idx = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
-              if (idx !== -1) return idx;
+          // Expire old pending edits (>15s) and re-apply recent ones
+          const now = Date.now();
+          const PENDING_TTL = 300000; // 5 minutes — covers Google's CSV cache delay
+          const pending = pendingEditsRef.current;
+          for (const [key, edit] of pending) {
+            if (now - edit.timestamp > PENDING_TTL) {
+              pending.delete(key);
             }
-            return -1;
-          };
-
-          const nameCol = getColIdx(['Customer Name', 'Name']);
-          const addressCol = getColIdx(['Address']);
-          const phoneCol = getColIdx(['Phone', 'Mobile', 'Customer Mobile']);
-          const emailCol = getColIdx(['Email', 'Customer Email']);
-
-          // For each row, find matching customer and push sheet values into the site
-          const customerUpdatesFromSheet = [];
-          rows.forEach(row => {
-            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
-            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
-            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
-
-            const matched = customers.find(c => {
-              const cName = (c.name || '').toLowerCase().trim();
-              const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-              if (rowName && rowAddress && cName === rowName && cAddr === rowAddress) return true;
-              if (rowPhone && c.phone && rowPhone === c.phone) return true;
-              if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
-              return false;
-            });
-
-            if (matched) {
-              const updates = {};
-              const customerOverrides = localOverrides[matched.id] || {};
-              headers.forEach((header, colIdx) => {
-                const mappings = mapSheetHeaderToCustomerProps(header);
-                mappings.forEach(({ prop, transform }) => {
-                  // Skip fields that were overridden locally (site changes take priority)
-                  if (customerOverrides[prop]) return;
-                  const sheetVal = row.values[colIdx] || '';
-                  if (sheetVal !== '') {
-                    updates[prop] = transform(sheetVal);
-                  }
-                });
-              });
-
-              if (Object.keys(updates).length > 0) {
-                customerUpdatesFromSheet.push({ customerId: matched.id, updates });
-              }
-            }
-          });
-
-          // Apply sheet data to all customer stores
-          if (customerUpdatesFromSheet.length > 0) {
-            setSavedLists(prev => prev.map(list => ({
-              ...list,
-              customers: list.customers.map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            setUploadedFiles(prev => prev.map(file => ({
-              ...file,
-              customers: file.customers.map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            setSavedRoutes(prev => prev.map(route => ({
-              ...route,
-              customers: (route.customers || []).map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            if (profileCustomer) {
-              const entry = customerUpdatesFromSheet.find(u => u.customerId === profileCustomer.id);
-              if (entry) {
-                setProfileCustomer(prev => prev ? { ...prev, ...entry.updates } : prev);
-              }
-            }
-
-            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets → site`);
           }
 
+          // Merge: overlay pending edits onto refreshed rows
+          const mergedRows = rows.map(row => {
+            let modified = false;
+            const newValues = [...row.values];
+            const newData = { ...row.data };
+            for (const [key, edit] of pending) {
+              const [r, c] = key.split('-').map(Number);
+              if (r === row.rowIndex) {
+                newValues[c] = edit.value;
+                if (headers[c]) newData[headers[c]] = edit.value;
+                modified = true;
+              }
+            }
+            return modified ? { ...row, values: newValues, data: newData } : row;
+          });
+
+          setSheetData(mergedRows);
+
+          // Pipeline view uses sheetData directly — no push into local customer stores.
+          // Local customer data (savedLists, uploadedFiles, savedRoutes, profileCustomer)
+          // is owned by the site and never overwritten by sheet refreshes.
+
           setLastSheetSync(new Date());
-          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
+          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns (${pending.size} pending edits preserved)`);
         } catch (error) {
           console.error('Error refreshing pipeline:', error);
         }
@@ -4416,10 +4463,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
         const emailIdx = findSheetHeaderIndex(['Email', 'Customer Email']);
 
-        const rowName = (nameIdx >= 0 ? rowData.values[nameIdx] : '').toLowerCase().trim();
-        const rowAddress = (addressIdx >= 0 ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-        const rowPhone = (phoneIdx >= 0 ? rowData.values[phoneIdx] : '').trim();
-        const rowEmail = (emailIdx >= 0 ? rowData.values[emailIdx] : '').toLowerCase().trim();
+        const rowName = String(nameIdx >= 0 && rowData.values[nameIdx] ? rowData.values[nameIdx] : '').toLowerCase().trim();
+        const rowAddress = String(addressIdx >= 0 && rowData.values[addressIdx] ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const rowPhone = String(phoneIdx >= 0 && rowData.values[phoneIdx] ? rowData.values[phoneIdx] : '').trim();
+        const rowEmail = String(emailIdx >= 0 && rowData.values[emailIdx] ? rowData.values[emailIdx] : '').toLowerCase().trim();
 
         // Match by name+address first, then by phone, then by email
         return customers.find(c => {
@@ -4433,8 +4480,39 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
+       * Map customer property names back to possible sheet header names
+       */
+      const mapCustomerPropToSheetHeaders = (propName) => {
+        const propMap = {
+          name: ['Customer Name', 'Name'],
+          email: ['Email', 'Customer Email'],
+          phone: ['Phone', 'Mobile', 'Customer Mobile'],
+          address: ['Address'],
+          street: ['Street'],
+          city: ['City'],
+          state: ['State'],
+          zip: ['Zip', 'Zipcode'],
+          totalPanels: ['Panels', 'Number of Panels', 'Panel Count'],
+          panelCount: ['Panels', 'Number of Panels', 'Panel Count'],
+          status: ['Job Status', 'Status'],
+          jobDescription: ['Job Description', 'Description'],
+          amountPaid: ['Amount', 'Job Amount'],
+          tipAmount: ['Tip'],
+          isRecurring: ['Recurring'],
+          recurring: ['Recurring'],
+          lastServiceDate: ['Completed', 'Completed Date', 'Job Completed'],
+          nextServiceDate: ['Next Service', 'Upcoming Date'],
+          notes: ['Notes', 'Customer Notes'],
+          solarVerified: ['Solar Verified', 'Verified'],
+          tags: ['Tags', 'Job Tags'],
+          employee: ['Employee', 'Assigned']
+        };
+        return propMap[propName] || [];
+      };
+
+      /**
        * Apply customer property updates across all data stores:
-       * savedLists, uploadedFiles, savedRoutes, and pipelineCustomers.
+       * savedLists, uploadedFiles, savedRoutes, pipelineCustomers, and sheetData.
        */
       const propagateCustomerUpdate = (customerId, updates) => {
         // Update savedLists (triggers customers rebuild via useEffect)
@@ -4466,6 +4544,45 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           c.id === customerId ? { ...c, ...updates } : c
         ));
 
+        // Update sheetData (Pipeline view) - sync changes back to sheet data
+        setSheetData(prev => {
+          const customer = customers.find(c => c.id === customerId);
+          if (!customer) return prev;
+
+          return prev.map(row => {
+            // Match row to customer by name+address or phone
+            const nameIdx = findSheetHeaderIndex(['Customer Name', 'Name']);
+            const addressIdx = findSheetHeaderIndex(['Address']);
+            const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
+
+            const rowName = (nameIdx >= 0 && row.values[nameIdx] ? String(row.values[nameIdx]) : '').toLowerCase().trim();
+            const rowAddress = (addressIdx >= 0 && row.values[addressIdx] ? String(row.values[addressIdx]) : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneIdx >= 0 && row.values[phoneIdx] ? String(row.values[phoneIdx]) : '').trim();
+
+            const cName = (customer.name || '').toLowerCase().trim();
+            const cAddress = (customer.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const isMatch = (rowName && rowAddress && cName === rowName && cAddress === rowAddress) ||
+                           (rowPhone && customer.phone && rowPhone === customer.phone);
+
+            if (!isMatch) return row;
+
+            // Update matching row with new values
+            const newValues = [...row.values];
+            const newData = { ...row.data };
+
+            Object.entries(updates).forEach(([prop, value]) => {
+              const possibleHeaders = mapCustomerPropToSheetHeaders(prop);
+              const headerIdx = findSheetHeaderIndex(possibleHeaders);
+              if (headerIdx >= 0) {
+                newValues[headerIdx] = String(value || '');
+                newData[sheetHeaders[headerIdx]] = String(value || '');
+              }
+            });
+
+            return { ...row, values: newValues, data: newData };
+          });
+        });
+
         // Update profileCustomer if it's currently open
         if (profileCustomer && profileCustomer.id === customerId) {
           setProfileCustomer(prev => ({ ...prev, ...updates }));
@@ -4493,6 +4610,31 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           return row;
         }));
 
+        // Track this edit so the next refresh won't overwrite it
+        pendingEditsRef.current.set(`${rowIndex}-${colIndex}`, {
+          value: newValue,
+          timestamp: Date.now()
+        });
+
+        // Push the cell edit to Google Sheets via Apps Script
+        if (appsScriptUrl) {
+          try {
+            await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'cellUpdate',
+                row: rowIndex,
+                col: colIndex + 1, // Convert to 1-indexed for Google Sheets
+                value: newValue
+              })
+            });
+          } catch (err) {
+            console.error('Failed to sync cell edit to sheet:', err);
+          }
+        }
+
         // Map the edited column to customer properties and propagate
         const headerName = sheetHeaders[colIndex];
         const propMappings = mapSheetHeaderToCustomerProps(headerName);
@@ -4504,7 +4646,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const updates = {};
             propMappings.forEach(({ prop, transform }) => {
               updates[prop] = transform(newValue);
-              // Protect each edited field from sheet sync overwriting it
+              // Track the edit (no longer needed for sync protection with one-way import,
+              // but kept for audit trail)
               trackLocalOverride(matchedCustomer.id, prop, transform(newValue));
             });
             propagateCustomerUpdate(matchedCustomer.id, updates);
@@ -4671,6 +4814,166 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           console.error('Error adding row to sheet:', error);
           return false;
         }
+      };
+
+      // ========================================
+      // EXPORT TO GOOGLE SHEET (local wins + preserve new rows)
+      // ========================================
+
+      /**
+       * Build a CSV row from a customer object using the sheet's column headers.
+       * Maps customer properties to the matching sheet header columns.
+       * If jobOverride is provided, uses job-level fields from that instead of customer-level.
+       */
+      const customerToSheetRow = (customer, headers, jobOverride) => {
+        return headers.map(header => {
+          const h = (header || '').toLowerCase().trim();
+          // If jobOverride is provided, use job-level values for job-specific columns
+          if (jobOverride) {
+            if (/job\s*description|^description$/i.test(h)) return jobOverride.jobDescription || '';
+            if (/^amount|job\s*amount/i.test(h)) return jobOverride.amount != null ? `$${Number(jobOverride.amount).toFixed(2)}` : '$0.00';
+            if (/^tip/i.test(h)) return jobOverride.tip != null ? `$${Number(jobOverride.tip).toFixed(2)}` : '$0.00';
+            if (/completed|completed\s*date|job\s*completed/i.test(h)) return jobOverride.date || '';
+            if (/job\s*status|^status$/i.test(h)) return jobOverride.status || '';
+            if (/^notes|customer\s*notes/i.test(h)) return jobOverride.notes || '';
+          }
+          const mappings = mapSheetHeaderToCustomerProps(header);
+          if (mappings.length === 0) return '';
+          // Use first mapping (primary property)
+          const { prop, transform } = mappings[0];
+          let val = customer[prop];
+          if (val === undefined || val === null) val = '';
+          // Special handling for booleans
+          if (prop === 'isRecurring') return val ? 'TRUE' : 'FALSE';
+          if (prop === 'solarVerified') return val || '';
+          return String(val);
+        });
+      };
+
+      /**
+       * Expand a customer into multiple rows — one per job in serviceHistory.
+       * If no serviceHistory, returns a single row.
+       */
+      const customerToSheetRows = (customer, headers) => {
+        const history = customer.serviceHistory || [];
+        if (history.length <= 1) {
+          return [customerToSheetRow(customer, headers)];
+        }
+        // One row per job, with customer-level fields repeated
+        return history.map(job => customerToSheetRow(customer, headers, job));
+      };
+
+      /**
+       * Export local customer data back to Google Sheet.
+       * - Local data wins for existing customers
+       * - New rows in the sheet (not in local data) are preserved
+       * - Uses Apps Script web app URL if available, otherwise falls back to CSV download
+       */
+      const exportToGoogleSheet = async () => {
+        setSheetExporting(true);
+        try {
+          // Step 1: Fetch current sheet to find new rows added by others
+          const { headers: currentHeaders, rows: currentRows } = await fetchPipelineSheetData();
+          const headers = currentHeaders.length > 0 ? currentHeaders : sheetHeaders;
+
+          if (headers.length === 0) {
+            alert('No sheet headers found. Please connect and sync your Google Sheet first.');
+            return;
+          }
+
+          // Step 2: Build matching sets from local customers
+          const localPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const localEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
+          const localNameAddresses = new Set(customers.map(c => {
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            return `${name}|${address}`;
+          }));
+
+          // Step 3: Find new rows in the sheet that don't exist locally
+          const nameCol = headers.findIndex(h => h && /customer\s*name|^name$/i.test(String(h).toLowerCase().trim()));
+          const addressCol = headers.findIndex(h => h && /^address/i.test(String(h).toLowerCase().trim()));
+          const phoneCol = headers.findIndex(h => h && /^phone|mobile|customer\s*mobile/i.test(String(h).toLowerCase().trim()));
+          const emailCol = headers.findIndex(h => h && /^email|customer\s*email/i.test(String(h).toLowerCase().trim()));
+
+          const newSheetRows = [];
+          currentRows.forEach(row => {
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] || '' : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] || '' : '').toLowerCase().trim();
+            const rowName = (nameCol >= 0 ? row.values[nameCol] || '' : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] || '' : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const nameAddressKey = `${rowName}|${rowAddress}`;
+
+            const existsLocally =
+              (rowPhone && localPhones.has(rowPhone)) ||
+              (rowEmail && localEmails.has(rowEmail)) ||
+              (rowName && rowAddress && localNameAddresses.has(nameAddressKey));
+
+            if (!existsLocally) {
+              newSheetRows.push(row.values);
+            }
+          });
+
+          // Step 4: Build export data = local customers (expanded by job history) + new sheet rows
+          const localRows = customers.flatMap(c => customerToSheetRows(c, headers));
+          const allRows = [headers, ...localRows, ...newSheetRows];
+
+          console.log(`📤 Export: ${customers.length} customers → ${localRows.length} rows (expanded by job history) + ${newSheetRows.length} new sheet rows = ${allRows.length - 1} total`);
+
+          // Step 5: Send via Apps Script or fall back to CSV download
+          if (appsScriptUrl) {
+            const response = await fetch(appsScriptUrl, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(allRows)
+            });
+
+            // no-cors means we can't read the response, but if it didn't throw, it likely worked
+            setLastSheetExport(new Date());
+            localStorage.setItem('lastSheetExport', new Date().toISOString());
+            alert(`Sheet updated!\n\n${localRows.length} local customers exported\n${newSheetRows.length} new sheet rows preserved\n${allRows.length - 1} total rows`);
+          } else {
+            // CSV download fallback
+            downloadExportCSV(allRows);
+          }
+        } catch (error) {
+          console.error('Export failed:', error);
+          alert(`Export failed: ${error.message}\n\nTry the CSV download fallback instead.`);
+        } finally {
+          setSheetExporting(false);
+        }
+      };
+
+      /**
+       * CSV download fallback — generates a CSV file and triggers browser download.
+       * User can then manually import into Google Sheets (File > Import > Replace current sheet).
+       */
+      const downloadExportCSV = (allRows) => {
+        const csvContent = allRows.map(row =>
+          row.map(cell => {
+            const str = String(cell || '');
+            // Escape cells containing commas, quotes, or newlines
+            if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+              return '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+          }).join(',')
+        ).join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `customer-export-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        setLastSheetExport(new Date());
+        localStorage.setItem('lastSheetExport', new Date().toISOString());
+        alert(`CSV downloaded!\n\n${allRows.length - 1} total rows\n\nTo update your Google Sheet:\n1. Open your Google Sheet\n2. File > Import > Upload\n3. Select "Replace current sheet"\n4. Click Import`);
       };
 
       // ========================================
@@ -5023,13 +5326,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           console.log(`🔍 CRITICAL: lat=${colMap.lat}, lng=${colMap.lng}, panels=${colMap.panels}`);
           console.log(`📊 Found ${data.length} data rows`);
 
-          // Import customers from sheet
+          // Import customers from sheet - ONLY add NEW customers, never update existing
           let imported = 0;
           let skipped = 0;
           let skipReasons = [];
-          const existingPhones = new Set(customers.map(c => c.phone));
+
+          // Build sets for duplicate detection (by phone, email, and name+address)
+          const existingPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const existingEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
+          const existingNameAddresses = new Set(customers.map(c => {
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            return `${name}|${address}`;
+          }));
+
           const newCustomers = []; // Collect all new customers here
-          
+
           console.log(`📊 Starting sync... Found ${data.length} rows in sheet`);
           console.log(`📊 Existing customers: ${customers.length}`);
           
@@ -5104,20 +5416,73 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             // Build full address if not provided
             const addressToUse = fullAddress || (street ? `${street}, ${city}, ${state} ${zip}`.trim() : '');
             
-            // Skip if already exists
-            if (phone && existingPhones.has(phone)) {
+            // Check if this customer already exists (by phone, email, or name+address)
+            const checkName = (name || '').toLowerCase().trim();
+            const checkAddress = (addressToUse || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const nameAddressKey = `${checkName}|${checkAddress}`;
+
+            const isDuplicate =
+              (phone && existingPhones.has(phone.trim())) ||
+              (email && existingEmails.has(email.toLowerCase().trim())) ||
+              (checkName && checkAddress && existingNameAddresses.has(nameAddressKey));
+
+            // Build the job entry for this row
+            const jobEntry = {
+              date: completed || '',
+              jobDescription: jobDesc || 'Service',
+              amount: parseFloat(amount) || 0,
+              tip: parseFloat(tip) || 0,
+              notes: customerNotes || '',
+              status: status || (completed ? 'Completed' : 'unscheduled')
+            };
+
+            if (isDuplicate) {
+              // Merge this job into the existing customer's serviceHistory
+              const existing = [...customers, ...newCustomers].find(c => {
+                if (phone && c.phone && String(c.phone).trim() === phone.trim()) return true;
+                if (email && c.email && String(c.email).toLowerCase().trim() === email.toLowerCase().trim()) return true;
+                const cName = (c.name || '').toLowerCase().trim();
+                const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+                if (cName && cAddr && `${cName}|${cAddr}` === nameAddressKey) return true;
+                return false;
+              });
+
+              if (existing && completed) {
+                if (!existing.serviceHistory) existing.serviceHistory = [];
+                // Avoid adding duplicate jobs (same date + same description)
+                const alreadyHasJob = existing.serviceHistory.some(j =>
+                  j.date === jobEntry.date && j.jobDescription === jobEntry.jobDescription
+                );
+                if (!alreadyHasJob) {
+                  existing.serviceHistory.push(jobEntry);
+                  // Update lastServiceDate if this job is more recent
+                  if (completed && (!existing.lastServiceDate || new Date(completed) > new Date(existing.lastServiceDate))) {
+                    existing.lastServiceDate = completed;
+                  }
+                  // Update total amount
+                  existing.amountPaid = (existing.amountPaid || 0) + (parseFloat(amount) || 0);
+                  existing.tipAmount = (existing.tipAmount || 0) + (parseFloat(tip) || 0);
+                  // Update panel count if this row has a higher value
+                  const rowPanels = parseInt(totalPanels) || 0;
+                  if (rowPanels > (existing.totalPanels || 0)) {
+                    existing.totalPanels = rowPanels;
+                    existing.panelCount = rowPanels;
+                  }
+                  console.log(`🔄 Merged job into ${name}: "${jobDesc}" (${completed}) — ${existing.serviceHistory.length} total jobs`);
+                }
+              }
               skipped++;
-              skipReasons.push(`Row ${skipped + imported + 1}: Duplicate phone (${phone})`);
+              skipReasons.push(`Row ${skipped + imported + 1}: Merged job into existing customer (${name})`);
               continue;
             }
-            
+
             console.log(`✅ Importing: ${name} - Lat: ${lat}, Lng: ${lng}, Panels: ${totalPanels}`);
-            
+
             // Parse name
             const nameParts = (name || '').trim().split(' ');
             const firstname = nameParts[0] || '';
             const lastname = nameParts.slice(1).join(' ') || '';
-            
+
             const newCustomer = {
               id: Date.now() + Math.random(),
               firstname,
@@ -5136,7 +5501,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(totalPanels) || 0,
               panelCount: parseInt(totalPanels) || 0,
               name: `${firstname} ${lastname}`.trim(),
-              status: status || 'Not serviced',
+              status: 'unscheduled', // All new imports start as unscheduled
               jobDescription: jobDesc || '',
               isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
@@ -5146,14 +5511,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               notes: customerNotes || '',
               customerNotes: '', // General customer notes (separate from job notes)
               solarVerified: solarVerified === 'yes' ? 'yes' : (solarVerified === 'no' ? 'no' : null),
-              serviceHistory: completed ? [{
-                date: completed,
-                jobDescription: jobDesc || 'Service',
-                amount: parseFloat(amount) || 0,
-                tip: parseFloat(tip) || 0,
-                notes: customerNotes || '',
-                status: status || 'Completed'
-              }] : [],
+              serviceHistory: completed ? [jobEntry] : [],
               notesHistory: customerNotes ? [{
                 date: new Date().toISOString(),
                 note: customerNotes,
@@ -5165,7 +5523,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
             newCustomers.push(newCustomer); // Add to collection
             imported++;
-            existingPhones.add(phone); // Prevent duplicates in same sync
+
+            // Track for duplicate detection in same batch
+            if (phone) existingPhones.add(phone.trim());
+            if (email) existingEmails.add(email.toLowerCase().trim());
+            existingNameAddresses.add(nameAddressKey);
           }
 
           // Add all customers to savedLists so they appear on map
@@ -5190,25 +5552,36 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               type: 'sheets'
             }]);
 
+            // Also add to pipelineCustomers so they appear in Pipeline view
+            const pipelineEntries = newCustomers.map(c => ({
+              ...c,
+              pipelineId: Date.now().toString() + Math.random(),
+              addedDate: new Date().toISOString()
+            }));
+            setPipelineCustomers(prev => [...prev, ...pipelineEntries]);
+
             console.log(`✅ Added ${newCustomers.length} customers as "${listName}"`);
             console.log(`📍 Sample customer:`, newCustomers[0]);
           }
 
-          console.log(`📊 Sync complete: ${imported} imported, ${skipped} skipped`);
+          // Count how many jobs were merged
+          const mergedCount = skipReasons.filter(r => r.includes('Merged job')).length;
+
+          console.log(`📊 Sync complete: ${imported} imported, ${mergedCount} jobs merged, ${skipped - mergedCount} skipped`);
           if (skipReasons.length > 0) {
             console.log('Skip reasons:', skipReasons);
           }
 
           setLastSheetSync(new Date());
-          if (imported > 0) {
+          if (imported > 0 || mergedCount > 0) {
             const totalCustomers = customers.length + imported;
-            let message = `✅ Synced ${imported} new customer${imported > 1 ? 's' : ''} from Google Sheets!\n\nTotal customers: ${totalCustomers}`;
-            
+            let message = `✅ Synced from Google Sheets!\n\n• ${imported} new customer${imported !== 1 ? 's' : ''} imported\n• ${mergedCount} additional job${mergedCount !== 1 ? 's' : ''} merged into existing customers\n\nTotal customers: ${totalCustomers}`;
+
             // Performance warning for large datasets
             if (totalCustomers > 10000) {
               message += `\n\n⚠️ PERFORMANCE TIP:\nWith ${totalCustomers.toLocaleString()} customers, the map uses smart rendering:\n• Clusters shown when zoomed out\n• Full detail when zoomed in\n• Zoom in to see individual markers`;
             }
-            
+
             alert(message);
           } else {
             alert(`⚠️ No new customers found.\n\nChecked ${data.length} rows, skipped ${skipped}.\n\nCommon reasons:\n• Missing Latitude/Longitude\n• Duplicate phone numbers\n• Empty customer names\n\nCheck browser console (F12) for details.`);
@@ -6402,29 +6775,83 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     {(() => {
                       const dateKey = selectedDate.toDateString();
                       const inSavedView = savedViewDays[dateKey] === true;
-                      const jobsForDay = customers
-                        .filter(c => {
-                          if (!c.scheduledDate) return false;
-                          const custDate = new Date(c.scheduledDate);
-                          return custDate.toDateString() === dateKey;
-                        })
-                        .sort((a, b) => {
+
+                      // Find ALL saved routes for this day (multiple technicians)
+                      const savedRoutesForDay = savedRoutes.filter(r => {
+                        const rDate = new Date(r.scheduledDate);
+                        return rDate.toDateString() === dateKey;
+                      });
+
+                      // Get the currently selected route index for this day (default to 0)
+                      const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+                      const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+
+                      // Get jobs from saved route OR from customers state (fallback)
+                      let jobsForDay = [];
+                      if (inSavedView && savedRouteForDay && savedRouteForDay.customers) {
+                        // Use customers from saved route (source of truth for saved view)
+                        jobsForDay = [...savedRouteForDay.customers].sort((a, b) => {
                           if (!a.scheduledTime || !b.scheduledTime) return 0;
                           const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
                           const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
                           return (aHour * 60 + aMin) - (bHour * 60 + bMin);
                         });
-                      
-                      // SAVED VIEW - Show compact list (only if there are jobs and in saved mode)
-                      if (inSavedView && jobsForDay.length > 0) {
-                        // Find the saved route for this day to check sentToTech status
-                        const savedRouteForDay = savedRoutes.find(r => {
-                          const rDate = new Date(r.scheduledDate);
-                          return rDate.toDateString() === selectedDate.toDateString();
-                        });
+                      } else {
+                        // Use customers state (for edit view)
+                        jobsForDay = customers
+                          .filter(c => {
+                            if (!c.scheduledDate) return false;
+                            const custDate = new Date(c.scheduledDate);
+                            return custDate.toDateString() === dateKey;
+                          })
+                          .sort((a, b) => {
+                            if (!a.scheduledTime || !b.scheduledTime) return 0;
+                            const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                            const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                            return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                          });
+                      }
 
+                      // SAVED VIEW - Show compact list (only if in saved mode and has routes)
+                      if (inSavedView && savedRoutesForDay.length > 0) {
                         return (
                           <div>
+                            {/* Route Tabs - only show if multiple routes for this day */}
+                            {savedRoutesForDay.length > 1 && (
+                              <div style={{
+                                display: 'flex',
+                                gap: '4px',
+                                marginBottom: '12px',
+                                background: 'rgba(15, 23, 42, 0.5)',
+                                padding: '4px',
+                                borderRadius: '8px'
+                              }}>
+                                {savedRoutesForDay.map((route, idx) => (
+                                  <button
+                                    key={route.id}
+                                    onClick={() => setSelectedRouteIndexByDay(prev => ({ ...prev, [dateKey]: idx }))}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 12px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      background: idx === selectedIdx ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                                      border: idx === selectedIdx ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                                      borderRadius: '6px',
+                                      color: idx === selectedIdx ? '#a78bfa' : '#94a3b8',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}
+                                  >
+                                    {route.name || `Route ${idx + 1}`}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
                               <button
                                 onClick={() => {
@@ -6476,19 +6903,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               </button>
                               <button
                                 onClick={() => {
-                                  // Start a fresh new route - clear everything for this day
+                                  // Start a fresh new route - DON'T clear other routes' customers
                                   setRoutesByDay(prev => ({
                                     ...prev,
                                     [dateKey]: []
-                                  }));
-                                  // Clear scheduling from customers for this day
-                                  setCustomers(prev => prev.map(c => {
-                                    if (!c.scheduledDate) return c;
-                                    const custDate = new Date(c.scheduledDate);
-                                    if (custDate.toDateString() === dateKey) {
-                                      return { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
-                                    }
-                                    return c;
                                   }));
                                   setEditingSavedRouteId(null);
                                   setSuggestedCustomers([]);
@@ -7136,6 +7554,51 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </button>
                       )}
                     </div>
+
+                    {/* Export to Sheet Section */}
+                    {sheetsConnected && (
+                      <div style={{ marginTop: '10px' }}>
+                        <input
+                          type="text"
+                          value={appsScriptUrl}
+                          onChange={(e) => setAppsScriptUrl(e.target.value)}
+                          placeholder="Apps Script Web App URL (optional)"
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: 'rgba(15, 23, 42, 0.8)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '10px',
+                            marginBottom: '6px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <button
+                          onClick={exportToGoogleSheet}
+                          disabled={sheetExporting}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            background: sheetExporting ? 'rgba(100, 116, 139, 0.3)' : 'linear-gradient(135deg, #f59e0b, #d97706)',
+                            border: 'none',
+                            borderRadius: '6px',
+                            color: '#fff',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            cursor: sheetExporting ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {sheetExporting ? '⏳ Exporting...' : (appsScriptUrl ? '📤 Export to Sheet' : '📤 Download CSV')}
+                        </button>
+                        {lastSheetExport && (
+                          <div style={{ fontSize: '9px', color: '#64748b', marginTop: '4px', textAlign: 'center' }}>
+                            Last export: {lastSheetExport.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Customer Summary */}
@@ -7388,7 +7851,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     }}>
                       {/* Toggle chips */}
                       {[
-                        { key: 'verifiedSolar', label: '🛰 Verified', color: '#8b5cf6' },
+                        { key: 'verifiedSolar', label: '🛰 Has Solar (filter)', color: '#8b5cf6' },
                         { key: 'existingJob', label: '🦕 Past', color: '#22c55e' },
                         { key: 'recurring', label: '🦖 Recurring', color: '#3b82f6' }
                       ].map(chip => (
@@ -7959,7 +8422,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             }}
                             onMouseEnter={() => setHoveredCustomer(customer)}
                             onMouseLeave={() => setHoveredCustomer(null)}
-                            onClick={() => setSelectedCustomer(customer)}
+                            onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
                             style={{
                               padding: '16px 20px',
                               borderBottom: '1px solid rgba(139, 92, 246, 0.1)',
@@ -8489,56 +8952,75 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             )}
                           </div>
                           
-                          {/* Status and Preferences */}
-                          {(selectedCustomer.status || selectedCustomer.preferredDate || selectedCustomer.preferredTimeWindow) && (
-                            <div style={{ marginBottom: '16px' }}>
-                              {selectedCustomer.status && (
-                                <div style={{
-                                  padding: '12px 16px',
-                                  background: selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
-                                             'rgba(239, 68, 68, 0.1)',
-                                  border: selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
-                                         '1px solid rgba(239, 68, 68, 0.3)',
-                                  borderRadius: '8px',
-                                  marginBottom: '12px'
-                                }}>
-                                  <div style={{ 
-                                    fontSize: '14px', 
-                                    fontWeight: 600,
-                                    color: selectedCustomer.status === 'scheduled' ? '#fbbf24' : '#fca5a5',
-                                    marginBottom: '8px'
-                                  }}>
-                                    {selectedCustomer.status === 'scheduled' ? '🟡 Scheduled' : '🔴 Unscheduled'}
-                                  </div>
-                                  
-                                  {selectedCustomer.status === 'unscheduled' && (
-                                    <>
-                                      {selectedCustomer.preferredDate && (
-                                        <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
-                                          <strong style={{ color: '#fca5a5' }}>Preferred Date:</strong>{' '}
-                                          {new Date(selectedCustomer.preferredDate).toLocaleDateString('en-US', {
-                                            weekday: 'short',
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric'
-                                          })}
-                                        </div>
-                                      )}
-                                      {selectedCustomer.preferredTimeWindow && (
-                                        <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                          <strong style={{ color: '#fca5a5' }}>Preferred Time:</strong>{' '}
-                                          {selectedCustomer.preferredTimeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
-                                           selectedCustomer.preferredTimeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
-                                           selectedCustomer.preferredTimeWindow === 'evening' ? '🌆 Evening (4pm-8pm)' :
-                                           selectedCustomer.preferredTimeWindow}
-                                        </div>
-                                      )}
-                                    </>
+                          {/* Status Section with Dropdown */}
+                          <div style={{ marginBottom: '16px' }}>
+                            <div style={{
+                              padding: '12px 16px',
+                              background: selectedCustomer.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.1)' :
+                                         selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
+                                         selectedCustomer.status === 'completed' ? 'rgba(34, 197, 94, 0.1)' :
+                                         'rgba(100, 116, 139, 0.1)',
+                              border: selectedCustomer.status === 'unscheduled' ? '1px solid rgba(239, 68, 68, 0.3)' :
+                                     selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
+                                     selectedCustomer.status === 'completed' ? '1px solid rgba(34, 197, 94, 0.3)' :
+                                     '1px solid rgba(100, 116, 139, 0.3)',
+                              borderRadius: '8px',
+                              marginBottom: '12px'
+                            }}>
+                              <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', fontWeight: 600 }}>
+                                STATUS
+                              </div>
+                              <select
+                                value={selectedCustomer.status || 'unscheduled'}
+                                onChange={(e) => {
+                                  const newStatus = e.target.value;
+                                  setCustomers(prev => prev.map(c =>
+                                    c.id === selectedCustomer.id ? { ...c, status: newStatus } : c
+                                  ));
+                                  setSelectedCustomer(prev => ({ ...prev, status: newStatus }));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '10px 12px',
+                                  background: 'rgba(15, 23, 42, 0.8)',
+                                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  color: '#f1f5f9',
+                                  fontSize: '14px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="unscheduled">🔴 Unscheduled</option>
+                                <option value="scheduled">🟡 Scheduled</option>
+                              </select>
+
+                              {selectedCustomer.status === 'unscheduled' && (
+                                <div style={{ marginTop: '10px' }}>
+                                  {selectedCustomer.preferredDate && (
+                                    <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '4px' }}>
+                                      <strong style={{ color: '#fca5a5' }}>Preferred Date:</strong>{' '}
+                                      {new Date(selectedCustomer.preferredDate).toLocaleDateString('en-US', {
+                                        weekday: 'short',
+                                        month: 'short',
+                                        day: 'numeric',
+                                        year: 'numeric'
+                                      })}
+                                    </div>
+                                  )}
+                                  {selectedCustomer.preferredTimeWindow && (
+                                    <div style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                      <strong style={{ color: '#fca5a5' }}>Preferred Time:</strong>{' '}
+                                      {selectedCustomer.preferredTimeWindow === 'morning' ? '🌅 Morning (8am-12pm)' :
+                                       selectedCustomer.preferredTimeWindow === 'afternoon' ? '☀️ Afternoon (12pm-4pm)' :
+                                       selectedCustomer.preferredTimeWindow === 'evening' ? '🌆 Evening (4pm-8pm)' :
+                                       selectedCustomer.preferredTimeWindow}
+                                    </div>
                                   )}
                                 </div>
                               )}
                             </div>
-                          )}
+                          </div>
                           
                           {/* Details Grid */}
                           <div style={{ display: 'grid', gap: '12px' }}>
@@ -9230,17 +9712,62 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     alignItems: 'center',
                     justifyContent: 'space-between'
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                       <div style={{ fontSize: '28px' }}>
                         {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖' : '👤'}
                       </div>
-                      <div>
-                        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#f1f5f9' }}>
-                          {profileCustomer.name}
-                        </h2>
-                        <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                          {profileCustomer.address}
-                        </div>
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="text"
+                          value={profileCustomer.name || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, name: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { name: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'name', e.target.value);
+                          }}
+                          style={{
+                            margin: 0,
+                            fontSize: '20px',
+                            fontWeight: 700,
+                            color: '#f1f5f9',
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            borderRadius: '6px',
+                            padding: '4px 8px',
+                            width: '100%',
+                            maxWidth: '400px',
+                            transition: 'border-color 0.2s'
+                          }}
+                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          placeholder="Customer Name"
+                        />
+                        <input
+                          type="text"
+                          value={profileCustomer.address || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, address: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { address: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'address', e.target.value);
+                          }}
+                          style={{
+                            fontSize: '12px',
+                            color: '#94a3b8',
+                            marginTop: '4px',
+                            background: 'transparent',
+                            border: '1px solid transparent',
+                            borderRadius: '4px',
+                            padding: '2px 8px',
+                            width: '100%',
+                            maxWidth: '400px',
+                            transition: 'border-color 0.2s'
+                          }}
+                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          placeholder="Address"
+                        />
                       </div>
                     </div>
                     <button
@@ -9268,30 +9795,143 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     {/* Customer Info Grid */}
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '24px' }}>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Email</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>{profileCustomer.email || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Email</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <input
+                          type="email"
+                          value={profileCustomer.email || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, email: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { email: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'email', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px'
+                          }}
+                          placeholder="email@example.com"
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Phone</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>{profileCustomer.phone || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Phone</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <input
+                          type="tel"
+                          value={profileCustomer.phone || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, phone: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { phone: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'phone', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(139, 92, 246, 0.2)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px'
+                          }}
+                          placeholder="(555) 555-5555"
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(139, 92, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(139, 92, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Panels</div>
-                        <div style={{ fontSize: '14px', color: '#f1f5f9' }}>☀️ {profileCustomer.panelCount || profileCustomer.totalPanels || '-'}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Panels</span>
+                          <span style={{ fontSize: '10px', color: '#a78bfa' }}>click to edit</span>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span>☀️</span>
+                          <input
+                            type="number"
+                            value={profileCustomer.panelCount || profileCustomer.totalPanels || ''}
+                            onChange={(e) => {
+                              const updatedCustomer = { ...profileCustomer, panelCount: e.target.value, totalPanels: e.target.value };
+                              propagateCustomerUpdate(profileCustomer.id, { panelCount: e.target.value, totalPanels: e.target.value });
+                              setProfileCustomer(updatedCustomer);
+                              trackLocalOverride(profileCustomer.id, 'panelCount', e.target.value);
+                            }}
+                            style={{
+                              width: '100%',
+                              padding: '4px 8px',
+                              background: 'rgba(139, 92, 246, 0.2)',
+                              border: '1px solid rgba(139, 92, 246, 0.3)',
+                              borderRadius: '6px',
+                              color: '#f1f5f9',
+                              fontSize: '14px'
+                            }}
+                            placeholder="0"
+                            min="0"
+                          />
+                        </div>
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '12px', border: '1px solid rgba(34, 197, 94, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Status</div>
-                        <div style={{ fontSize: '14px', color: '#22c55e' }}>
-                          {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') ? '🦖 Recurring' :
-                            (profileCustomer.status === 'scheduled' ? 'Scheduled' :
-                            profileCustomer.status === 'unscheduled' ? 'Unscheduled' : 'Active')}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Status</span>
+                          <span style={{ fontSize: '10px', color: '#4ade80' }}>click to edit</span>
                         </div>
+                        <select
+                          value={profileCustomer.status || 'unscheduled'}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, status: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { status: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'status', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            background: 'rgba(34, 197, 94, 0.2)',
+                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                            borderRadius: '6px',
+                            color: '#22c55e',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="unscheduled">🔴 Unscheduled</option>
+                          <option value="scheduled">🟡 Scheduled</option>
+                        </select>
+                        {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') && (
+                          <div style={{ fontSize: '12px', color: '#22c55e', marginTop: '4px' }}>🦖 Recurring Customer</div>
+                        )}
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>Last Service</div>
-                        <div style={{ fontSize: '14px', color: '#fbbf24' }}>
-                          {profileCustomer.lastServiceDate ? new Date(profileCustomer.lastServiceDate).toLocaleDateString() : '-'}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Last Service</span>
+                          <span style={{ fontSize: '10px', color: '#fbbf24' }}>click to edit</span>
                         </div>
+                        <input
+                          type="date"
+                          value={profileCustomer.lastServiceDate || ''}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, lastServiceDate: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { lastServiceDate: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                            trackLocalOverride(profileCustomer.id, 'lastServiceDate', e.target.value);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '4px 8px',
+                            background: 'rgba(251, 191, 36, 0.2)',
+                            border: '1px solid rgba(251, 191, 36, 0.3)',
+                            borderRadius: '6px',
+                            color: '#fbbf24',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -9965,18 +10605,24 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
-                                  // Unschedule all customers in this route
+                                  // Unschedule all customers in this route and propagate changes
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
+                                  const unscheduleUpdates = {
+                                    scheduledDate: null,
+                                    scheduledTime: null,
+                                    status: 'unscheduled',
+                                    routeConfirmed: false,
+                                    confirmedRouteName: null
+                                  };
+
+                                  // Propagate unschedule updates to all data stores for each customer
+                                  savedRoute.customers.forEach(c => {
+                                    propagateCustomerUpdate(c.id, unscheduleUpdates);
+                                  });
+
                                   setCustomers(prev => prev.map(c => {
                                     if (routeCustomerIds.has(c.id)) {
-                                      return {
-                                        ...c,
-                                        scheduledDate: null,
-                                        scheduledTime: null,
-                                        status: 'unscheduled',
-                                        routeConfirmed: false,
-                                        confirmedRouteName: null
-                                      };
+                                      return { ...c, ...unscheduleUpdates };
                                     }
                                     return c;
                                   }));
@@ -10409,31 +11055,85 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </tr>
                       </thead>
                       <tbody>
-                        {getSortedPipelineData().map((row) => (
-                          <tr key={row.rowIndex}>
-                            {row.values.map((value, colIndex) => (
-                              <td key={colIndex}>
-                                <input
-                                  type="text"
-                                  value={value || ''}
-                                  onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    minWidth: '80px',
-                                    padding: '6px 8px',
-                                    background: 'transparent',
-                                    border: '1px solid transparent',
-                                    borderRadius: '4px',
-                                    color: '#f1f5f9',
-                                    fontSize: '12px'
-                                  }}
-                                  onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                                  onBlur={(e) => e.target.style.borderColor = 'transparent'}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
+                        {(() => {
+                          // Find the customer name column index for job history click-through
+                          const nameColIdx = sheetHeaders.findIndex(h => h && /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
+                          return getSortedPipelineData().map((row) => {
+                            // Find matching local customer for this row
+                            const matchedCustomer = findCustomerFromPipelineRow(row);
+                            const jobCount = matchedCustomer?.serviceHistory?.length || 0;
+                            return (
+                              <tr key={row.rowIndex}>
+                                {row.values.map((value, colIndex) => (
+                                  <td key={colIndex}>
+                                    {colIndex === nameColIdx && matchedCustomer ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <input
+                                          type="text"
+                                          value={value || ''}
+                                          onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                          style={{
+                                            flex: 1,
+                                            minWidth: '80px',
+                                            padding: '6px 8px',
+                                            background: 'transparent',
+                                            border: '1px solid transparent',
+                                            borderRadius: '4px',
+                                            color: '#f1f5f9',
+                                            fontSize: '12px'
+                                          }}
+                                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                        />
+                                        {jobCount > 1 && (
+                                          <button
+                                            onClick={() => {
+                                              setProfileCustomer(matchedCustomer);
+                                              setShowCustomerProfile(true);
+                                            }}
+                                            title={`${jobCount} jobs — click to view history`}
+                                            style={{
+                                              padding: '2px 6px',
+                                              background: 'rgba(139, 92, 246, 0.2)',
+                                              border: '1px solid rgba(139, 92, 246, 0.4)',
+                                              borderRadius: '10px',
+                                              color: '#a78bfa',
+                                              fontSize: '10px',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              flexShrink: 0
+                                            }}
+                                          >
+                                            {jobCount} jobs
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={value || ''}
+                                        onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          minWidth: '80px',
+                                          padding: '6px 8px',
+                                          background: 'transparent',
+                                          border: '1px solid transparent',
+                                          borderRadius: '4px',
+                                          color: '#f1f5f9',
+                                          fontSize: '12px'
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                        onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                      />
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
 
@@ -10578,13 +11278,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <h3 style={{ fontSize: '16px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>🎯 Radius Search</h3>
                 <button
-                  onClick={() => {
-                    setRadiusMode(false);
-                    setAwaitingMapClick(false);
-                    setDrawMode(false);
-                    clearRadius();
-                    clearDrawnArea();
-                  }}
+onClick={exitRadiusMode}
                   style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '20px' }}
                 >
                   ✕
@@ -10746,6 +11440,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     ✕ Clear Drawn Area ({filteredCustomers.length} customers)
                   </button>
                 )}
+
+                {/* Exit and Show All Customers Button */}
+                <button
+                  className="button-secondary"
+                  onClick={exitRadiusMode}
+                  style={{
+                    width: '100%',
+                    justifyContent: 'center',
+                    marginTop: '8px',
+                    background: 'rgba(34, 197, 94, 0.1)',
+                    borderColor: 'rgba(34, 197, 94, 0.4)',
+                    color: '#22c55e'
+                  }}
+                >
+                  🔙 Exit & Show All Customers
+                </button>
 
                 {/* Time Filter - Always visible in radius mode */}
                 <div style={{
