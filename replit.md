@@ -83,6 +83,9 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
+- 2026-02-11: Added CSV file upload directly to database from Database view
+- 2026-02-11: Added "New Customer" creation form in Database view
+- 2026-02-11: Fixed Google Sheets import to properly save contacts to PostgreSQL database (field name mapping fix)
 - 2026-02-11: Detached from Google Sheets as live data source; pipeline now shows clean database customer table
 - 2026-02-11: Removed auto-refresh/live sync (was only needed for Google Sheets as database)
 - 2026-02-11: Rebuilt pipeline as "Customer Database" view with 16 named columns, status badges, click-to-profile
