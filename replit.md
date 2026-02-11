@@ -38,10 +38,11 @@ A single-page web application for customer relationship management with map-base
 - Jobs, routes, lists endpoints follow similar patterns
 
 ## Data Flow
-1. **Google Sheets Sync**: Frontend fetches data from published Google Sheet CSV → displays in pipeline view → bulk imports to PostgreSQL
+1. **Database as Primary**: PostgreSQL is the single source of truth for all customer data
 2. **Database Auto-load**: On startup, frontend loads customers from `/api/customers` into savedLists
-3. **Customer Updates**: Changes propagate to database via PATCH requests (non-blocking)
-4. **Export**: CSV/JSON export available from database via API endpoints
+3. **Google Sheets Import**: Manual one-time import from Google Sheets (sidebar) → bulk saves to database
+4. **Customer Updates**: Changes propagate to database via PATCH requests (non-blocking)
+5. **Export**: CSV/JSON export available from database via API endpoints
 
 ## How to Run
 - `node server/index.js` starts the Express server on port 5000
@@ -57,7 +58,7 @@ A single-page web application for customer relationship management with map-base
   - Quick filter presets (Unscheduled, Scheduled, Completed, Recurring, Has Email, Has Phone)
   - Per-column text filters
   - Multi-column sorting
-- Google Sheets live sync with database persistence
+- Manual Google Sheets import (one-time, saves to database)
 - CSV/JSON export from database
 - Customer profiles with service history
 - Job creation with pricing tiers
@@ -82,6 +83,9 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
+- 2026-02-11: Detached from Google Sheets as live data source; pipeline now shows clean database customer table
+- 2026-02-11: Removed auto-refresh/live sync (was only needed for Google Sheets as database)
+- 2026-02-11: Rebuilt pipeline as "Customer Database" view with 16 named columns, status badges, click-to-profile
 - 2026-02-11: Migrated from static file serving to Express.js backend with PostgreSQL database
 - 2026-02-11: Added comprehensive REST API for customers, jobs, routes, lists
 - 2026-02-11: Upgraded pipeline view with global search, quick filters, per-column filters, and CSV export

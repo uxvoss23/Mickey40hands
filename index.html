@@ -806,16 +806,6 @@
         searchCustomers(customerSearchQuery);
       }, [customerSearchQuery]);
 
-      // Auto-sync from Google Sheets
-      useEffect(() => {
-        if (!autoSyncSheets || !sheetsConnected) return;
-        
-        const interval = setInterval(() => {
-          syncFromGoogleSheet({ silent: true });
-        }, 30000); // Every 30 seconds
-        
-        return () => clearInterval(interval);
-      }, [autoSyncSheets, sheetsConnected]);
 
       // NOTE: filteredCustomers is managed by the unified filter useEffect below (search for "UNIFIED FILTER")
 
@@ -4447,17 +4437,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         }
       };
 
-      // Auto-refresh Pipeline from Google Sheets
-      useEffect(() => {
-        if (!sheetAutoRefresh || !sheetsConnected) return;
 
-        // Initial load
-        refreshPipelineData();
-
-        // Set up interval for auto-refresh
-        const interval = setInterval(refreshPipelineData, sheetRefreshInterval);
-        return () => clearInterval(interval);
-      }, [sheetsConnected, sheetAutoRefresh, sheetRefreshInterval, googleSheetId]);
 
       /**
        * Map a Google Sheet header name to the corresponding customer object property.
@@ -4834,28 +4814,53 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
-       * Sort Pipeline data by column
+       * Pipeline columns definition
        */
-      const sortPipelineData = (colIndex) => {
-        if (pipelineSortColumn === colIndex) {
-          // Toggle order if same column
+      const pipelineColumns = [
+        { key: 'name', label: 'Name', width: '180px' },
+        { key: 'status', label: 'Status', width: '120px' },
+        { key: 'phone', label: 'Phone', width: '130px' },
+        { key: 'email', label: 'Email', width: '180px' },
+        { key: 'address', label: 'Address', width: '200px' },
+        { key: 'city', label: 'City', width: '120px' },
+        { key: 'state', label: 'State', width: '60px' },
+        { key: 'zip', label: 'Zip', width: '70px' },
+        { key: 'panelCount', label: 'Panels', width: '70px' },
+        { key: 'scheduledDate', label: 'Scheduled', width: '110px' },
+        { key: 'preferredDate', label: 'Preferred', width: '110px' },
+        { key: 'lastServiceDate', label: 'Last Service', width: '110px' },
+        { key: 'amountPaid', label: 'Amount', width: '80px' },
+        { key: 'employee', label: 'Employee', width: '120px' },
+        { key: 'isRecurring', label: 'Recurring', width: '80px' },
+        { key: 'notes', label: 'Notes', width: '200px' }
+      ];
+
+      const getCustomerFieldValue = (customer, key) => {
+        switch (key) {
+          case 'name': return customer.name || `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+          case 'isRecurring': return (customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true) ? 'Yes' : '';
+          case 'panelCount': return customer.panelCount || customer.totalPanels || '';
+          default: return customer[key] || '';
+        }
+      };
+
+      const sortPipelineData = (colKey) => {
+        if (pipelineSortColumn === colKey) {
           setPipelineSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
         } else {
-          // New column, start with ascending
-          setPipelineSortColumn(colIndex);
+          setPipelineSortColumn(colKey);
           setPipelineSortOrder('asc');
         }
       };
 
-      // Get sorted Pipeline data
       const getSortedPipelineData = () => {
-        if (pipelineSortColumn === null) return sheetData;
+        let data = [...customers];
+        if (!pipelineSortColumn) return data;
 
-        return [...sheetData].sort((a, b) => {
-          const aVal = a.values[pipelineSortColumn] || '';
-          const bVal = b.values[pipelineSortColumn] || '';
+        return data.sort((a, b) => {
+          const aVal = String(getCustomerFieldValue(a, pipelineSortColumn));
+          const bVal = String(getCustomerFieldValue(b, pipelineSortColumn));
 
-          // Try numeric comparison first
           const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ''));
           const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ''));
 
@@ -4863,7 +4868,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             return pipelineSortOrder === 'asc' ? aNum - bNum : bNum - aNum;
           }
 
-          // Fall back to string comparison
           const comparison = aVal.localeCompare(bVal, undefined, { numeric: true });
           return pipelineSortOrder === 'asc' ? comparison : -comparison;
         });
@@ -4871,34 +4875,40 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
       const getFilteredPipelineData = () => {
         let data = getSortedPipelineData();
+
         if (pipelineGlobalSearch.trim()) {
           const search = pipelineGlobalSearch.toLowerCase().trim();
-          data = data.filter(row => row.values.some(v => (v || '').toLowerCase().includes(search)));
+          data = data.filter(customer =>
+            pipelineColumns.some(col => 
+              String(getCustomerFieldValue(customer, col.key)).toLowerCase().includes(search)
+            )
+          );
         }
+
         if (pipelineQuickFilter !== 'all') {
-          const statusColIdx = sheetHeaders.findIndex(h => h && /status/i.test(h));
-          const emailColIdx = sheetHeaders.findIndex(h => h && /email/i.test(h));
-          const phoneColIdx = sheetHeaders.findIndex(h => h && /phone/i.test(h));
-          const recurringColIdx = sheetHeaders.findIndex(h => h && /recurring/i.test(h));
-          data = data.filter(row => {
+          data = data.filter(customer => {
+            const status = (customer.status || '').toLowerCase();
             switch (pipelineQuickFilter) {
-              case 'unscheduled': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('unscheduled');
-              case 'scheduled': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('scheduled') && !(row.values[statusColIdx] || '').toLowerCase().includes('unscheduled');
-              case 'completed': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('completed');
-              case 'recurring': return recurringColIdx >= 0 && (row.values[recurringColIdx] || '').toUpperCase() === 'TRUE';
-              case 'has_email': return emailColIdx >= 0 && (row.values[emailColIdx] || '').trim().length > 0;
-              case 'has_phone': return phoneColIdx >= 0 && (row.values[phoneColIdx] || '').trim().length > 0;
+              case 'unscheduled': return status.includes('unscheduled') || status === '' || !status;
+              case 'scheduled': return status.includes('scheduled') && !status.includes('unscheduled');
+              case 'completed': return status.includes('completed');
+              case 'recurring': return customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
+              case 'has_email': return (customer.email || '').trim().length > 0;
+              case 'has_phone': return (customer.phone || '').trim().length > 0;
               default: return true;
             }
           });
         }
-        Object.entries(pipelineFilters).forEach(([colIdx, filterText]) => {
+
+        Object.entries(pipelineFilters).forEach(([colKey, filterText]) => {
           if (filterText && filterText.trim()) {
-            const idx = parseInt(colIdx);
             const search = filterText.toLowerCase().trim();
-            data = data.filter(row => (row.values[idx] || '').toLowerCase().includes(search));
+            data = data.filter(customer =>
+              String(getCustomerFieldValue(customer, colKey)).toLowerCase().includes(search)
+            );
           }
         });
+
         return data;
       };
 
@@ -6573,7 +6583,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   📁 Saved Routes ({savedRoutes.length})
                 </button>
                 <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => setCurrentView('pipeline')}>
-                  📊 Pipeline ({pipelineCustomers.length})
+                  📋 Database ({customers.length})
                 </button>
                 <button className={`tab-button ${currentView === 'recurring' ? 'active' : ''}`} onClick={() => setCurrentView('recurring')} style={{ color: currentView === 'recurring' ? '#22c55e' : undefined }}>
                   🦖 Recurring ({customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true).length})
@@ -11307,7 +11317,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               </div>
             )}
 
-            {/* Pipeline View */}
+            {/* Pipeline View - Database Customers */}
             {currentView === 'pipeline' && (
               <div style={{
                 position: 'absolute',
@@ -11319,178 +11329,140 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 padding: '32px'
               }} className="scrollbar-custom">
                 {/* Pipeline Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <h2 style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>📡 Google Sheets Pipeline</h2>
-                    {sheetsConnected && (
-                      <span style={{
-                        fontSize: '11px',
-                        padding: '4px 10px',
-                        background: 'rgba(34, 197, 94, 0.2)',
-                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                        borderRadius: '12px',
-                        color: '#22c55e'
-                      }}>
-                        🔗 Live Sync
-                      </span>
-                    )}
+                    <h2 style={{ fontSize: '24px', fontWeight: 800, margin: 0 }}>📋 Customer Database</h2>
+                    <span style={{
+                      fontSize: '11px',
+                      padding: '4px 10px',
+                      background: 'rgba(139, 92, 246, 0.2)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '12px',
+                      color: '#a78bfa'
+                    }}>
+                      {customers.length} customers
+                    </span>
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    {lastSheetSync && (
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                        Last sync: {new Date(lastSheetSync).toLocaleTimeString()}
-                      </span>
-                    )}
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                     <button
-                      onClick={refreshPipelineData}
-                      className="button-primary"
-                      disabled={!sheetsConnected || sheetSyncing}
+                      onClick={() => window.open('/api/export/csv', '_blank')}
                       style={{
                         padding: '8px 16px',
-                        opacity: sheetsConnected ? 1 : 0.5
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        border: '1px solid rgba(34, 197, 94, 0.3)',
+                        borderRadius: '8px',
+                        color: '#22c55e',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
                       }}
                     >
-                      🔄 Refresh
+                      📥 Export CSV
                     </button>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={sheetAutoRefresh}
-                        onChange={(e) => setSheetAutoRefresh(e.target.checked)}
-                      />
-                      Auto-refresh
-                    </label>
+                    <button
+                      onClick={() => window.open('/api/export/json', '_blank')}
+                      style={{
+                        padding: '8px 16px',
+                        background: 'rgba(59, 130, 246, 0.2)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        borderRadius: '8px',
+                        color: '#3b82f6',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📥 Export JSON
+                    </button>
                   </div>
                 </div>
 
                 {/* Search & Filter Toolbar */}
-                {sheetsConnected && sheetHeaders.length > 0 && (
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
-                      <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-                        <input
-                          type="text"
-                          placeholder="🔍 Search all columns..."
-                          value={pipelineGlobalSearch}
-                          onChange={(e) => setPipelineGlobalSearch(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '10px 16px',
-                            background: 'rgba(30, 41, 59, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => window.open('/api/export/csv', '_blank')}
+                <div style={{ marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
+                    <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
+                      <input
+                        type="text"
+                        placeholder="Search all columns..."
+                        value={pipelineGlobalSearch}
+                        onChange={(e) => setPipelineGlobalSearch(e.target.value)}
                         style={{
+                          width: '100%',
                           padding: '10px 16px',
-                          background: 'rgba(34, 197, 94, 0.2)',
-                          border: '1px solid rgba(34, 197, 94, 0.3)',
+                          background: 'rgba(30, 41, 59, 0.8)',
+                          border: '1px solid rgba(148, 163, 184, 0.2)',
                           borderRadius: '8px',
-                          color: '#22c55e',
+                          color: '#f1f5f9',
+                          fontSize: '14px',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                    {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
+                      <button
+                        onClick={() => {
+                          setPipelineGlobalSearch('');
+                          setPipelineQuickFilter('all');
+                          setPipelineFilters({});
+                          setPipelineSortColumn(null);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          background: 'rgba(239, 68, 68, 0.2)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '8px',
+                          color: '#ef4444',
                           fontSize: '13px',
                           fontWeight: 600,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap'
+                          cursor: 'pointer'
                         }}
                       >
-                        📥 Export CSV
+                        Clear All
                       </button>
-                      {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
-                        <button
-                          onClick={() => {
-                            setPipelineGlobalSearch('');
-                            setPipelineQuickFilter('all');
-                            setPipelineFilters({});
-                          }}
-                          style={{
-                            padding: '10px 16px',
-                            background: 'rgba(239, 68, 68, 0.2)',
-                            border: '1px solid rgba(239, 68, 68, 0.3)',
-                            borderRadius: '8px',
-                            color: '#ef4444',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            whiteSpace: 'nowrap'
-                          }}
-                        >
-                          ✕ Clear Filters
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {[
-                        { key: 'all', label: 'All' },
-                        { key: 'unscheduled', label: 'Unscheduled' },
-                        { key: 'scheduled', label: 'Scheduled' },
-                        { key: 'completed', label: 'Completed' },
-                        { key: 'recurring', label: 'Recurring' },
-                        { key: 'has_email', label: 'Has Email' },
-                        { key: 'has_phone', label: 'Has Phone' }
-                      ].map(filter => (
-                        <button
-                          key={filter.key}
-                          onClick={() => setPipelineQuickFilter(filter.key)}
-                          style={{
-                            padding: '6px 14px',
-                            background: pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-                            border: `1px solid ${pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
-                            borderRadius: '20px',
-                            color: pipelineQuickFilter === filter.key ? '#a78bfa' : '#94a3b8',
-                            fontSize: '12px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
-                          }}
-                        >
-                          {filter.label}
-                        </button>
-                      ))}
-                    </div>
+                    )}
                   </div>
-                )}
+                  {/* Quick Filter Buttons */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {[
+                      { key: 'all', label: 'All' },
+                      { key: 'unscheduled', label: 'Unscheduled' },
+                      { key: 'scheduled', label: 'Scheduled' },
+                      { key: 'completed', label: 'Completed' },
+                      { key: 'recurring', label: 'Recurring' },
+                      { key: 'has_email', label: 'Has Email' },
+                      { key: 'has_phone', label: 'Has Phone' }
+                    ].map(filter => (
+                      <button
+                        key={filter.key}
+                        onClick={() => setPipelineQuickFilter(filter.key)}
+                        style={{
+                          padding: '6px 14px',
+                          background: pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+                          border: `1px solid ${pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
+                          borderRadius: '20px',
+                          color: pipelineQuickFilter === filter.key ? '#a78bfa' : '#94a3b8',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {filter.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-                {/* Connection Status */}
-                {!sheetsConnected ? (
+                {/* Results Info */}
+                {customers.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
-                    <div style={{ fontSize: '64px', marginBottom: '16px' }}>📊</div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>Connect to Google Sheets</div>
+                    <div style={{ fontSize: '64px', marginBottom: '16px' }}>📋</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No customers yet</div>
                     <div style={{ fontSize: '14px', marginBottom: '24px' }}>
-                      Enter your Google Sheet URL in the sidebar and click "Test Connection" to view your data here.
+                      Import customers from Google Sheets using the sidebar, or add them manually.
                     </div>
-                    <div style={{
-                      background: 'rgba(139, 92, 246, 0.1)',
-                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                      borderRadius: '12px',
-                      padding: '20px',
-                      maxWidth: '500px',
-                      margin: '0 auto',
-                      textAlign: 'left'
-                    }}>
-                      <div style={{ fontWeight: 600, color: '#a78bfa', marginBottom: '12px' }}>📋 Setup Instructions:</div>
-                      <ol style={{ margin: 0, paddingLeft: '20px', lineHeight: '1.8', fontSize: '13px' }}>
-                        <li>Open your Google Sheet</li>
-                        <li>Click File → Share → Publish to web</li>
-                        <li>Select "Comma-separated values (.csv)"</li>
-                        <li>Copy the published URL</li>
-                        <li>Paste it in the "Google Sheets" field in the sidebar</li>
-                        <li>Click "Test Connection"</li>
-                      </ol>
-                    </div>
-                  </div>
-                ) : sheetHeaders.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '60px 20px', color: '#64748b' }}>
-                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
-                    <div style={{ fontSize: '16px' }}>Loading Google Sheet data...</div>
                   </div>
                 ) : (
-                  /* Google Sheets Data Table */
                   <div style={{ overflowX: 'auto' }}>
                     <div style={{
                       marginBottom: '12px',
@@ -11500,35 +11472,36 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      <span>📊 {(() => { const filtered = getFilteredPipelineData(); return filtered.length !== sheetData.length ? `${filtered.length} of ${sheetData.length}` : sheetData.length; })()} rows • {sheetHeaders.length} columns</span>
-                      {pipelineSortColumn !== null && (
+                      <span>{(() => { const filtered = getFilteredPipelineData(); return filtered.length !== customers.length ? `Showing ${filtered.length} of ${customers.length}` : `${customers.length}`; })()} customers</span>
+                      {pipelineSortColumn && (
                         <span style={{ color: '#a78bfa' }}>
-                          Sorted by: {sheetHeaders[pipelineSortColumn]} ({pipelineSortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'})
+                          Sorted by: {pipelineColumns.find(c => c.key === pipelineSortColumn)?.label} ({pipelineSortOrder === 'asc' ? 'A-Z' : 'Z-A'})
                         </span>
                       )}
                     </div>
                     <table className="pipeline-table">
                       <thead>
                         <tr>
-                          {sheetHeaders.map((header, colIndex) => (
+                          {pipelineColumns.map(col => (
                             <th
-                              key={colIndex}
-                              onClick={() => sortPipelineData(colIndex)}
+                              key={col.key}
+                              onClick={() => sortPipelineData(col.key)}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
                                 whiteSpace: 'nowrap',
-                                background: pipelineSortColumn === colIndex ? 'rgba(139, 92, 246, 0.3)' : undefined
+                                minWidth: col.width,
+                                background: pipelineSortColumn === col.key ? 'rgba(139, 92, 246, 0.3)' : undefined
                               }}
                             >
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                {header}
+                                {col.label}
                                 <span style={{
                                   fontSize: '10px',
-                                  opacity: pipelineSortColumn === colIndex ? 1 : 0.4,
-                                  color: pipelineSortColumn === colIndex ? '#a78bfa' : '#64748b'
+                                  opacity: pipelineSortColumn === col.key ? 1 : 0.4,
+                                  color: pipelineSortColumn === col.key ? '#a78bfa' : '#64748b'
                                 }}>
-                                  {pipelineSortColumn === colIndex
+                                  {pipelineSortColumn === col.key
                                     ? (pipelineSortOrder === 'asc' ? '▲' : '▼')
                                     : '⇅'
                                   }
@@ -11538,13 +11511,13 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                           ))}
                         </tr>
                         <tr style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
-                          {sheetHeaders.map((header, colIndex) => (
-                            <th key={`filter-${colIndex}`} style={{ padding: '4px 6px' }}>
+                          {pipelineColumns.map(col => (
+                            <th key={`filter-${col.key}`} style={{ padding: '4px 6px' }}>
                               <input
                                 type="text"
                                 placeholder="Filter..."
-                                value={pipelineFilters[colIndex] || ''}
-                                onChange={(e) => setPipelineFilters(prev => ({...prev, [colIndex]: e.target.value}))}
+                                value={pipelineFilters[col.key] || ''}
+                                onChange={(e) => setPipelineFilters(prev => ({...prev, [col.key]: e.target.value}))}
                                 style={{
                                   width: '100%',
                                   padding: '4px 8px',
@@ -11562,88 +11535,75 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </tr>
                       </thead>
                       <tbody>
-                        {(() => {
-                          // Find the customer name column index for job history click-through
-                          const nameColIdx = sheetHeaders.findIndex(h => h && /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
-                          return getFilteredPipelineData().map((row) => {
-                            // Find matching local customer for this row
-                            const matchedCustomer = findCustomerFromPipelineRow(row);
-                            const jobCount = matchedCustomer?.serviceHistory?.length || 0;
-                            return (
-                              <tr key={row.rowIndex}>
-                                {row.values.map((value, colIndex) => (
-                                  <td key={colIndex}>
-                                    {colIndex === nameColIdx && matchedCustomer ? (
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <input
-                                          type="text"
-                                          value={value || ''}
-                                          onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
-                                          style={{
-                                            flex: 1,
-                                            minWidth: '80px',
-                                            padding: '6px 8px',
-                                            background: 'transparent',
-                                            border: '1px solid transparent',
-                                            borderRadius: '4px',
-                                            color: '#f1f5f9',
-                                            fontSize: '12px'
-                                          }}
-                                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
-                                        />
-                                        {jobCount > 1 && (
-                                          <button
-                                            onClick={() => {
-                                              setProfileCustomer(matchedCustomer);
-                                              setShowCustomerProfile(true);
-                                            }}
-                                            title={`${jobCount} jobs — click to view history`}
-                                            style={{
-                                              padding: '2px 6px',
-                                              background: 'rgba(139, 92, 246, 0.2)',
-                                              border: '1px solid rgba(139, 92, 246, 0.4)',
-                                              borderRadius: '10px',
-                                              color: '#a78bfa',
-                                              fontSize: '10px',
-                                              fontWeight: 700,
-                                              cursor: 'pointer',
-                                              whiteSpace: 'nowrap',
-                                              flexShrink: 0
-                                            }}
-                                          >
-                                            {jobCount} jobs
-                                          </button>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        value={value || ''}
-                                        onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
-                                        style={{
-                                          width: '100%',
-                                          minWidth: '80px',
-                                          padding: '6px 8px',
-                                          background: 'transparent',
-                                          border: '1px solid transparent',
-                                          borderRadius: '4px',
-                                          color: '#f1f5f9',
-                                          fontSize: '12px'
-                                        }}
-                                        onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                                        onBlur={(e) => e.target.style.borderColor = 'transparent'}
-                                      />
-                                    )}
-                                  </td>
-                                ))}
-                              </tr>
-                            );
-                          });
-                        })()}
+                        {getFilteredPipelineData().map((customer) => (
+                          <tr key={customer.id || customer.address}>
+                            {pipelineColumns.map(col => (
+                              <td key={col.key}>
+                                {col.key === 'name' ? (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span
+                                      style={{ cursor: 'pointer', color: '#a78bfa', fontWeight: 600, fontSize: '12px' }}
+                                      onClick={() => {
+                                        setProfileCustomer(customer);
+                                        setShowCustomerProfile(true);
+                                      }}
+                                    >
+                                      {getCustomerFieldValue(customer, 'name') || 'Unnamed'}
+                                    </span>
+                                  </div>
+                                ) : col.key === 'status' ? (
+                                  <span style={{
+                                    padding: '3px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '11px',
+                                    fontWeight: 600,
+                                    background: (() => {
+                                      const s = (customer.status || '').toLowerCase();
+                                      if (s.includes('completed')) return 'rgba(34, 197, 94, 0.2)';
+                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return 'rgba(59, 130, 246, 0.2)';
+                                      if (s.includes('unscheduled') || !s) return 'rgba(245, 158, 11, 0.2)';
+                                      return 'rgba(100, 116, 139, 0.2)';
+                                    })(),
+                                    color: (() => {
+                                      const s = (customer.status || '').toLowerCase();
+                                      if (s.includes('completed')) return '#22c55e';
+                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return '#3b82f6';
+                                      if (s.includes('unscheduled') || !s) return '#f59e0b';
+                                      return '#94a3b8';
+                                    })(),
+                                    border: (() => {
+                                      const s = (customer.status || '').toLowerCase();
+                                      if (s.includes('completed')) return '1px solid rgba(34, 197, 94, 0.3)';
+                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return '1px solid rgba(59, 130, 246, 0.3)';
+                                      if (s.includes('unscheduled') || !s) return '1px solid rgba(245, 158, 11, 0.3)';
+                                      return '1px solid rgba(100, 116, 139, 0.3)';
+                                    })()
+                                  }}>
+                                    {customer.status || 'Unscheduled'}
+                                  </span>
+                                ) : col.key === 'isRecurring' ? (
+                                  <span style={{
+                                    color: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? '#22c55e' : '#475569',
+                                    fontWeight: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? 600 : 400,
+                                    fontSize: '12px'
+                                  }}>
+                                    {getCustomerFieldValue(customer, 'isRecurring') || '-'}
+                                  </span>
+                                ) : col.key === 'amountPaid' ? (
+                                  <span style={{ fontSize: '12px', color: customer.amountPaid ? '#22c55e' : '#475569' }}>
+                                    {customer.amountPaid ? `$${customer.amountPaid}` : '-'}
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                                    {String(getCustomerFieldValue(customer, col.key) || '-')}
+                                  </span>
+                                )}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
-
                   </div>
                 )}
               </div>
