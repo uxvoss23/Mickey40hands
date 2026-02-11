@@ -3295,7 +3295,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             try {
               const text = e.target.result;
               const rows = parseCSV(text);
-              const headers = rows[0].map(h => (h || '').toLowerCase().trim().replace(/\s+/g, ''));
+              const headers = rows[0].map(h => (h || '').toLowerCase().trim().replace(/\s+/g, '')); console.log('CSV HEADERS:', JSON.stringify(headers));
               const dataRows = rows.slice(1).filter(row => row.some(cell => cell));
 
               const newCustomers = [];
@@ -3306,6 +3306,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 headers.forEach((header, idx) => {
                   customer[header] = row[idx] ? row[idx].trim() : '';
                 });
+                if (newCustomers.length === 0 && failed.length === 0) { console.log('FIRST ROW KEYS:', Object.keys(customer)); console.log('FIRST ROW DATA:', JSON.stringify(customer).substring(0, 500)); }
 
                 // Build full name from first and last name or customer name
                 const firstName = customer['firstname'] || customer['first'] || '';
