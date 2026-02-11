@@ -4269,22 +4269,25 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         };
         
         const colMap = {
-          name: getColumnIndex(['Customer Name', 'Name']),
-          email: getColumnIndex(['Email', 'Customer Email']),
-          phone: getColumnIndex(['Phone', 'Mobile', 'Customer Mobile']),
+          name: getColumnIndex(['Customer name', 'Customer Name', 'Name']),
+          email: getColumnIndex(['Customer email', 'Customer Email', 'Email']),
+          phone: getColumnIndex(['Customer mobile number', 'Customer Mobile', 'Phone', 'Mobile']),
           street: getColumnIndex(['Street']),
           city: getColumnIndex(['City']),
           state: getColumnIndex(['State']),
-          zip: getColumnIndex(['Zipcode', 'Zip']),
-          status: getColumnIndex(['Job Status', 'Status']),
+          zip: getColumnIndex(['Zipcode', 'Zip', 'ZIP']),
+          status: getColumnIndex(['Job status', 'Job Status', 'Status']),
           lat: getColumnIndex(['Latitude', 'Lat']),
-          lng: getColumnIndex(['Longitude', 'Lng']),
-          totalPanels: getColumnIndex(['Panel', 'Number of Panel']),
+          lng: getColumnIndex(['Longitude', 'Lng', 'Long']),
+          totalPanels: getColumnIndex(['Number of Panels', 'Number of Panel', 'Panel', 'Panels']),
           notes: getColumnIndex(['Notes', 'Customer Notes']),
           scheduledDate: getColumnIndex(['Scheduled', 'Job Scheduled']),
-          amountPaid: getColumnIndex(['Amount', 'Job Amount']),
+          amountPaid: getColumnIndex(['Job amount', 'Job Amount', 'Amount']),
+          tipAmount: getColumnIndex(['Tip amount', 'Tip']),
           isRecurring: getColumnIndex(['Recurring']),
-          solarVerified: getColumnIndex(['Solar Verified', 'Verified'])
+          solarVerified: getColumnIndex(['Solar Verified', 'Verified']),
+          jobDesc: getColumnIndex(['Job description', 'Job Description', 'Description']),
+          completed: getColumnIndex(['Job completed date', 'Job Completed Date', 'Completed'])
         };
         
         // Parse data rows
@@ -5531,98 +5534,27 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             };
             
             colMap = {
-              jobDesc: getColumnIndex(['Job Description', 'Description']),
-              status: getColumnIndex(['Job Status', 'Status']),
-              name: getColumnIndex(['Customer Name', 'Name']),
-              address: getColumnIndex(['Address']),
-              street: getColumnIndex(['Street']),
-              city: getColumnIndex(['City']),
-              state: getColumnIndex(['State']),
-              zip: getColumnIndex(['Zipcode', 'Zip', 'ZIP']),
-              email: getColumnIndex(['Email', 'Customer Email']),
-              phone: getColumnIndex(['Phone', 'Mobile', 'Customer Mobile']),
-              schedStart: getColumnIndex(['Scheduled Start', 'Start Date', 'Job Scheduled']),
-              completed: getColumnIndex(['Completed', 'Completed Date']),
-              employee: getColumnIndex(['Employee', 'Assigned']),
-              tags: getColumnIndex(['Tags', 'Job Tags']),
-              recurring: getColumnIndex(['Recurring']),
-              amount: getColumnIndex(['Amount', 'Job Amount']),
-              tip: getColumnIndex(['Tip']),
-              lat: getColumnIndex(['Latitude', 'Lat']),
-              lng: getColumnIndex(['Longitude', 'Lng', 'Long']),
-              panels: getColumnIndex(['Panel', 'Number of Panel', 'Panels']),
-              notes: getColumnIndex(['Notes', 'Customer Notes']),
-              solarVerified: getColumnIndex(['Solar Verified', 'Verified'])
-            };
-            
-            // Get data rows
-            const dataResponse = await fetch(
-              `https://sheets.googleapis.com/v4/spreadsheets/${actualSheetId}/values/Sheet1!A2:Z?key=${googleApiKey}`
-            );
-            const dataJson = await dataResponse.json();
-            data = dataJson.values || [];
-            
-          } else {
-            // Use CSV export with CORS proxy fallback
-            const csvUrl = getGoogleSheetsCsvUrl(googleSheetId);
-
-            console.log('Fetching CSV from:', csvUrl);
-
-            let response;
-            try {
-              response = await fetch(csvUrl);
-            } catch (e) {
-              console.log('Direct fetch failed, trying CORS proxy...');
-              // Use CORS proxy
-              const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(csvUrl)}`;
-              response = await fetch(proxyUrl);
-            }
-
-            if (!response.ok) {
-              throw new Error(`HTTP ${response.status}: Sheet may not be published or shared publicly`);
-            }
-            
-          // Parse CSV and create header mapping
-          const csv = await response.text();
-          const rows = csv.split('\n').filter(row => row.trim());
-
-          // First row is headers - use top-level parseCSVRow function
-          const headers = parseCSVRow(rows[0]);
-          console.log('📋 Sheet headers:', headers);
-          
-          // Create column mapping
-          const getColumnIndex = (possibleNames) => {
-            for (const name of possibleNames) {
-              const index = headers.findIndex(h => 
-                h.toLowerCase().includes(name.toLowerCase())
-              );
-              if (index !== -1) return index;
-            }
-            return -1;
-          };
-          
-          colMap = {
-            jobDesc: getColumnIndex(['Job Description', 'Description']),
-            status: getColumnIndex(['Job Status', 'Status']),
-            name: getColumnIndex(['Customer Name', 'Name']),
-            address: getColumnIndex(['Address']),
+            jobDesc: getColumnIndex(['Job description', 'Job Description', 'Description']),
+            status: getColumnIndex(['Job status', 'Job Status', 'Status']),
+            name: getColumnIndex(['Customer name', 'Customer Name', 'Name']),
+            address: getColumnIndex(['address', 'Address']),
+            lat: getColumnIndex(['Latitude', 'Lat']),
+            lng: getColumnIndex(['Longitude', 'Lng', 'Long']),
             street: getColumnIndex(['Street']),
             city: getColumnIndex(['City']),
             state: getColumnIndex(['State']),
             zip: getColumnIndex(['Zipcode', 'Zip', 'ZIP']),
-            email: getColumnIndex(['Email', 'Customer Email']),
-            phone: getColumnIndex(['Phone', 'Mobile', 'Customer Mobile']),
+            email: getColumnIndex(['Customer email', 'Customer Email', 'Email']),
+            phone: getColumnIndex(['Customer mobile number', 'Customer Mobile', 'Phone', 'Mobile']),
+            completed: getColumnIndex(['Job completed date', 'Job Completed Date', 'Completed', 'Completed Date']),
+            notes: getColumnIndex(['Notes', 'Customer Notes']),
+            recurring: getColumnIndex(['Recurring']),
+            amount: getColumnIndex(['Job amount', 'Job Amount', 'Amount']),
+            tip: getColumnIndex(['Tip amount', 'Tip']),
+            panels: getColumnIndex(['Number of Panels', 'Number of Panel', 'Panel', 'Panels']),
             schedStart: getColumnIndex(['Scheduled Start', 'Start Date', 'Job Scheduled']),
-            completed: getColumnIndex(['Completed', 'Completed Date', 'Job completed date']),
             employee: getColumnIndex(['Employee', 'Assigned']),
             tags: getColumnIndex(['Tags', 'Job Tags']),
-            recurring: getColumnIndex(['Recurring']),
-            amount: getColumnIndex(['Amount', 'Job Amount']),
-            tip: getColumnIndex(['Tip', 'Tip amount']),
-            lat: getColumnIndex(['Latitude', 'Lat']),
-            lng: getColumnIndex(['Longitude', 'Lng', 'Long']),
-            panels: getColumnIndex(['Panel', 'Number of Panel', 'Panels']),
-            notes: getColumnIndex(['Notes', 'Customer Notes']),
             solarVerified: getColumnIndex(['Solar Verified', 'Verified']),
             nextServiceDate: getColumnIndex(['Next Service Date', 'Next Service', 'Upcoming Date'])
           };
