@@ -1034,11 +1034,16 @@
           });
 
           // Clear scheduling for customers that were scheduled for prev day but aren't in any saved route
+          const orphanedIds = customers.filter(c => {
+            if (!c.scheduledDate) return false;
+            const custDate = new Date(c.scheduledDate);
+            return custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id);
+          }).map(c => c.id);
+
           setCustomers(prev => prev.map(c => {
             if (!c.scheduledDate) return c;
             const custDate = new Date(c.scheduledDate);
             if (custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id)) {
-              // This customer was scheduled for prev day but not in any saved route - orphaned
               return {
                 ...c,
                 scheduledDate: null,
@@ -1049,6 +1054,10 @@
             }
             return c;
           }));
+
+          orphanedIds.forEach(cid => {
+            propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+          });
 
           // Clear routesByDay for previous date
           setRoutesByDay(prev => ({ ...prev, [prevDateKey]: [] }));
@@ -2890,6 +2899,13 @@
             return c;
           });
         });
+
+        // Persist scheduling to database
+        propagateCustomerUpdate(customer.id, {
+          scheduledDate: date.toISOString(),
+          scheduledTime: timeSlot,
+          status: 'scheduled'
+        });
       };
 
       // Mass email
@@ -2950,8 +2966,16 @@
           return c;
         }));
         
-        // Track local overrides so sheet sync doesn't overwrite these changes
+        // Persist each customer update to database
         routeCustomers.forEach(rc => {
+          propagateCustomerUpdate(rc.id, {
+            lastServiceDate: scheduledDate,
+            status: '',
+            routeConfirmed: false,
+            confirmedRouteName: null,
+            scheduledDate: null,
+            scheduledTime: null
+          });
         });
 
         // Mark route as sent
@@ -4545,8 +4569,25 @@ const createJob = async () => {
             customerData = newCustomer;
             customerId = newCustomer.id;
             
-            // Add to customers
+            // Add to customers and save to database
             setCustomers(prev => [...prev, newCustomer]);
+            try {
+              await apiFetch('/customers', {
+                method: 'POST',
+                body: JSON.stringify({
+                  name: newCustomer.firstname + ' ' + newCustomer.lastname,
+                  firstname: newCustomer.firstname,
+                  lastname: newCustomer.lastname,
+                  address: newCustomer.address,
+                  latitude: newCustomer.latitude,
+                  longitude: newCustomer.longitude,
+                  phone: newCustomer.phone,
+                  email: newCustomer.email,
+                  total_panels: newCustomer.totalPanels,
+                  status: newCustomer.status
+                })
+              });
+            } catch(err) { console.error('Failed to save new customer to DB:', err); }
           } else {
             // Find existing customer
             customerData = customers.find(c => c.id === customerId);
@@ -4650,14 +4691,15 @@ const createJob = async () => {
                 ? { ...c, status: 'scheduled' }
                 : c
             ));
+            propagateCustomerUpdate(customerId, { status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime });
           } else {
             // No date/time - remains unscheduled
-            // Update customer status filter will show it
             setCustomers(prev => prev.map(c => 
               c.id === customerId 
                 ? { ...c, status: 'unscheduled' }
                 : c
             ));
+            propagateCustomerUpdate(customerId, { status: 'unscheduled' });
           }
 
           // Close modal and reset form
@@ -6006,6 +6048,11 @@ const createJob = async () => {
                               <button
                                 onClick={() => {
                                   // Clear all jobs for selected day
+                                  const affectedIds = customers.filter(c => {
+                                    if (!c.scheduledDate) return false;
+                                    return new Date(c.scheduledDate).toDateString() === dateKey;
+                                  }).map(c => c.id);
+
                                   setCustomers(prev => prev.map(c => {
                                     if (!c.scheduledDate) return c;
                                     const custDate = new Date(c.scheduledDate);
@@ -6020,6 +6067,10 @@ const createJob = async () => {
                                     }
                                     return c;
                                   }));
+
+                                  affectedIds.forEach(cid => {
+                                    propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+                                  });
                                   
                                   // Clear THIS DAY'S route
                                   setRoutesByDay(prev => ({
@@ -6242,6 +6293,8 @@ const createJob = async () => {
                                                   }
                                                   return c;
                                                 }));
+                                                propagateCustomerUpdate(job.id, { scheduledTime: prevJob.scheduledTime });
+                                                propagateCustomerUpdate(prevJob.id, { scheduledTime: job.scheduledTime });
                                               }}
                                               style={{
                                                 background: 'rgba(139, 92, 246, 0.1)',
@@ -6282,6 +6335,8 @@ const createJob = async () => {
                                                   }
                                                   return c;
                                                 }));
+                                                propagateCustomerUpdate(job.id, { scheduledTime: nextJob.scheduledTime });
+                                                propagateCustomerUpdate(nextJob.id, { scheduledTime: job.scheduledTime });
                                               }}
                                               style={{
                                                 background: 'rgba(139, 92, 246, 0.1)',
@@ -6332,6 +6387,7 @@ const createJob = async () => {
                                               }
                                               return c;
                                             }));
+                                            propagateCustomerUpdate(job.id, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
                                           }}
                                           style={{
                                             background: 'rgba(239, 68, 68, 0.1)',
@@ -7853,6 +7909,7 @@ const createJob = async () => {
                                     c.id === selectedCustomer.id ? { ...c, status: newStatus } : c
                                   ));
                                   setSelectedCustomer(prev => ({ ...prev, status: newStatus }));
+                                  propagateCustomerUpdate(selectedCustomer.id, { status: newStatus });
                                 }}
                                 style={{
                                   width: '100%',
