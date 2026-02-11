@@ -5167,9 +5167,7 @@ const createJob = async () => {
                 <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => setCurrentView('pipeline')}>
                   📋 Database ({customers.length})
                 </button>
-                <button className={`tab-button ${currentView === 'recurring' ? 'active' : ''}`} onClick={() => setCurrentView('recurring')} style={{ color: currentView === 'recurring' ? '#22c55e' : undefined }}>
-                  🦖 Recurring ({customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true).length})
-                </button>
+
               </div>
               
               {/* Search Bar */}
@@ -10504,121 +10502,6 @@ const createJob = async () => {
             )}
 
 
-            {/* Recurring Customers View */}
-            {currentView === 'recurring' && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                overflow: 'auto',
-                padding: '32px'
-              }} className="scrollbar-custom">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '24px', fontWeight: 800, color: '#22c55e' }}>🦖 Recurring Customers</h2>
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <span style={{ fontSize: '14px', color: '#94a3b8' }}>
-                      {customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true).length} recurring customers
-                    </span>
-                  </div>
-                </div>
-
-                {(() => {
-                  const recurringCustomers = customers.filter(c => c.isRecurring === true || c.recurring === 'TRUE' || c.recurring === true);
-
-                  if (recurringCustomers.length === 0) {
-                    return (
-                      <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
-                        <div style={{ fontSize: '64px', marginBottom: '16px' }}>🦖</div>
-                        <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No recurring customers yet</div>
-                        <div style={{ fontSize: '14px' }}>Customers marked as "Recurring" will appear here.</div>
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div style={{ overflowX: 'auto' }}>
-                      <table className="pipeline-table">
-                        <thead>
-                          <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Phone</th>
-                            <th>Address</th>
-                            <th>City, State</th>
-                            <th>Panels</th>
-                            <th>Last Service</th>
-                            <th>Next Service</th>
-                            <th>Job Amount</th>
-                            <th>Tip</th>
-                            <th style={{ width: '200px' }}>Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {recurringCustomers.map((customer) => {
-                            // Calculate next service date if not set
-                            let nextService = customer.nextServiceDate;
-                            if (!nextService && customer.lastServiceDate) {
-                              const lastDate = new Date(customer.lastServiceDate);
-                              const next = new Date(lastDate);
-                              next.setFullYear(next.getFullYear() + 1);
-                              nextService = next.toISOString().split('T')[0];
-                            }
-                            const isOverdue = nextService && new Date(nextService) < new Date();
-
-                            return (
-                              <tr key={customer.id} style={{ background: isOverdue ? 'rgba(239, 68, 68, 0.1)' : undefined }}>
-                                <td style={{ fontWeight: 600 }}>
-                                  <span style={{ marginRight: '8px' }}>🦖</span>
-                                  <span
-                                    onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
-                                    style={{ cursor: 'pointer', color: '#f1f5f9' }}
-                                    onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
-                                    onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
-                                  >
-                                    {customer.name}
-                                  </span>
-                                </td>
-                                <td>{customer.email || '-'}</td>
-                                <td>{customer.phone || '-'}</td>
-                                <td style={{ fontSize: '11px', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                  {customer.address || '-'}
-                                </td>
-                                <td>{customer.city}, {customer.state}</td>
-                                <td>{customer.panelCount || customer.totalPanels ? `☀️ ${customer.panelCount || customer.totalPanels}` : '-'}</td>
-                                <td>
-                                  {customer.lastServiceDate
-                                    ? new Date(customer.lastServiceDate).toLocaleDateString()
-                                    : '-'
-                                  }
-                                </td>
-                                <td style={{ color: isOverdue ? '#ef4444' : '#22c55e', fontWeight: 600 }}>
-                                  {nextService
-                                    ? (isOverdue ? '⚠️ ' : '📅 ') + new Date(nextService).toLocaleDateString()
-                                    : '-'
-                                  }
-                                </td>
-                                <td style={{ color: '#22c55e' }}>
-                                  {customer.amountPaid ? `$${customer.amountPaid}` : '-'}
-                                </td>
-                                <td style={{ color: '#fbbf24' }}>
-                                  {customer.tipAmount ? `$${customer.tipAmount}` : '-'}
-                                </td>
-                                <td>
-                                  <div style={{ fontSize: '11px', color: '#94a3b8', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {customer.notes || customer.customerNotes || '-'}
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })()}
-              </div>
             )}
           </div>
 
