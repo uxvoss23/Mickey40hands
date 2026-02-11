@@ -1,0 +1,183 @@
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+32The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+32The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+5The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+5The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+5The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+9007dd26005a13f1.js:14 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+9007dd26005a13f1.js:14 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+9007dd26005a13f1.js:14 [ai-chat] Creating connection with chat proxy enabled
+(anonymous) @ 9007dd26005a13f1.js:14Understand this warning
+9007dd26005a13f1.js:14 [LaunchDarkly] LaunchDarkly client initialized
+9007dd26005a13f1.js:14 [Coframe] Replit Enterprise watcher loaded
+chunk-mgcl-FUFTMLTV.js:16 @import rules are not allowed here. See https://github.com/WICG/construct-stylesheets/issues/119#issuecomment-588352418.
+(anonymous) @ chunk-mgcl-FUFTMLTV.js:16Understand this warning
+/~:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+read.js:2530 READ - Host validation failed: Object
+content.js:2524 Host is not supported
+content.js:2526 Host is not valid or supported
+content.js:2526 Host is not in insights whitelist
+ createNativeOauthConnect [object Object]
+ Opening OAuth popup window [object Object]
+ adding message event listener
+9007dd26005a13f1.js:14 [ai-chat] Creating connection with chat proxy enabled
+(anonymous) @ 9007dd26005a13f1.js:14Understand this warning
+9954129c7dd6dc22.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 9954129c7dd6dc22.js:2Understand this error
+9954129c7dd6dc22.js:2 Unrecognized feature: 'ambient-light-sensor'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'battery'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'layout-animations'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'legacy-image-formats'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'navigation-override'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'oversized-images'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'publickey-credentials'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'speaker-selection'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'unoptimized-images'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'unsized-media'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Unrecognized feature: 'pointer-lock'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+C @ 9954129c7dd6dc22.js:2Understand this warning
+9954129c7dd6dc22.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 9954129c7dd6dc22.js:2Understand this error
+9007dd26005a13f1.js:14 Cache data may be lost when replacing the hostingBuildDeployActionUpdates field of a Subscription object.
+
+This could cause additional (usually avoidable) network requests to fetch data that were otherwise cached.
+
+To address this problem (which is not a bug in Apollo Client), either ensure all objects of type HostingBuildDeployLogAction and HostingBuildDeployStatusAction have an ID or a custom merge function, or define a custom merge function for the Subscription.hostingBuildDeployActionUpdates field, so InMemoryCache can safely merge these objects:
+
+  existing: {"__typename":"HostingBuildDeployLogAction","log":"\r\u001b[38;2;169;169;169m2026-02-11T21:24:50Z\u001b[37m \u001b[32minfo\u001b[37m: Build: 8fec1bd6-6609-40fd-85ab-310b410ff703\r\n"}
+  incoming: {"__typename":"HostingBuildDeployStatusAction","status":"security_scanning","message":null,"debugSummary":null}
+
+For more information about these options, please refer to the documentation:
+
+  * Ensuring entity objects have IDs: https://go.apollo.dev/c/generating-unique-identifiers
+  * Defining custom merge functions: https://go.apollo.dev/c/merging-non-normalized-objects
+
+(anonymous) @ 9007dd26005a13f1.js:14Understand this warning
+9954129c7dd6dc22.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 9954129c7dd6dc22.js:2Understand this error
+9954129c7dd6dc22.js:2 Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+C @ 9954129c7dd6dc22.js:2Understand this error
+9007dd26005a13f1.js:14 [Coframe] Mutation callback infinite loop protection triggered, disconnecting mutation observer Object
+(anonymous) @ 9007dd26005a13f1.js:14Understand this error
+stallwart.build.js:1 stallwart: failed ping 1
+9007dd26005a13f1.js:14 XHR finished loading: POST "https://events.launchdarkly.com/events/bulk/62b35a865152ab14c5942820".
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 2ddcfaa4a7281734.js:2
+o @ 2ddcfaa4a7281734.js:2
+promise @ aa521c35f9a9b12b.js:2
+(anonymous) @ aa521c35f9a9b12b.js:2
+n.httpRequest @ aa521c35f9a9b12b.js:2
+t @ aa521c35f9a9b12b.js:2
+a.sendChunk @ aa521c35f9a9b12b.js:2
+a.sendEvents @ aa521c35f9a9b12b.js:2
+a.flush @ aa521c35f9a9b12b.js:2
+e @ aa521c35f9a9b12b.js:2
+r @ 9007dd26005a13f1.js:14
+setTimeout
+(anonymous) @ 9007dd26005a13f1.js:14
+e @ aa521c35f9a9b12b.js:2
+r @ 9007dd26005a13f1.js:14
+setTimeout
+(anonymous) @ 9007dd26005a13f1.js:14
+e @ aa521c35f9a9b12b.js:2
+r @ 9007dd26005a13f1.js:14
+9007dd26005a13f1.js:14 XHR finished loading: POST "https://replit.com/data/repls/6500e03b-00a6-4150-ba8a-0ac33720e4d4/get_connection_metadata".
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 2ddcfaa4a7281734.js:2
+o @ 2ddcfaa4a7281734.js:2
+(anonymous) @ 81256e0d8ad91bf6.js:2
+E @ 81256e0d8ad91bf6.js:2
+h @ 5f5158de1fdc4f17.js:2
+m @ 5f5158de1fdc4f17.js:2
+W @ 9ba8e8585a232581.js:3
+await in W
+y @ 9ba8e8585a232581.js:3
+t.default.env.CI.connectionTimeoutMs @ 9ba8e8585a232581.js:3
+createNewOutgoingConnection @ 3b6f4de198ac1be9.js:2
+(anonymous) @ 3b6f4de198ac1be9.js:2
+e.with @ 3b6f4de198ac1be9.js:2
+e.with @ 3b6f4de198ac1be9.js:2
+e.startActiveSpan @ 3b6f4de198ac1be9.js:2
+e.startActiveSpan @ 3b6f4de198ac1be9.js:2
+onBackoffFinished @ 3b6f4de198ac1be9.js:2
+onBackoffFinished @ 3b6f4de198ac1be9.js:2
+(anonymous) @ 3b6f4de198ac1be9.js:2
+r @ 9007dd26005a13f1.js:14
+setTimeout
+(anonymous) @ 9007dd26005a13f1.js:14
+I @ 3b6f4de198ac1be9.js:2
+NoConnectionToBackingOff @ 3b6f4de198ac1be9.js:2
+connect @ 3b6f4de198ac1be9.js:2
+tryReconnecting @ 3b6f4de198ac1be9.js:2
+onConnClosed @ 3b6f4de198ac1be9.js:2
+onConnectionClosed @ 3b6f4de198ac1be9.js:2
+onClose @ 3b6f4de198ac1be9.js:2
+F.ws.onclose @ 3b6f4de198ac1be9.js:2
+7Fetch finished loading: POST "<URL>".
+9007dd26005a13f1.js:14 XHR finished loading: POST "https://replit.com/data/repls/6500e03b-00a6-4150-ba8a-0ac33720e4d4/get_connection_metadata".
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 9007dd26005a13f1.js:14
+(anonymous) @ 2ddcfaa4a7281734.js:2
+o @ 2ddcfaa4a7281734.js:2
+(anonymous) @ 81256e0d8ad91bf6.js:2
+E @ 81256e0d8ad91bf6.js:2
+h @ 5f5158de1fdc4f17.js:2
+m @ 5f5158de1fdc4f17.js:2
+W @ 9ba8e8585a232581.js:3
+await in W
+y @ 9ba8e8585a232581.js:3
+t.default.env.CI.connectionTimeoutMs @ 9ba8e8585a232581.js:3
+createNewOutgoingConnection @ 3b6f4de198ac1be9.js:2
+(anonymous) @ 3b6f4de198ac1be9.js:2
+e.with @ 3b6f4de198ac1be9.js:2
+e.with @ 3b6f4de198ac1be9.js:2
+e.startActiveSpan @ 3b6f4de198ac1be9.js:2
+e.startActiveSpan @ 3b6f4de198ac1be9.js:2
+onBackoffFinished @ 3b6f4de198ac1be9.js:2
+onBackoffFinished @ 3b6f4de198ac1be9.js:2
+(anonymous) @ 3b6f4de198ac1be9.js:2
+r @ 9007dd26005a13f1.js:14
+setTimeout
+(anonymous) @ 9007dd26005a13f1.js:14
+I @ 3b6f4de198ac1be9.js:2
+NoConnectionToBackingOff @ 3b6f4de198ac1be9.js:2
+connect @ 3b6f4de198ac1be9.js:2
+tryReconnecting @ 3b6f4de198ac1be9.js:2
+onConnClosed @ 3b6f4de198ac1be9.js:2
+onConnectionClosed @ 3b6f4de198ac1be9.js:2
+onClose @ 3b6f4de198ac1be9.js:2
+F.ws.onclose @ 3b6f4de198ac1be9.js:2

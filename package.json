@@ -13,5 +13,9 @@
     "express": "^5.2.1",
     "pg": "^8.18.0",
     "serve": "^14.2.5"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.0",
+    "@babel/preset-react": "^7.28.5"
   }
 }
