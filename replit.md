@@ -83,6 +83,11 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
+- 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
+- 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
+- 2026-02-11: Removed per-column filter inputs from database table header
+- 2026-02-11: Added inline cell editing: click any cell to edit, checkmark to confirm, saves via propagateCustomerUpdate to DB
+- 2026-02-11: Quick filter (Scheduled/Completed/etc) temporarily unhides matching hidden columns for that session only
 - 2026-02-11: Added CSV file upload directly to database from Database view
 - 2026-02-11: Added "New Customer" creation form in Database view
 - 2026-02-11: Fixed Google Sheets import to properly save contacts to PostgreSQL database (field name mapping fix)

@@ -568,6 +568,29 @@
       const [pipelineFilters, setPipelineFilters] = useState({});
       const [pipelineGlobalSearch, setPipelineGlobalSearch] = useState('');
       const [pipelineQuickFilter, setPipelineQuickFilter] = useState('all');
+
+      const allColumnKeys = ['name','status','phone','email','address','city','state','zip','panelCount','scheduledDate','preferredDate','lastServiceDate','amountPaid','employee','isRecurring','notes'];
+      const defaultHiddenColumns = [];
+      const [savedHiddenColumns, setSavedHiddenColumns] = useState(() => {
+        try {
+          const saved = localStorage.getItem('dbViewHiddenColumns');
+          return saved ? JSON.parse(saved) : defaultHiddenColumns;
+        } catch(e) { return defaultHiddenColumns; }
+      });
+      const [tempUnhiddenColumns, setTempUnhiddenColumns] = useState([]);
+      const [showColumnManager, setShowColumnManager] = useState(false);
+      const [editingCell, setEditingCell] = useState(null);
+      const [editingCellValue, setEditingCellValue] = useState('');
+
+      const saveColumnView = (hidden) => {
+        setSavedHiddenColumns(hidden);
+        localStorage.setItem('dbViewHiddenColumns', JSON.stringify(hidden));
+      };
+
+      const getVisibleColumns = () => {
+        const hidden = savedHiddenColumns.filter(k => !tempUnhiddenColumns.includes(k));
+        return allColumnKeys.filter(k => !hidden.includes(k));
+      };
       const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
       const [newCustomerData, setNewCustomerData] = useState({
         firstName: '', lastName: '', phone: '', email: '',
@@ -4279,7 +4302,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 /**
        * Pipeline columns definition
        */
-      const pipelineColumns = [
+      const pipelineColumnsAll = [
         { key: 'name', label: 'Name', width: '180px' },
         { key: 'status', label: 'Status', width: '120px' },
         { key: 'phone', label: 'Phone', width: '130px' },
@@ -4297,6 +4320,16 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         { key: 'isRecurring', label: 'Recurring', width: '80px' },
         { key: 'notes', label: 'Notes', width: '200px' }
       ];
+      const pipelineColumns = pipelineColumnsAll.filter(col => getVisibleColumns().includes(col.key));
+
+      const quickFilterColumnMap = {
+        'unscheduled': 'status',
+        'scheduled': 'status',
+        'completed': 'status',
+        'recurring': 'isRecurring',
+        'has_email': 'email',
+        'has_phone': 'phone'
+      };
 
       const getCustomerFieldValue = (customer, key) => {
         switch (key) {
@@ -4342,7 +4375,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         if (pipelineGlobalSearch.trim()) {
           const search = pipelineGlobalSearch.toLowerCase().trim();
           data = data.filter(customer =>
-            pipelineColumns.some(col => 
+            pipelineColumnsAll.some(col => 
               String(getCustomerFieldValue(customer, col.key)).toLowerCase().includes(search)
             )
           );
@@ -9874,6 +9907,22 @@ const createJob = async () => {
                         }}
                       />
                     </div>
+                    <button
+                      onClick={() => setShowColumnManager(!showColumnManager)}
+                      style={{
+                        padding: '8px 16px',
+                        background: showColumnManager ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+                        border: '1px solid ' + (showColumnManager ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'),
+                        borderRadius: '8px',
+                        color: showColumnManager ? '#a78bfa' : '#94a3b8',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Columns ({pipelineColumns.length}/{pipelineColumnsAll.length})
+                    </button>
                     {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
                       <button
                         onClick={() => {
@@ -9881,6 +9930,7 @@ const createJob = async () => {
                           setPipelineQuickFilter('all');
                           setPipelineFilters({});
                           setPipelineSortColumn(null);
+                          setTempUnhiddenColumns([]);
                         }}
                         style={{
                           padding: '8px 16px',
@@ -9910,7 +9960,7 @@ const createJob = async () => {
                     ].map(filter => (
                       <button
                         key={filter.key}
-                        onClick={() => setPipelineQuickFilter(filter.key)}
+                        onClick={() => {                          setPipelineQuickFilter(filter.key);                          const matchCol = quickFilterColumnMap[filter.key];                          if (filter.key === 'all') {                            setTempUnhiddenColumns([]);                          } else if (matchCol && savedHiddenColumns.includes(matchCol)) {                            setTempUnhiddenColumns([matchCol]);                          } else {                            setTempUnhiddenColumns([]);                          }                        }}
                         style={{
                           padding: '6px 14px',
                           background: pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
@@ -9929,7 +9979,57 @@ const createJob = async () => {
                   </div>
                 </div>
 
-                {/* Results Info */}
+                {/* Column Manager Panel */}
+                {showColumnManager && (
+                  <div style={{
+                    marginBottom: '16px',
+                    padding: '16px',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(148, 163, 184, 0.15)',
+                    borderRadius: '12px'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>Show/Hide Columns</span>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => saveColumnView([])} style={{ padding: '4px 12px', background: 'rgba(34, 197, 94, 0.2)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '6px', color: '#22c55e', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Show All</button>
+                        <button onClick={() => setShowColumnManager(false)} style={{ padding: '4px 12px', background: 'rgba(100, 116, 139, 0.2)', border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '6px', color: '#94a3b8', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>Done</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {pipelineColumnsAll.map(col => {
+                        const isVisible = !savedHiddenColumns.includes(col.key);
+                        return (
+                          <button
+                            key={col.key}
+                            onClick={() => {
+                              const newHidden = isVisible
+                                ? [...savedHiddenColumns, col.key]
+                                : savedHiddenColumns.filter(k => k !== col.key);
+                              const visibleAfter = allColumnKeys.filter(k => !newHidden.includes(k));
+                              if (visibleAfter.length === 0) return;
+                              saveColumnView(newHidden);
+                            }}
+                            style={{
+                              padding: '6px 14px',
+                              background: isVisible ? 'rgba(139, 92, 246, 0.25)' : 'rgba(30, 41, 59, 0.5)',
+                              border: isVisible ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.2)',
+                              borderRadius: '20px',
+                              color: isVisible ? '#a78bfa' : '#64748b',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {isVisible ? '✓' : ''} {col.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                                {/* Results Info */}
                 {customers.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
                     <div style={{ fontSize: '64px', marginBottom: '16px' }}>📋</div>
@@ -9983,7 +10083,7 @@ const createJob = async () => {
                       <span>{(() => { const filtered = getFilteredPipelineData(); return filtered.length !== customers.length ? `Showing ${filtered.length} of ${customers.length}` : `${customers.length}`; })()} customers</span>
                       {pipelineSortColumn && (
                         <span style={{ color: '#a78bfa' }}>
-                          Sorted by: {pipelineColumns.find(c => c.key === pipelineSortColumn)?.label} ({pipelineSortOrder === 'asc' ? 'A-Z' : 'Z-A'})
+                          Sorted by: {pipelineColumnsAll.find(c => c.key === pipelineSortColumn)?.label} ({pipelineSortOrder === 'asc' ? 'A-Z' : 'Z-A'})
                         </span>
                       )}
                     </div>
@@ -10002,8 +10102,8 @@ const createJob = async () => {
                                 background: pipelineSortColumn === col.key ? 'rgba(139, 92, 246, 0.3)' : undefined
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                {col.label}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                <span style={{ flex: 1 }}>{col.label}</span>
                                 <span style={{
                                   fontSize: '10px',
                                   opacity: pipelineSortColumn === col.key ? 1 : 0.4,
@@ -10014,100 +10114,175 @@ const createJob = async () => {
                                     : '⇅'
                                   }
                                 </span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const newHidden = [...savedHiddenColumns, col.key];
+                                    const visibleAfter = allColumnKeys.filter(k => !newHidden.includes(k));
+                                    if (visibleAfter.length === 0) return;
+                                    saveColumnView(newHidden);
+                                  }}
+                                  title={'Hide ' + col.label}
+                                  style={{
+                                    fontSize: '11px',
+                                    color: '#64748b',
+                                    cursor: 'pointer',
+                                    padding: '0 2px',
+                                    borderRadius: '3px',
+                                    lineHeight: 1,
+                                    opacity: 0.5,
+                                    transition: 'opacity 0.15s'
+                                  }}
+                                  onMouseEnter={(e) => e.target.style.opacity = 1}
+                                  onMouseLeave={(e) => e.target.style.opacity = 0.5}
+                                >✕</span>
                               </div>
                             </th>
                           ))}
                         </tr>
-                        <tr style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
-                          {pipelineColumns.map(col => (
-                            <th key={`filter-${col.key}`} style={{ padding: '4px 6px' }}>
-                              <input
-                                type="text"
-                                placeholder="Filter..."
-                                value={pipelineFilters[col.key] || ''}
-                                onChange={(e) => setPipelineFilters(prev => ({...prev, [col.key]: e.target.value}))}
-                                style={{
-                                  width: '100%',
-                                  padding: '4px 8px',
-                                  background: 'rgba(30, 41, 59, 0.8)',
-                                  border: '1px solid rgba(148, 163, 184, 0.15)',
-                                  borderRadius: '4px',
-                                  color: '#94a3b8',
-                                  fontSize: '11px',
-                                  outline: 'none'
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                              />
-                            </th>
-                          ))}
-                        </tr>
+
                       </thead>
                       <tbody>
                         {getFilteredPipelineData().map((customer) => (
                           <tr key={customer.id || customer.address}>
-                            {pipelineColumns.map(col => (
-                              <td key={col.key}>
-                                {col.key === 'name' ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span
-                                      style={{ cursor: 'pointer', color: '#a78bfa', fontWeight: 600, fontSize: '12px' }}
-                                      onClick={() => {
-                                        setProfileCustomer(customer);
-                                        setShowCustomerProfile(true);
-                                      }}
-                                    >
-                                      {getCustomerFieldValue(customer, 'name') || 'Unnamed'}
+                            {pipelineColumns.map(col => {
+                              const cellId = customer.id + '_' + col.key;
+                              const isEditing = editingCell === cellId;
+                              const cellValue = getCustomerFieldValue(customer, col.key);
+
+                              const startEdit = (e) => {
+                                e.stopPropagation();
+                                if (col.key === 'name') return;
+                                setEditingCell(cellId);
+                                setEditingCellValue(String(cellValue || ''));
+                              };
+
+                              const confirmEdit = () => {
+                                const fieldKey = col.key === 'panelCount' ? 'panelCount' : col.key;
+                                let updateVal = editingCellValue;
+                                if (col.key === 'isRecurring') {
+                                  updateVal = (editingCellValue === 'Yes' || editingCellValue === 'true' || editingCellValue === 'TRUE');
+                                } else if (col.key === 'panelCount' || col.key === 'amountPaid') {
+                                  updateVal = editingCellValue ? parseFloat(editingCellValue) || 0 : '';
+                                }
+                                const updates = {};
+                                updates[fieldKey] = updateVal;
+                                if (fieldKey === 'panelCount') updates.totalPanels = updateVal;
+                                propagateCustomerUpdate(customer.id, updates);
+                                setEditingCell(null);
+                              };
+
+                              const cancelEdit = () => {
+                                setEditingCell(null);
+                              };
+
+                              if (isEditing) {
+                                return (
+                                  <td key={col.key} style={{ padding: '2px 4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      {col.key === 'status' ? (
+                                        <select
+                                          value={editingCellValue}
+                                          onChange={(e) => setEditingCellValue(e.target.value)}
+                                          autoFocus
+                                          style={{ flex: 1, padding: '4px 6px', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(139, 92, 246, 0.5)', borderRadius: '4px', color: '#f1f5f9', fontSize: '12px', outline: 'none' }}
+                                        >
+                                          <option value="">Unscheduled</option>
+                                          <option value="scheduled">Scheduled</option>
+                                          <option value="completed">Completed</option>
+                                          <option value="unscheduled">Unscheduled</option>
+                                        </select>
+                                      ) : col.key === 'isRecurring' ? (
+                                        <select
+                                          value={editingCellValue === 'Yes' || editingCellValue === 'true' ? 'Yes' : ''}
+                                          onChange={(e) => setEditingCellValue(e.target.value)}
+                                          autoFocus
+                                          style={{ flex: 1, padding: '4px 6px', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(139, 92, 246, 0.5)', borderRadius: '4px', color: '#f1f5f9', fontSize: '12px', outline: 'none' }}
+                                        >
+                                          <option value="">No</option>
+                                          <option value="Yes">Yes</option>
+                                        </select>
+                                      ) : (
+                                        <input
+                                          type={col.key.includes('Date') ? 'date' : 'text'}
+                                          value={editingCellValue}
+                                          onChange={(e) => setEditingCellValue(e.target.value)}
+                                          onKeyDown={(e) => { if (e.key === 'Enter') confirmEdit(); if (e.key === 'Escape') cancelEdit(); }}
+                                          autoFocus
+                                          style={{ flex: 1, padding: '4px 6px', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(139, 92, 246, 0.5)', borderRadius: '4px', color: '#f1f5f9', fontSize: '12px', outline: 'none', minWidth: '60px' }}
+                                        />
+                                      )}
+                                      <span onClick={confirmEdit} style={{ cursor: 'pointer', color: '#22c55e', fontSize: '16px', lineHeight: 1 }} title="Save">✓</span>
+                                      <span onClick={cancelEdit} style={{ cursor: 'pointer', color: '#ef4444', fontSize: '14px', lineHeight: 1 }} title="Cancel">✕</span>
+                                    </div>
+                                  </td>
+                                );
+                              }
+
+                              return (
+                                <td key={col.key} onClick={startEdit} style={{ cursor: col.key !== 'name' ? 'pointer' : 'default' }} title={col.key !== 'name' ? 'Click to edit' : ''}>
+                                  {col.key === 'name' ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span
+                                        style={{ cursor: 'pointer', color: '#a78bfa', fontWeight: 600, fontSize: '12px' }}
+                                        onClick={() => {
+                                          setProfileCustomer(customer);
+                                          setShowCustomerProfile(true);
+                                        }}
+                                      >
+                                        {cellValue || 'Unnamed'}
+                                      </span>
+                                    </div>
+                                  ) : col.key === 'status' ? (
+                                    <span style={{
+                                      padding: '3px 8px',
+                                      borderRadius: '12px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      background: (() => {
+                                        const s = (customer.status || '').toLowerCase();
+                                        if (s.includes('completed')) return 'rgba(34, 197, 94, 0.2)';
+                                        if (s.includes('scheduled') && !s.includes('unscheduled')) return 'rgba(59, 130, 246, 0.2)';
+                                        if (s.includes('unscheduled') || !s) return 'rgba(245, 158, 11, 0.2)';
+                                        return 'rgba(100, 116, 139, 0.2)';
+                                      })(),
+                                      color: (() => {
+                                        const s = (customer.status || '').toLowerCase();
+                                        if (s.includes('completed')) return '#22c55e';
+                                        if (s.includes('scheduled') && !s.includes('unscheduled')) return '#3b82f6';
+                                        if (s.includes('unscheduled') || !s) return '#f59e0b';
+                                        return '#94a3b8';
+                                      })(),
+                                      border: (() => {
+                                        const s = (customer.status || '').toLowerCase();
+                                        if (s.includes('completed')) return '1px solid rgba(34, 197, 94, 0.3)';
+                                        if (s.includes('scheduled') && !s.includes('unscheduled')) return '1px solid rgba(59, 130, 246, 0.3)';
+                                        if (s.includes('unscheduled') || !s) return '1px solid rgba(245, 158, 11, 0.3)';
+                                        return '1px solid rgba(100, 116, 139, 0.3)';
+                                      })()
+                                    }}>
+                                      {customer.status || 'Unscheduled'}
                                     </span>
-                                  </div>
-                                ) : col.key === 'status' ? (
-                                  <span style={{
-                                    padding: '3px 8px',
-                                    borderRadius: '12px',
-                                    fontSize: '11px',
-                                    fontWeight: 600,
-                                    background: (() => {
-                                      const s = (customer.status || '').toLowerCase();
-                                      if (s.includes('completed')) return 'rgba(34, 197, 94, 0.2)';
-                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return 'rgba(59, 130, 246, 0.2)';
-                                      if (s.includes('unscheduled') || !s) return 'rgba(245, 158, 11, 0.2)';
-                                      return 'rgba(100, 116, 139, 0.2)';
-                                    })(),
-                                    color: (() => {
-                                      const s = (customer.status || '').toLowerCase();
-                                      if (s.includes('completed')) return '#22c55e';
-                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return '#3b82f6';
-                                      if (s.includes('unscheduled') || !s) return '#f59e0b';
-                                      return '#94a3b8';
-                                    })(),
-                                    border: (() => {
-                                      const s = (customer.status || '').toLowerCase();
-                                      if (s.includes('completed')) return '1px solid rgba(34, 197, 94, 0.3)';
-                                      if (s.includes('scheduled') && !s.includes('unscheduled')) return '1px solid rgba(59, 130, 246, 0.3)';
-                                      if (s.includes('unscheduled') || !s) return '1px solid rgba(245, 158, 11, 0.3)';
-                                      return '1px solid rgba(100, 116, 139, 0.3)';
-                                    })()
-                                  }}>
-                                    {customer.status || 'Unscheduled'}
-                                  </span>
-                                ) : col.key === 'isRecurring' ? (
-                                  <span style={{
-                                    color: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? '#22c55e' : '#475569',
-                                    fontWeight: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? 600 : 400,
-                                    fontSize: '12px'
-                                  }}>
-                                    {getCustomerFieldValue(customer, 'isRecurring') || '-'}
-                                  </span>
-                                ) : col.key === 'amountPaid' ? (
-                                  <span style={{ fontSize: '12px', color: customer.amountPaid ? '#22c55e' : '#475569' }}>
-                                    {customer.amountPaid ? `$${customer.amountPaid}` : '-'}
-                                  </span>
-                                ) : (
-                                  <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
-                                    {String(getCustomerFieldValue(customer, col.key) || '-')}
-                                  </span>
-                                )}
-                              </td>
-                            ))}
+                                  ) : col.key === 'isRecurring' ? (
+                                    <span style={{
+                                      color: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? '#22c55e' : '#475569',
+                                      fontWeight: getCustomerFieldValue(customer, 'isRecurring') === 'Yes' ? 600 : 400,
+                                      fontSize: '12px'
+                                    }}>
+                                      {getCustomerFieldValue(customer, 'isRecurring') || '-'}
+                                    </span>
+                                  ) : col.key === 'amountPaid' ? (
+                                    <span style={{ fontSize: '12px', color: customer.amountPaid ? '#22c55e' : '#475569' }}>
+                                      {customer.amountPaid ? `${customer.amountPaid}` : '-'}
+                                    </span>
+                                  ) : (
+                                    <span style={{ fontSize: '12px', color: '#cbd5e1' }}>
+                                      {String(cellValue || '-')}
+                                    </span>
+                                  )}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>
