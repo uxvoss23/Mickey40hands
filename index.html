@@ -3307,19 +3307,20 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   customer[header] = row[idx] ? row[idx].trim() : '';
                 });
 
-                // Build full name from first and last name
+                // Build full name from first and last name or customer name
                 const firstName = customer['firstname'] || customer['first'] || '';
                 const lastName = customer['lastname'] || customer['last'] || '';
-                const fullName = `${firstName} ${lastName}`.trim() || 'Unknown';
+                const customerName = customer['customername'] || customer['name'] || '';
+                const fullName = customerName || `${firstName} ${lastName}`.trim() || 'Unknown';
 
                 // Get location fields
-                const fullAddress = customer['fulladdress'] || customer['full address'] || customer['address'] || '';
+                const fullAddress = customer['fulladdress'] || customer['address'] || '';
                 const street = customer['street'] || customer['streetaddress'] || '';
                 const city = customer['city'] || '';
                 const state = customer['state'] || '';
                 const zipCode = customer['zipcode'] || customer['zip'] || '';
-                const email = customer['email'] || '';
-                const phone = customer['phone'] || customer['phonenumber'] || '';
+                const email = customer['customeremail'] || customer['email'] || '';
+                const phone = customer['customermobilenumber'] || customer['customermobile'] || customer['phone'] || customer['phonenumber'] || customer['mobile'] || '';
 
                 // Get lat/lng from provided coordinates
                 const lat = parseFloat(customer['latitude'] || customer['lat']);
@@ -3360,8 +3361,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 newCustomers.push({
                   id: Math.random().toString(36).substr(2, 9),
                   name: fullName,
-                  firstName: firstName,
-                  lastName: lastName,
+                  firstName: firstName || (customerName ? customerName.split(' ')[0] : ''),
+                  lastName: lastName || (customerName ? customerName.split(' ').slice(1).join(' ') : ''),
                   street: street,
                   address: displayAddress,
                   city: city,
@@ -3369,8 +3370,15 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   zip: zipCode,
                   email: email,
                   phone: phone,
-                  panelCount: '0',
-                  status: (customer['status'] || '').toLowerCase(), // Default: blank (no action needed)
+                  panelCount: customer['numberofpanels'] || customer['panels'] || customer['panelcount'] || '0',
+                  totalPanels: parseInt(customer['numberofpanels'] || customer['panels'] || customer['panelcount'] || '0') || 0,
+                  status: (customer['jobstatus'] || customer['status'] || '').toLowerCase(),
+                  jobDescription: customer['jobdescription'] || customer['description'] || '',
+                  isRecurring: (customer['recurring'] || '').toUpperCase() === 'TRUE' || customer['recurring'] === 'Yes',
+                  amountPaid: parseFloat(customer['jobamount'] || customer['amount'] || '0') || 0,
+                  tipAmount: parseFloat(customer['tipamount'] || customer['tip'] || '0') || 0,
+                  lastServiceDate: customer['jobcompleteddate'] || customer['completeddate'] || customer['completed'] || '',
+                  notes: customer['notes'] || customer['customernotes'] || '',
                   preferredDate: customer['preferreddate'] || customer['preferredservicedate'] || '',
                   preferredTimeWindow: customer['preferredtimewindow'] || customer['preferredtime'] || customer['arrivalwindow'] || '',
                   scheduledDate: customer['scheduleddate'] || '',
@@ -3378,8 +3386,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   lat: lat,
                   lng: lng,
                   fileName: file.name,
-                  notes: '', // Empty notes initially
-                  notesHistory: [] // Initialize empty notes history
+                  notesHistory: []
                 });
               }
 
@@ -6097,6 +6104,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   status: c.status || '',
                   notes: c.notes || '',
                   panel_count: parseInt(c.panelCount) || 0,
+                  total_panels: parseInt(c.totalPanels || c.panelCount) || 0,
+                  job_description: c.jobDescription || '',
+                  is_recurring: c.isRecurring || false,
+                  amount_paid: parseFloat(c.amountPaid) || 0,
+                  tip_amount: parseFloat(c.tipAmount) || 0,
+                  last_service_date: c.lastServiceDate || '',
                   scheduled_date: c.scheduledDate || '',
                   scheduled_time: c.scheduledTime || '',
                   preferred_date: c.preferredDate || '',
