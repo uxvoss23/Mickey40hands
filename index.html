@@ -5644,7 +5644,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         onClick={() => {
                           setRadiusMode(false);
                           setAwaitingMapClick(false);
+                          setDrawMode(false);
                           clearRadius();
+                          clearDrawnArea();
                         }}
                         style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}
                       >
@@ -7548,8 +7550,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               createdAt: new Date().toISOString()
                             };
                             
-                            setSavedLists(prev => [...prev, newList]);
-                            alert(`✅ Saved "${listName}" with ${filteredCustomers.length} customers!`);
+                            setSavedLists(prev => [...prev.map(l => ({ ...l, visible: false })), newList]);
+                            setUploadedFiles(prev => prev.map(f => ({ ...f, visible: false })));
+                            // Clear radius/draw if active
+                            if (radiusMode || referencePoint || drawnArea) {
+                              setRadiusMode(false);
+                              setAwaitingMapClick(false);
+                              setDrawMode(false);
+                              clearRadius();
+                              clearDrawnArea();
+                            }
+                            alert(`Saved "${listName}" with ${filteredCustomers.length} customers!`);
                           }}
                           style={{
                             width: '100%',
@@ -10514,20 +10525,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             fileName: listName.trim()
                           }));
 
-                          setSavedLists(prev => [...prev, {
+                          setSavedLists(prev => [...prev.map(l => ({ ...l, visible: false })), {
                             id: listId,
                             name: listName.trim(),
                             customers: customersToSave,
                             visible: true,
                             createdDate: new Date().toISOString()
                           }]);
+                          // Hide uploaded files too
+                          setUploadedFiles(prev => prev.map(f => ({ ...f, visible: false })));
 
-                          // Exit radius mode after saving
+                          // Fully exit radius/draw mode and clear visual layers
                           setRadiusMode(false);
                           setAwaitingMapClick(false);
+                          setDrawMode(false);
                           clearRadius();
-                          setDrawnArea(null);
-                          setDrawnPolygon(null);
+                          clearDrawnArea();
                         }
                       }}
                       style={{
@@ -10975,7 +10988,18 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </div>
                       </div>
                       <button
-                        onClick={() => setSavedLists(prev => prev.filter(l => l.id !== list.id))}
+                        onClick={() => {
+                          const remaining = savedLists.filter(l => l.id !== list.id);
+                          setSavedLists(remaining);
+                          // If deleted list was visible, show the first remaining list or first uploaded file
+                          if (list.visible) {
+                            if (remaining.length > 0) {
+                              setSavedLists(remaining.map((l, i) => ({ ...l, visible: i === 0 })));
+                            } else if (uploadedFiles.length > 0) {
+                              setUploadedFiles(prev => prev.map((f, i) => ({ ...f, visible: i === 0 })));
+                            }
+                          }
+                        }}
                         style={{
                           background: 'rgba(239, 68, 68, 0.1)',
                           border: '1px solid rgba(239, 68, 68, 0.2)',
