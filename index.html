@@ -4367,10 +4367,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
         const emailIdx = findSheetHeaderIndex(['Email', 'Customer Email']);
 
-        const rowName = (nameIdx >= 0 ? rowData.values[nameIdx] : '').toLowerCase().trim();
-        const rowAddress = (addressIdx >= 0 ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-        const rowPhone = (phoneIdx >= 0 ? rowData.values[phoneIdx] : '').trim();
-        const rowEmail = (emailIdx >= 0 ? rowData.values[emailIdx] : '').toLowerCase().trim();
+        const rowName = String(nameIdx >= 0 && rowData.values[nameIdx] ? rowData.values[nameIdx] : '').toLowerCase().trim();
+        const rowAddress = String(addressIdx >= 0 && rowData.values[addressIdx] ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const rowPhone = String(phoneIdx >= 0 && rowData.values[phoneIdx] ? rowData.values[phoneIdx] : '').trim();
+        const rowEmail = String(emailIdx >= 0 && rowData.values[emailIdx] ? rowData.values[emailIdx] : '').toLowerCase().trim();
 
         // Match by name+address first, then by phone, then by email
         return customers.find(c => {
@@ -4727,9 +4727,20 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       /**
        * Build a CSV row from a customer object using the sheet's column headers.
        * Maps customer properties to the matching sheet header columns.
+       * If jobOverride is provided, uses job-level fields from that instead of customer-level.
        */
-      const customerToSheetRow = (customer, headers) => {
+      const customerToSheetRow = (customer, headers, jobOverride) => {
         return headers.map(header => {
+          const h = (header || '').toLowerCase().trim();
+          // If jobOverride is provided, use job-level values for job-specific columns
+          if (jobOverride) {
+            if (/job\s*description|^description$/i.test(h)) return jobOverride.jobDescription || '';
+            if (/^amount|job\s*amount/i.test(h)) return jobOverride.amount != null ? `$${Number(jobOverride.amount).toFixed(2)}` : '$0.00';
+            if (/^tip/i.test(h)) return jobOverride.tip != null ? `$${Number(jobOverride.tip).toFixed(2)}` : '$0.00';
+            if (/completed|completed\s*date|job\s*completed/i.test(h)) return jobOverride.date || '';
+            if (/job\s*status|^status$/i.test(h)) return jobOverride.status || '';
+            if (/^notes|customer\s*notes/i.test(h)) return jobOverride.notes || '';
+          }
           const mappings = mapSheetHeaderToCustomerProps(header);
           if (mappings.length === 0) return '';
           // Use first mapping (primary property)
@@ -4741,6 +4752,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           if (prop === 'solarVerified') return val || '';
           return String(val);
         });
+      };
+
+      /**
+       * Expand a customer into multiple rows — one per job in serviceHistory.
+       * If no serviceHistory, returns a single row.
+       */
+      const customerToSheetRows = (customer, headers) => {
+        const history = customer.serviceHistory || [];
+        if (history.length <= 1) {
+          return [customerToSheetRow(customer, headers)];
+        }
+        // One row per job, with customer-level fields repeated
+        return history.map(job => customerToSheetRow(customer, headers, job));
       };
 
       /**
@@ -4762,19 +4786,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           }
 
           // Step 2: Build matching sets from local customers
-          const localPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
-          const localEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const localPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const localEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
           const localNameAddresses = new Set(customers.map(c => {
-            const name = (c.name || '').toLowerCase().trim();
-            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             return `${name}|${address}`;
           }));
 
           // Step 3: Find new rows in the sheet that don't exist locally
-          const nameCol = headers.findIndex(h => /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
-          const addressCol = headers.findIndex(h => /^address/i.test(h.toLowerCase().trim()));
-          const phoneCol = headers.findIndex(h => /^phone|mobile|customer\s*mobile/i.test(h.toLowerCase().trim()));
-          const emailCol = headers.findIndex(h => /^email|customer\s*email/i.test(h.toLowerCase().trim()));
+          const nameCol = headers.findIndex(h => h && /customer\s*name|^name$/i.test(String(h).toLowerCase().trim()));
+          const addressCol = headers.findIndex(h => h && /^address/i.test(String(h).toLowerCase().trim()));
+          const phoneCol = headers.findIndex(h => h && /^phone|mobile|customer\s*mobile/i.test(String(h).toLowerCase().trim()));
+          const emailCol = headers.findIndex(h => h && /^email|customer\s*email/i.test(String(h).toLowerCase().trim()));
 
           const newSheetRows = [];
           currentRows.forEach(row => {
@@ -4794,11 +4818,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             }
           });
 
-          // Step 4: Build export data = local customers + new sheet rows
-          const localRows = customers.map(c => customerToSheetRow(c, headers));
+          // Step 4: Build export data = local customers (expanded by job history) + new sheet rows
+          const localRows = customers.flatMap(c => customerToSheetRows(c, headers));
           const allRows = [headers, ...localRows, ...newSheetRows];
 
-          console.log(`📤 Export: ${localRows.length} local customers + ${newSheetRows.length} new sheet rows = ${allRows.length - 1} total`);
+          console.log(`📤 Export: ${customers.length} customers → ${localRows.length} rows (expanded by job history) + ${newSheetRows.length} new sheet rows = ${allRows.length - 1} total`);
 
           // Step 5: Send via Apps Script or fall back to CSV download
           if (appsScriptUrl) {
@@ -5212,11 +5236,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           let skipReasons = [];
 
           // Build sets for duplicate detection (by phone, email, and name+address)
-          const existingPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
-          const existingEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const existingPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const existingEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
           const existingNameAddresses = new Set(customers.map(c => {
-            const name = (c.name || '').toLowerCase().trim();
-            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             return `${name}|${address}`;
           }));
 
@@ -5296,35 +5320,73 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             // Build full address if not provided
             const addressToUse = fullAddress || (street ? `${street}, ${city}, ${state} ${zip}`.trim() : '');
             
-            // Skip if already exists (check phone, email, or name+address)
-            if (phone && existingPhones.has(phone.trim())) {
-              skipped++;
-              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (phone: ${phone})`);
-              continue;
-            }
-
-            if (email && existingEmails.has(email.toLowerCase().trim())) {
-              skipped++;
-              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (email: ${email})`);
-              continue;
-            }
-
+            // Check if this customer already exists (by phone, email, or name+address)
             const checkName = (name || '').toLowerCase().trim();
             const checkAddress = (addressToUse || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             const nameAddressKey = `${checkName}|${checkAddress}`;
-            if (checkName && checkAddress && existingNameAddresses.has(nameAddressKey)) {
+
+            const isDuplicate =
+              (phone && existingPhones.has(phone.trim())) ||
+              (email && existingEmails.has(email.toLowerCase().trim())) ||
+              (checkName && checkAddress && existingNameAddresses.has(nameAddressKey));
+
+            // Build the job entry for this row
+            const jobEntry = {
+              date: completed || '',
+              jobDescription: jobDesc || 'Service',
+              amount: parseFloat(amount) || 0,
+              tip: parseFloat(tip) || 0,
+              notes: customerNotes || '',
+              status: status || (completed ? 'Completed' : 'unscheduled')
+            };
+
+            if (isDuplicate) {
+              // Merge this job into the existing customer's serviceHistory
+              const existing = [...customers, ...newCustomers].find(c => {
+                if (phone && c.phone && String(c.phone).trim() === phone.trim()) return true;
+                if (email && c.email && String(c.email).toLowerCase().trim() === email.toLowerCase().trim()) return true;
+                const cName = (c.name || '').toLowerCase().trim();
+                const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+                if (cName && cAddr && `${cName}|${cAddr}` === nameAddressKey) return true;
+                return false;
+              });
+
+              if (existing && completed) {
+                if (!existing.serviceHistory) existing.serviceHistory = [];
+                // Avoid adding duplicate jobs (same date + same description)
+                const alreadyHasJob = existing.serviceHistory.some(j =>
+                  j.date === jobEntry.date && j.jobDescription === jobEntry.jobDescription
+                );
+                if (!alreadyHasJob) {
+                  existing.serviceHistory.push(jobEntry);
+                  // Update lastServiceDate if this job is more recent
+                  if (completed && (!existing.lastServiceDate || new Date(completed) > new Date(existing.lastServiceDate))) {
+                    existing.lastServiceDate = completed;
+                  }
+                  // Update total amount
+                  existing.amountPaid = (existing.amountPaid || 0) + (parseFloat(amount) || 0);
+                  existing.tipAmount = (existing.tipAmount || 0) + (parseFloat(tip) || 0);
+                  // Update panel count if this row has a higher value
+                  const rowPanels = parseInt(totalPanels) || 0;
+                  if (rowPanels > (existing.totalPanels || 0)) {
+                    existing.totalPanels = rowPanels;
+                    existing.panelCount = rowPanels;
+                  }
+                  console.log(`🔄 Merged job into ${name}: "${jobDesc}" (${completed}) — ${existing.serviceHistory.length} total jobs`);
+                }
+              }
               skipped++;
-              skipReasons.push(`Row ${skipped + imported + 1}: Already exists (name+address: ${name})`);
+              skipReasons.push(`Row ${skipped + imported + 1}: Merged job into existing customer (${name})`);
               continue;
             }
-            
+
             console.log(`✅ Importing: ${name} - Lat: ${lat}, Lng: ${lng}, Panels: ${totalPanels}`);
-            
+
             // Parse name
             const nameParts = (name || '').trim().split(' ');
             const firstname = nameParts[0] || '';
             const lastname = nameParts.slice(1).join(' ') || '';
-            
+
             const newCustomer = {
               id: Date.now() + Math.random(),
               firstname,
@@ -5353,14 +5415,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               notes: customerNotes || '',
               customerNotes: '', // General customer notes (separate from job notes)
               solarVerified: solarVerified === 'yes' ? 'yes' : (solarVerified === 'no' ? 'no' : null),
-              serviceHistory: completed ? [{
-                date: completed,
-                jobDescription: jobDesc || 'Service',
-                amount: parseFloat(amount) || 0,
-                tip: parseFloat(tip) || 0,
-                notes: customerNotes || '',
-                status: status || 'Completed'
-              }] : [],
+              serviceHistory: completed ? [jobEntry] : [],
               notesHistory: customerNotes ? [{
                 date: new Date().toISOString(),
                 note: customerNotes,
@@ -5373,7 +5428,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             newCustomers.push(newCustomer); // Add to collection
             imported++;
 
-            // Prevent duplicates in same sync batch
+            // Track for duplicate detection in same batch
             if (phone) existingPhones.add(phone.trim());
             if (email) existingEmails.add(email.toLowerCase().trim());
             existingNameAddresses.add(nameAddressKey);
@@ -5413,21 +5468,24 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             console.log(`📍 Sample customer:`, newCustomers[0]);
           }
 
-          console.log(`📊 Sync complete: ${imported} imported, ${skipped} skipped`);
+          // Count how many jobs were merged
+          const mergedCount = skipReasons.filter(r => r.includes('Merged job')).length;
+
+          console.log(`📊 Sync complete: ${imported} imported, ${mergedCount} jobs merged, ${skipped - mergedCount} skipped`);
           if (skipReasons.length > 0) {
             console.log('Skip reasons:', skipReasons);
           }
 
           setLastSheetSync(new Date());
-          if (imported > 0) {
+          if (imported > 0 || mergedCount > 0) {
             const totalCustomers = customers.length + imported;
-            let message = `✅ Synced ${imported} new customer${imported > 1 ? 's' : ''} from Google Sheets!\n\nTotal customers: ${totalCustomers}`;
-            
+            let message = `✅ Synced from Google Sheets!\n\n• ${imported} new customer${imported !== 1 ? 's' : ''} imported\n• ${mergedCount} additional job${mergedCount !== 1 ? 's' : ''} merged into existing customers\n\nTotal customers: ${totalCustomers}`;
+
             // Performance warning for large datasets
             if (totalCustomers > 10000) {
               message += `\n\n⚠️ PERFORMANCE TIP:\nWith ${totalCustomers.toLocaleString()} customers, the map uses smart rendering:\n• Clusters shown when zoomed out\n• Full detail when zoomed in\n• Zoom in to see individual markers`;
             }
-            
+
             alert(message);
           } else {
             alert(`⚠️ No new customers found.\n\nChecked ${data.length} rows, skipped ${skipped}.\n\nCommon reasons:\n• Missing Latitude/Longitude\n• Duplicate phone numbers\n• Empty customer names\n\nCheck browser console (F12) for details.`);
@@ -10715,31 +10773,85 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         </tr>
                       </thead>
                       <tbody>
-                        {getSortedPipelineData().map((row) => (
-                          <tr key={row.rowIndex}>
-                            {row.values.map((value, colIndex) => (
-                              <td key={colIndex}>
-                                <input
-                                  type="text"
-                                  value={value || ''}
-                                  onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
-                                  style={{
-                                    width: '100%',
-                                    minWidth: '80px',
-                                    padding: '6px 8px',
-                                    background: 'transparent',
-                                    border: '1px solid transparent',
-                                    borderRadius: '4px',
-                                    color: '#f1f5f9',
-                                    fontSize: '12px'
-                                  }}
-                                  onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                                  onBlur={(e) => e.target.style.borderColor = 'transparent'}
-                                />
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
+                        {(() => {
+                          // Find the customer name column index for job history click-through
+                          const nameColIdx = sheetHeaders.findIndex(h => h && /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
+                          return getSortedPipelineData().map((row) => {
+                            // Find matching local customer for this row
+                            const matchedCustomer = findCustomerFromPipelineRow(row);
+                            const jobCount = matchedCustomer?.serviceHistory?.length || 0;
+                            return (
+                              <tr key={row.rowIndex}>
+                                {row.values.map((value, colIndex) => (
+                                  <td key={colIndex}>
+                                    {colIndex === nameColIdx && matchedCustomer ? (
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <input
+                                          type="text"
+                                          value={value || ''}
+                                          onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                          style={{
+                                            flex: 1,
+                                            minWidth: '80px',
+                                            padding: '6px 8px',
+                                            background: 'transparent',
+                                            border: '1px solid transparent',
+                                            borderRadius: '4px',
+                                            color: '#f1f5f9',
+                                            fontSize: '12px'
+                                          }}
+                                          onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                        />
+                                        {jobCount > 1 && (
+                                          <button
+                                            onClick={() => {
+                                              setProfileCustomer(matchedCustomer);
+                                              setShowCustomerProfile(true);
+                                            }}
+                                            title={`${jobCount} jobs — click to view history`}
+                                            style={{
+                                              padding: '2px 6px',
+                                              background: 'rgba(139, 92, 246, 0.2)',
+                                              border: '1px solid rgba(139, 92, 246, 0.4)',
+                                              borderRadius: '10px',
+                                              color: '#a78bfa',
+                                              fontSize: '10px',
+                                              fontWeight: 700,
+                                              cursor: 'pointer',
+                                              whiteSpace: 'nowrap',
+                                              flexShrink: 0
+                                            }}
+                                          >
+                                            {jobCount} jobs
+                                          </button>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <input
+                                        type="text"
+                                        value={value || ''}
+                                        onChange={(e) => handlePipelineCellEdit(row.rowIndex, colIndex, e.target.value)}
+                                        style={{
+                                          width: '100%',
+                                          minWidth: '80px',
+                                          padding: '6px 8px',
+                                          background: 'transparent',
+                                          border: '1px solid transparent',
+                                          borderRadius: '4px',
+                                          color: '#f1f5f9',
+                                          fontSize: '12px'
+                                        }}
+                                        onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
+                                        onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                                      />
+                                    )}
+                                  </td>
+                                ))}
+                              </tr>
+                            );
+                          });
+                        })()}
                       </tbody>
                     </table>
 
