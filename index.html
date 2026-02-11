@@ -2291,9 +2291,6 @@
               return info ? { ...c, ...info } : c;
             });
           }
-        } else if (statusFilter === 'completed') {
-          // "Completed" is a filter view, not a status - shows customers with service history
-          results = results.filter(c => c.lastServiceDate);
         } else if (statusFilter === 'unscheduled') {
           // Only show customers explicitly marked as needing scheduling
           results = results.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
@@ -4349,7 +4346,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       const quickFilterColumnMap = {
         'unscheduled': 'status',
         'scheduled': 'status',
-        'completed': 'status',
         'recurring': 'isRecurring',
         'has_email': 'email',
         'has_phone': 'phone'
@@ -4411,7 +4407,6 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             switch (pipelineQuickFilter) {
               case 'unscheduled': return status.includes('unscheduled') || status === '' || !status;
               case 'scheduled': return status.includes('scheduled') && !status.includes('unscheduled');
-              case 'completed': return status.includes('completed');
               case 'recurring': return customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
               case 'has_email': return (customer.email || '').trim().length > 0;
               case 'has_phone': return (customer.phone || '').trim().length > 0;
@@ -6619,8 +6614,7 @@ const createJob = async () => {
                       {[
                         { value: 'all', label: 'All' },
                         { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
-                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' },
-                        { value: 'completed', label: 'Completed', color: '#22c55e' }
+                        { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
                       ].map(s => (
                         <button
                           key={s.value}
@@ -7889,11 +7883,9 @@ const createJob = async () => {
                               padding: '12px 16px',
                               background: selectedCustomer.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.1)' :
                                          selectedCustomer.status === 'scheduled' ? 'rgba(251, 191, 36, 0.1)' :
-                                         selectedCustomer.status === 'completed' ? 'rgba(34, 197, 94, 0.1)' :
                                          'rgba(100, 116, 139, 0.1)',
                               border: selectedCustomer.status === 'unscheduled' ? '1px solid rgba(239, 68, 68, 0.3)' :
                                      selectedCustomer.status === 'scheduled' ? '1px solid rgba(251, 191, 36, 0.3)' :
-                                     selectedCustomer.status === 'completed' ? '1px solid rgba(34, 197, 94, 0.3)' :
                                      '1px solid rgba(100, 116, 139, 0.3)',
                               borderRadius: '8px',
                               marginBottom: '12px'
@@ -10010,7 +10002,6 @@ const createJob = async () => {
                       { key: 'all', label: 'All' },
                       { key: 'unscheduled', label: 'Unscheduled' },
                       { key: 'scheduled', label: 'Scheduled' },
-                      { key: 'completed', label: 'Completed' },
                       { key: 'recurring', label: 'Recurring' },
                       { key: 'has_email', label: 'Has Email' },
                       { key: 'has_phone', label: 'Has Phone' }
@@ -10244,9 +10235,8 @@ const createJob = async () => {
                                           autoFocus
                                           style={{ flex: 1, padding: '4px 6px', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(139, 92, 246, 0.5)', borderRadius: '4px', color: '#f1f5f9', fontSize: '12px', outline: 'none' }}
                                         >
-                                          <option value="">Unscheduled</option>
+                                          <option value="">None</option>
                                           <option value="scheduled">Scheduled</option>
-                                          <option value="completed">Completed</option>
                                           <option value="unscheduled">Unscheduled</option>
                                         </select>
                                       ) : col.key === 'isRecurring' ? (
@@ -10298,23 +10288,23 @@ const createJob = async () => {
                                       fontWeight: 600,
                                       background: (() => {
                                         const s = (customer.status || '').toLowerCase();
-                                        if (s.includes('completed')) return 'rgba(34, 197, 94, 0.2)';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return 'rgba(59, 130, 246, 0.2)';
-                                        if (s.includes('unscheduled') || !s) return 'rgba(245, 158, 11, 0.2)';
+                                        if (s.includes('unscheduled')) return 'rgba(245, 158, 11, 0.2)';
+                                        if (!s) return 'rgba(100, 116, 139, 0.2)';
                                         return 'rgba(100, 116, 139, 0.2)';
                                       })(),
                                       color: (() => {
                                         const s = (customer.status || '').toLowerCase();
-                                        if (s.includes('completed')) return '#22c55e';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return '#3b82f6';
-                                        if (s.includes('unscheduled') || !s) return '#f59e0b';
+                                        if (s.includes('unscheduled')) return '#f59e0b';
+                                        if (!s) return '#94a3b8';
                                         return '#94a3b8';
                                       })(),
                                       border: (() => {
                                         const s = (customer.status || '').toLowerCase();
-                                        if (s.includes('completed')) return '1px solid rgba(34, 197, 94, 0.3)';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return '1px solid rgba(59, 130, 246, 0.3)';
-                                        if (s.includes('unscheduled') || !s) return '1px solid rgba(245, 158, 11, 0.3)';
+                                        if (s.includes('unscheduled')) return '1px solid rgba(245, 158, 11, 0.3)';
+                                        if (!s) return '1px solid rgba(100, 116, 139, 0.3)';
                                         return '1px solid rgba(100, 116, 139, 0.3)';
                                       })()
                                     }}>
@@ -10496,9 +10486,9 @@ const createJob = async () => {
                             outline: 'none'
                           }}
                         >
+                          <option value="">None</option>
                           <option value="unscheduled">Unscheduled</option>
                           <option value="scheduled">Scheduled</option>
-                          <option value="completed">Completed</option>
                         </select>
                       </div>
                       <div>
