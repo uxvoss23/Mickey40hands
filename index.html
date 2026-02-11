@@ -4778,10 +4778,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
           const newSheetRows = [];
           currentRows.forEach(row => {
-            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
-            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
-            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
-            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] || '' : '').trim();
+            const rowEmail = (emailCol >= 0 ? row.values[emailCol] || '' : '').toLowerCase().trim();
+            const rowName = (nameCol >= 0 ? row.values[nameCol] || '' : '').toLowerCase().trim();
+            const rowAddress = (addressCol >= 0 ? row.values[addressCol] || '' : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             const nameAddressKey = `${rowName}|${rowAddress}`;
 
             const existsLocally =
