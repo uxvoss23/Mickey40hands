@@ -4367,10 +4367,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         const phoneIdx = findSheetHeaderIndex(['Phone', 'Mobile', 'Customer Mobile']);
         const emailIdx = findSheetHeaderIndex(['Email', 'Customer Email']);
 
-        const rowName = (nameIdx >= 0 ? rowData.values[nameIdx] : '').toLowerCase().trim();
-        const rowAddress = (addressIdx >= 0 ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-        const rowPhone = (phoneIdx >= 0 ? rowData.values[phoneIdx] : '').trim();
-        const rowEmail = (emailIdx >= 0 ? rowData.values[emailIdx] : '').toLowerCase().trim();
+        const rowName = String(nameIdx >= 0 && rowData.values[nameIdx] ? rowData.values[nameIdx] : '').toLowerCase().trim();
+        const rowAddress = String(addressIdx >= 0 && rowData.values[addressIdx] ? rowData.values[addressIdx] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+        const rowPhone = String(phoneIdx >= 0 && rowData.values[phoneIdx] ? rowData.values[phoneIdx] : '').trim();
+        const rowEmail = String(emailIdx >= 0 && rowData.values[emailIdx] ? rowData.values[emailIdx] : '').toLowerCase().trim();
 
         // Match by name+address first, then by phone, then by email
         return customers.find(c => {
@@ -5236,11 +5236,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           let skipReasons = [];
 
           // Build sets for duplicate detection (by phone, email, and name+address)
-          const existingPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
-          const existingEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const existingPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const existingEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
           const existingNameAddresses = new Set(customers.map(c => {
-            const name = (c.name || '').toLowerCase().trim();
-            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             return `${name}|${address}`;
           }));
 
