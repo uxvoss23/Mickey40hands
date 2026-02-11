@@ -614,6 +614,9 @@
       const [sheetData, setSheetData] = useState([]); // Raw data rows from Google Sheet
       const [pipelineSortColumn, setPipelineSortColumn] = useState(null); // Column index being sorted
       const [pipelineSortOrder, setPipelineSortOrder] = useState('asc'); // 'asc' or 'desc'
+      const [pipelineFilters, setPipelineFilters] = useState({});
+      const [pipelineGlobalSearch, setPipelineGlobalSearch] = useState('');
+      const [pipelineQuickFilter, setPipelineQuickFilter] = useState('all');
       const [sheetAutoRefresh, setSheetAutoRefresh] = useState(true); // Auto-refresh from Google Sheets
       const [sheetRefreshInterval, setSheetRefreshInterval] = useState(30000); // Refresh every 30 seconds
       
@@ -4864,6 +4867,39 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           const comparison = aVal.localeCompare(bVal, undefined, { numeric: true });
           return pipelineSortOrder === 'asc' ? comparison : -comparison;
         });
+      };
+
+      const getFilteredPipelineData = () => {
+        let data = getSortedPipelineData();
+        if (pipelineGlobalSearch.trim()) {
+          const search = pipelineGlobalSearch.toLowerCase().trim();
+          data = data.filter(row => row.values.some(v => (v || '').toLowerCase().includes(search)));
+        }
+        if (pipelineQuickFilter !== 'all') {
+          const statusColIdx = sheetHeaders.findIndex(h => h && /status/i.test(h));
+          const emailColIdx = sheetHeaders.findIndex(h => h && /email/i.test(h));
+          const phoneColIdx = sheetHeaders.findIndex(h => h && /phone/i.test(h));
+          const recurringColIdx = sheetHeaders.findIndex(h => h && /recurring/i.test(h));
+          data = data.filter(row => {
+            switch (pipelineQuickFilter) {
+              case 'unscheduled': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('unscheduled');
+              case 'scheduled': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('scheduled') && !(row.values[statusColIdx] || '').toLowerCase().includes('unscheduled');
+              case 'completed': return statusColIdx >= 0 && (row.values[statusColIdx] || '').toLowerCase().includes('completed');
+              case 'recurring': return recurringColIdx >= 0 && (row.values[recurringColIdx] || '').toUpperCase() === 'TRUE';
+              case 'has_email': return emailColIdx >= 0 && (row.values[emailColIdx] || '').trim().length > 0;
+              case 'has_phone': return phoneColIdx >= 0 && (row.values[phoneColIdx] || '').trim().length > 0;
+              default: return true;
+            }
+          });
+        }
+        Object.entries(pipelineFilters).forEach(([colIdx, filterText]) => {
+          if (filterText && filterText.trim()) {
+            const idx = parseInt(colIdx);
+            const search = filterText.toLowerCase().trim();
+            data = data.filter(row => (row.values[idx] || '').toLowerCase().includes(search));
+          }
+        });
+        return data;
       };
 
       // Google Sheets API Functions
@@ -11327,6 +11363,99 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   </div>
                 </div>
 
+                {/* Search & Filter Toolbar */}
+                {sheetsConnected && sheetHeaders.length > 0 && (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
+                      <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
+                        <input
+                          type="text"
+                          placeholder="🔍 Search all columns..."
+                          value={pipelineGlobalSearch}
+                          onChange={(e) => setPipelineGlobalSearch(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '10px 16px',
+                            background: 'rgba(30, 41, 59, 0.8)',
+                            border: '1px solid rgba(148, 163, 184, 0.2)',
+                            borderRadius: '8px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <button
+                        onClick={() => window.open('/api/export/csv', '_blank')}
+                        style={{
+                          padding: '10px 16px',
+                          background: 'rgba(34, 197, 94, 0.2)',
+                          border: '1px solid rgba(34, 197, 94, 0.3)',
+                          borderRadius: '8px',
+                          color: '#22c55e',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap'
+                        }}
+                      >
+                        📥 Export CSV
+                      </button>
+                      {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
+                        <button
+                          onClick={() => {
+                            setPipelineGlobalSearch('');
+                            setPipelineQuickFilter('all');
+                            setPipelineFilters({});
+                          }}
+                          style={{
+                            padding: '10px 16px',
+                            background: 'rgba(239, 68, 68, 0.2)',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                            borderRadius: '8px',
+                            color: '#ef4444',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          ✕ Clear Filters
+                        </button>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {[
+                        { key: 'all', label: 'All' },
+                        { key: 'unscheduled', label: 'Unscheduled' },
+                        { key: 'scheduled', label: 'Scheduled' },
+                        { key: 'completed', label: 'Completed' },
+                        { key: 'recurring', label: 'Recurring' },
+                        { key: 'has_email', label: 'Has Email' },
+                        { key: 'has_phone', label: 'Has Phone' }
+                      ].map(filter => (
+                        <button
+                          key={filter.key}
+                          onClick={() => setPipelineQuickFilter(filter.key)}
+                          style={{
+                            padding: '6px 14px',
+                            background: pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+                            border: `1px solid ${pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
+                            borderRadius: '20px',
+                            color: pipelineQuickFilter === filter.key ? '#a78bfa' : '#94a3b8',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Connection Status */}
                 {!sheetsConnected ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
@@ -11371,7 +11500,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                       justifyContent: 'space-between',
                       alignItems: 'center'
                     }}>
-                      <span>📊 {sheetData.length} rows • {sheetHeaders.length} columns</span>
+                      <span>📊 {(() => { const filtered = getFilteredPipelineData(); return filtered.length !== sheetData.length ? `${filtered.length} of ${sheetData.length}` : sheetData.length; })()} rows • {sheetHeaders.length} columns</span>
                       {pipelineSortColumn !== null && (
                         <span style={{ color: '#a78bfa' }}>
                           Sorted by: {sheetHeaders[pipelineSortColumn]} ({pipelineSortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'})
@@ -11408,12 +11537,35 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                             </th>
                           ))}
                         </tr>
+                        <tr style={{ background: 'rgba(15, 23, 42, 0.5)' }}>
+                          {sheetHeaders.map((header, colIndex) => (
+                            <th key={`filter-${colIndex}`} style={{ padding: '4px 6px' }}>
+                              <input
+                                type="text"
+                                placeholder="Filter..."
+                                value={pipelineFilters[colIndex] || ''}
+                                onChange={(e) => setPipelineFilters(prev => ({...prev, [colIndex]: e.target.value}))}
+                                style={{
+                                  width: '100%',
+                                  padding: '4px 8px',
+                                  background: 'rgba(30, 41, 59, 0.8)',
+                                  border: '1px solid rgba(148, 163, 184, 0.15)',
+                                  borderRadius: '4px',
+                                  color: '#94a3b8',
+                                  fontSize: '11px',
+                                  outline: 'none'
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </th>
+                          ))}
+                        </tr>
                       </thead>
                       <tbody>
                         {(() => {
                           // Find the customer name column index for job history click-through
                           const nameColIdx = sheetHeaders.findIndex(h => h && /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
-                          return getSortedPipelineData().map((row) => {
+                          return getFilteredPipelineData().map((row) => {
                             // Find matching local customer for this row
                             const matchedCustomer = findCustomerFromPipelineRow(row);
                             const jobCount = matchedCustomer?.serviceHistory?.length || 0;
