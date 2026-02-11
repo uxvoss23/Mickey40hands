@@ -5217,7 +5217,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               totalPanels: parseInt(totalPanels) || 0,
               panelCount: parseInt(totalPanels) || 0,
               name: `${firstname} ${lastname}`.trim(),
-              status: 'unscheduled', // All new imports start as unscheduled
+              status: (status && status.toLowerCase() === 'scheduled') ? 'scheduled' : 'unscheduled', // Use sheet status if 'scheduled', otherwise 'unscheduled'
               jobDescription: jobDesc || '',
               isRecurring: recurring === 'TRUE' || recurring === true,
               amountPaid: parseFloat(amount) || 0,
