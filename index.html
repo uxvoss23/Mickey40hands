@@ -1935,8 +1935,7 @@
               : null;
 
             // Simple hover tooltip
-            const verifyStatus = customer.solarVerified === 'yes' ? '✓' : 
-                                customer.solarVerified === 'no' ? '❌' : '🔍';
+
 
             // Rich popup shows on hover (see mouseover event below)
             // No tooltip needed as popup provides all info
@@ -1955,7 +1954,7 @@
                 </div>
                 
                 <div style="margin-bottom: 8px;">
-                  <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">${verifyStatus} ${customer.name}</div>
+                  <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">${customer.name}</div>
                   <div style="font-size: 9px; color: #94a3b8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📍 ${customer.address}</div>
                   ${customer.panelCount ? `<div style="font-size: 9px; color: #fbbf24;">${customer.panelCount} panels</div>` : ''}
                 </div>
@@ -1972,11 +1971,7 @@
                 ` : ''}
                 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
-                  <button 
-                    onclick="window.dispatchEvent(new CustomEvent('addToRoute', {detail: '${customer.id}'}))"
-                    style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
-                    ${route.some(r => r.id === customer.id) ? '❌ Remove' : '➕ Add'}
-                  </button>
+
                   ${!customer.existingJob && !isRecurringCustomer ? `
                   <button
                     onclick="window.dispatchEvent(new CustomEvent('markRecurring', {detail: '${customer.id}'}))"
@@ -1991,112 +1986,7 @@
                     🗺️ Maps
                   </a>
                   
-                  <div id="verify-section-${customer.id}" style="border-top: 1px solid rgba(139, 92, 246, 0.2); margin-top: 4px; padding-top: 4px;">
-                    ${(() => {
-                      // Get verification results if available
-                      const verification = verificationResults[customer.id];
-                      
-                      // Property Type Display
-                      let propertyTypeDisplay = '';
-                      if (verification?.propertyType) {
-                        const isCommercial = verification.propertyType === 'commercial';
-                        propertyTypeDisplay = `
-                          <div style="background: ${isCommercial ? 'rgba(59, 130, 246, 0.1)' : 'rgba(34, 197, 94, 0.1)'}; 
-                                      color: ${isCommercial ? '#60a5fa' : '#22c55e'}; 
-                                      border: 1px solid ${isCommercial ? 'rgba(59, 130, 246, 0.3)' : 'rgba(34, 197, 94, 0.3)'}; 
-                                      padding: 4px 6px; border-radius: 3px; font-weight: 600; 
-                                      font-size: 9px; font-family: 'Inter', sans-serif; text-align: center; margin-bottom: 4px;">
-                            ${isCommercial ? '🏢 Commercial' : '🏠 Residential'}
-                          </div>
-                        `;
-                      }
-                      
-                      // Solar Status Display
-                      const status = verification?.hasSolar !== undefined ? 
-                                     (verification.hasSolar ? 'yes' : 'no') : 
-                                     customer.solarVerified;
-                      let statusDisplay = '';
-                      let statusIcon = '';
-                      let statusColor = '';
-                      let statusBg = '';
-                      let statusBorder = '';
-                      
-                      if (status === 'yes' || status === true) {
-                        statusIcon = '✓';
-                        statusDisplay = verification?.solarDetails?.permits?.length > 0 ? 
-                                       `Has Solar (${verification.solarDetails.permits.length} permits)` : 
-                                       'Has Solar';
-                        statusColor = '#fbbf24';
-                        statusBg = 'rgba(251, 191, 36, 0.1)';
-                        statusBorder = 'rgba(251, 191, 36, 0.3)';
-                      } else if (status === 'no' || status === false) {
-                        statusIcon = '❌';
-                        statusDisplay = 'No Solar';
-                        statusColor = '#ef4444';
-                        statusBg = 'rgba(239, 68, 68, 0.1)';
-                        statusBorder = 'rgba(239, 68, 68, 0.3)';
-                      } else {
-                        statusIcon = '🔍';
-                        statusDisplay = 'Not Verified';
-                        statusColor = '#8b5cf6';
-                        statusBg = 'rgba(139, 92, 246, 0.1)';
-                        statusBorder = 'rgba(139, 92, 246, 0.3)';
-                      }
-                      
-                      // Auto-verify button
-                      const autoVerifyBtn = `
-                        <button 
-                          onclick="window.dispatchEvent(new CustomEvent('autoVerifyProperty', {detail: '${customer.id}'}))"
-                          style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); 
-                                 color: white; border: none; padding: 6px 8px; border-radius: 4px; 
-                                 font-weight: 600; font-size: 9px; cursor: pointer; 
-                                 font-family: 'Inter', sans-serif; text-align: center; width: 100%; 
-                                 margin-top: 4px; box-shadow: 0 2px 4px rgba(139, 92, 246, 0.3);">
-                          🔍 Auto-Verify with Public Data
-                        </button>
-                      `;
-                      
-                      // Verification sources display
-                      let sourcesDisplay = '';
-                      if (verification?.sources && verification.sources.length > 0) {
-                        sourcesDisplay = `
-                          <div style="font-size: 8px; color: #94a3b8; margin-top: 4px; font-family: 'Inter', sans-serif;">
-                            ✓ Verified via: ${verification.sources.join(', ')}
-                          </div>
-                        `;
-                      }
-                      
-                      return propertyTypeDisplay + 
-                        '<div id="status-badge-' + customer.id + '" ' +
-                          'onclick="document.getElementById(\'edit-options-' + customer.id + '\').style.display=\'grid\'; this.style.display=\'none\';" ' +
-                          'style="background: ' + statusBg + '; color: ' + statusColor + '; border: 1px solid ' + statusBorder + '; padding: 6px 8px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: \'Inter\', sans-serif; text-align: center; position: relative; transition: all 0.2s;">' +
-                          '<span>' + statusIcon + ' ' + statusDisplay + '</span>' +
-                          '<span style="margin-left: 4px; opacity: 0; transition: opacity 0.2s; font-size: 8px;">✏️</span>' +
-                        '</div>' +
-                        sourcesDisplay +
-                        '<div id="edit-options-' + customer.id + '" style="display: none; grid-template-columns: 1fr 1fr 1fr; gap: 3px; margin-top: 4px;">' +
-                          '<button ' +
-                            'onclick="window.dispatchEvent(new CustomEvent(\'markVerified\', {detail: {id: \'' + customer.id + '\', status: \'yes\'}}));" ' +
-                            'style="background: rgba(251, 191, 36, 0.1); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.3); padding: 6px 4px; border-radius: 3px; font-weight: 600; font-size: 9px; cursor: pointer; font-family: \'Inter\', sans-serif;">' +
-                            '✓ Yes' +
-                          '</button>' +
-                          '<button ' +
-                            'onclick="window.dispatchEvent(new CustomEvent(\'markVerified\', {detail: {id: \'' + customer.id + '\', status: \'no\'}}));" ' +
-                            'style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); padding: 6px 4px; border-radius: 3px; font-weight: 600; font-size: 9px; cursor: pointer; font-family: \'Inter\', sans-serif;">' +
-                            '❌ No' +
-                          '</button>' +
-                          '<button ' +
-                            'onclick="window.dispatchEvent(new CustomEvent(\'markVerified\', {detail: {id: \'' + customer.id + '\', status: null}}));" ' +
-                            'style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3); padding: 6px 4px; border-radius: 3px; font-weight: 600; font-size: 9px; cursor: pointer; font-family: \'Inter\', sans-serif;">' +
-                            '🔍 Not Verified' +
-                          '</button>' +
-                        '</div>' +
-                        autoVerifyBtn +
-                        '<style>' +
-                          '#status-badge-' + customer.id + ':hover span:last-child { opacity: 1 !important; }' +
-                        '</style>';
-                    })()}
-                  </div>
+
                 </div>
               </div>
             `;
