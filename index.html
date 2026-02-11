@@ -496,6 +496,12 @@
       const [preferredTimeFilter, setPreferredTimeFilter] = useState([]); // Array of time windows
       const [showDayView, setShowDayView] = useState(false);
       const [dayViewDate, setDayViewDate] = useState(null);
+      // Scheduled map view: show routes on map by week or month
+      const [scheduledMapView, setScheduledMapView] = useState('week'); // 'week' or 'month'
+      const [scheduledViewWeekStart, setScheduledViewWeekStart] = useState(() => {
+        const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
+      });
+      const [showNeedScheduling, setShowNeedScheduling] = useState(false); // Toggle unscheduled overlay
       const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
@@ -769,6 +775,40 @@
       }, [autoSyncSheets, sheetsConnected]);
 
       // NOTE: filteredCustomers is managed by the unified filter useEffect below (search for "UNIFIED FILTER")
+
+      // Day colors for scheduled map view
+      const DAY_COLORS = {
+        0: { color: '#ef4444', label: 'Sun', bg: 'rgba(239, 68, 68, 0.3)' },  // Red
+        1: { color: '#f97316', label: 'Mon', bg: 'rgba(249, 115, 22, 0.3)' },  // Orange
+        2: { color: '#eab308', label: 'Tue', bg: 'rgba(234, 179, 8, 0.3)' },   // Yellow
+        3: { color: '#22c55e', label: 'Wed', bg: 'rgba(34, 197, 94, 0.3)' },   // Green
+        4: { color: '#3b82f6', label: 'Thu', bg: 'rgba(59, 130, 246, 0.3)' },  // Blue
+        5: { color: '#8b5cf6', label: 'Fri', bg: 'rgba(139, 92, 246, 0.3)' },  // Purple
+        6: { color: '#ec4899', label: 'Sat', bg: 'rgba(236, 72, 153, 0.3)' }   // Pink
+      };
+
+      // Get customers from saved routes for a date range
+      const getScheduledCustomersForRange = (startDate, endDate) => {
+        const result = new Map(); // customerId -> { customer, routeDate, routeName, dayOfWeek }
+        savedRoutes.forEach(sr => {
+          if (sr.sentToTech) return;
+          const routeDate = new Date(sr.scheduledDate);
+          if (routeDate >= startDate && routeDate <= endDate) {
+            sr.customers.forEach(c => {
+              if (c.lat && c.lng) {
+                result.set(c.id, {
+                  ...c,
+                  _routeDate: routeDate,
+                  _routeName: sr.name,
+                  _dayOfWeek: routeDate.getDay(),
+                  _dayLabel: routeDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                });
+              }
+            });
+          }
+        });
+        return Array.from(result.values());
+      };
 
       const calculateDistance = (lat1, lon1, lat2, lon2) => {
         const R = 3959;
@@ -1730,6 +1770,21 @@
             let verifyBadge = '';
             let goldCheckmark = '';
             let scheduledOtherDayBadge = '';
+            let dayLabelBadge = '';
+
+            // Scheduled map view: color pins by day of week
+            if (statusFilter === 'scheduled' && customer._dayOfWeek !== undefined) {
+              const dayInfo = DAY_COLORS[customer._dayOfWeek];
+              if (dayInfo) {
+                gradient = `linear-gradient(135deg, ${dayInfo.color} 0%, ${dayInfo.color}cc 100%)`;
+                dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: ${dayInfo.color}; color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${customer._dayLabel}</span>`;
+              }
+            }
+            // Needs-scheduling pins: gray/dashed style
+            if (statusFilter === 'scheduled' && customer._needsScheduling) {
+              gradient = 'linear-gradient(135deg, #64748b 0%, #475569 100%)';
+              dayLabelBadge = '<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: rgba(100, 116, 139, 0.9); color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap;">Need Sched</span>';
+            }
             
             // Check if scheduled on a DIFFERENT day
             const isScheduledOtherDay = customer.scheduledDate && customer.scheduledTime && !isScheduledToday;
@@ -1798,7 +1853,7 @@
               // Pink pin for customers with upcoming job (not recurring)
               customIcon = L.divIcon({
                 className: 'custom-marker-upcoming',
-                html: `<div class="marker-pin ${pinClass}" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}</div>`,
+                html: `<div class="marker-pin ${pinClass}" style="background: linear-gradient(135deg, #ec4899 0%, #db2777 100%); position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}${dayLabelBadge}</div>`,
                 iconSize: [24, 32],
                 iconAnchor: [12, 32],
                 popupAnchor: [0, -32]
@@ -1807,7 +1862,7 @@
               // Default purple pin for others
               customIcon = L.divIcon({
                 className: 'custom-marker',
-                html: `<div class="marker-pin ${pinClass}" style="background: ${gradient}; position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}</div>`,
+                html: `<div class="marker-pin ${pinClass}" style="background: ${gradient}; position: relative;">${goldCheckmark}${verifyBadge}${routeNumberDisplay}${scheduledOtherDayBadge}${dayLabelBadge}</div>`,
                 iconSize: [24, 32],
                 iconAnchor: [12, 32],
                 popupAnchor: [0, -32]
@@ -2132,7 +2187,47 @@
 
         // --- Navigation bar filters ---
         // Status filter (unscheduled, scheduled)
-        if (statusFilter !== 'all') {
+        if (statusFilter === 'scheduled') {
+          // Build date range based on week/month view
+          let rangeStart, rangeEnd;
+          if (scheduledMapView === 'week') {
+            rangeStart = new Date(scheduledViewWeekStart);
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd = new Date(rangeStart);
+            rangeEnd.setDate(rangeEnd.getDate() + 6);
+            rangeEnd.setHours(23, 59, 59, 999);
+          } else {
+            // Month view: start of month to end of month
+            rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
+            rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23, 59, 59, 999);
+          }
+
+          // Get scheduled customers from saved routes in this range
+          const scheduledInRange = getScheduledCustomersForRange(rangeStart, rangeEnd);
+          const scheduledIds = new Set(scheduledInRange.map(c => c.id));
+
+          // Tag customers with route day info
+          const dayInfoMap = new Map();
+          scheduledInRange.forEach(c => {
+            dayInfoMap.set(c.id, { _routeDate: c._routeDate, _routeName: c._routeName, _dayOfWeek: c._dayOfWeek, _dayLabel: c._dayLabel });
+          });
+
+          // Filter to scheduled customers (with day info), optionally include unscheduled
+          if (showNeedScheduling) {
+            results = results.filter(c => scheduledIds.has(c.id) || c.status === 'unscheduled' || !c.status);
+            // Merge day info into scheduled customers
+            results = results.map(c => {
+              const info = dayInfoMap.get(c.id);
+              return info ? { ...c, ...info } : { ...c, _needsScheduling: true };
+            });
+          } else {
+            results = results.filter(c => scheduledIds.has(c.id));
+            results = results.map(c => {
+              const info = dayInfoMap.get(c.id);
+              return info ? { ...c, ...info } : c;
+            });
+          }
+        } else if (statusFilter !== 'all') {
           results = results.filter(c => c.status === statusFilter);
         }
 
@@ -2292,7 +2387,8 @@
         setFilteredCustomers(results);
       }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter,
           drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
-          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles]);
+          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles,
+          scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
@@ -6017,7 +6113,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         onClick={() => {
                           setRadiusMode(false);
                           setAwaitingMapClick(false);
+                          setDrawMode(false);
                           clearRadius();
+                          clearDrawnArea();
                         }}
                         style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: 'rgba(239, 68, 68, 0.3)', color: '#fca5a5' }}
                       >
@@ -7801,6 +7899,50 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         />
                       </div>
 
+                      {/* Scheduled view controls - week/month toggle + needs scheduling */}
+                      {statusFilter === 'scheduled' && (
+                        <>
+                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+                          {/* Week / Month toggle */}
+                          {['week', 'month'].map(view => (
+                            <button
+                              key={view}
+                              onClick={() => setScheduledMapView(view)}
+                              style={{
+                                padding: '3px 8px',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                background: scheduledMapView === view ? 'rgba(234, 179, 8, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                color: scheduledMapView === view ? '#fbbf24' : '#94a3b8',
+                                boxShadow: scheduledMapView === view ? '0 0 0 1px rgba(234, 179, 8, 0.5)' : 'none'
+                              }}
+                            >
+                              {view === 'week' ? '📅 Week' : '🗓️ Month'}
+                            </button>
+                          ))}
+                          {/* Needs Scheduling toggle */}
+                          <button
+                            onClick={() => setShowNeedScheduling(!showNeedScheduling)}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              background: showNeedScheduling ? 'rgba(100, 116, 139, 0.3)' : 'rgba(30, 41, 59, 0.4)',
+                              color: showNeedScheduling ? '#cbd5e1' : '#94a3b8',
+                              boxShadow: showNeedScheduling ? '0 0 0 1px rgba(100, 116, 139, 0.5)' : 'none'
+                            }}
+                          >
+                            {showNeedScheduling ? '👁️' : '👁️‍🗨️'} Needs Sched
+                          </button>
+                        </>
+                      )}
+
                       {/* Preferred time chips - only when unscheduled */}
                       {statusFilter === 'unscheduled' && (
                         <>
@@ -7944,6 +8086,86 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                         )}
                       </div>
                     )}
+
+                    {/* Row 3b: Week/Month navigator - only when scheduled */}
+                    {statusFilter === 'scheduled' && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'rgba(10, 14, 39, 0.88)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(234, 179, 8, 0.2)',
+                        borderRadius: '12px',
+                        padding: '6px 12px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <span style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                          {scheduledMapView === 'week' ? 'Week:' : 'Month:'}
+                        </span>
+                        <button
+                          onClick={() => {
+                            const d = new Date(scheduledViewWeekStart);
+                            if (scheduledMapView === 'week') d.setDate(d.getDate() - 7);
+                            else d.setMonth(d.getMonth() - 1);
+                            setScheduledViewWeekStart(d);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
+                        >◀</button>
+
+                        {scheduledMapView === 'week' ? (
+                          // Show days of the week with color-coded dots
+                          getWeekDays(scheduledViewWeekStart).map((date, index) => {
+                            const dayColor = DAY_COLORS[date.getDay()];
+                            const isToday = date.toDateString() === new Date().toDateString();
+                            const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                            const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
+                            return (
+                              <div key={index} style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                padding: '3px 6px',
+                                borderRadius: '6px',
+                                background: isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
+                                border: `1px solid ${jobCount > 0 ? dayColor.color + '55' : 'transparent'}`,
+                                minWidth: '36px',
+                                lineHeight: 1.2
+                              }}>
+                                <span style={{ fontSize: '8px', color: dayColor.color, fontWeight: 700 }}>{dayColor.label}</span>
+                                <span style={{ fontSize: '11px', color: '#f1f5f9', fontWeight: 600 }}>{date.getDate()}</span>
+                                {jobCount > 0 && (
+                                  <span style={{ fontSize: '8px', color: dayColor.color, fontWeight: 700 }}>{jobCount} jobs</span>
+                                )}
+                              </div>
+                            );
+                          })
+                        ) : (
+                          // Month view: show month name
+                          <span style={{ fontSize: '13px', color: '#f1f5f9', fontWeight: 600 }}>
+                            {scheduledViewWeekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                          </span>
+                        )}
+
+                        <button
+                          onClick={() => {
+                            const d = new Date(scheduledViewWeekStart);
+                            if (scheduledMapView === 'week') d.setDate(d.getDate() + 7);
+                            else d.setMonth(d.getMonth() + 1);
+                            setScheduledViewWeekStart(d);
+                          }}
+                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
+                        >▶</button>
+
+                        <button
+                          onClick={() => {
+                            const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0);
+                            setScheduledViewWeekStart(d);
+                          }}
+                          style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 600 }}
+                        >Today</button>
+                      </div>
+                    )}
                     </>
                     )}
                   </div>
@@ -7959,7 +8181,58 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     background: '#0a0e27'
                   }}
                 />
-                
+
+                {/* Scheduled View - Day Color Legend */}
+                {statusFilter === 'scheduled' && currentView === 'map' && (
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '20px',
+                    left: '20px',
+                    zIndex: 1000,
+                    background: 'rgba(10, 14, 39, 0.92)',
+                    backdropFilter: 'blur(12px)',
+                    border: '1px solid rgba(234, 179, 8, 0.3)',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '4px'
+                  }}>
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', marginBottom: '2px' }}>Route Days</div>
+                    {(() => {
+                      let rangeStart, rangeEnd;
+                      if (scheduledMapView === 'week') {
+                        rangeStart = new Date(scheduledViewWeekStart); rangeStart.setHours(0,0,0,0);
+                        rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + 6); rangeEnd.setHours(23,59,59,999);
+                      } else {
+                        rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
+                        rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23,59,59,999);
+                      }
+                      const activeDays = new Set();
+                      savedRoutes.forEach(r => {
+                        if (r.sentToTech) return;
+                        const d = new Date(r.scheduledDate);
+                        if (d >= rangeStart && d <= rangeEnd) activeDays.add(d.getDay());
+                      });
+                      return Array.from(activeDays).sort().map(dayNum => {
+                        const info = DAY_COLORS[dayNum];
+                        return (
+                          <div key={dayNum} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: info.color }} />
+                            <span style={{ fontSize: '10px', color: '#cbd5e1', fontWeight: 600 }}>{info.label}</span>
+                          </div>
+                        );
+                      });
+                    })()}
+                    {showNeedScheduling && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', borderTop: '1px solid rgba(100, 116, 139, 0.3)', paddingTop: '4px' }}>
+                        <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#64748b' }} />
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>Needs Scheduling</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Right Sidebar - Absolutely positioned over map */}
                 {currentView === 'map' && customers.length > 0 && (
                   <div style={{
@@ -8011,8 +8284,17 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                               createdAt: new Date().toISOString()
                             };
                             
-                            setSavedLists(prev => [...prev, newList]);
-                            alert(`✅ Saved "${listName}" with ${filteredCustomers.length} customers!`);
+                            setSavedLists(prev => [...prev.map(l => ({ ...l, visible: false })), newList]);
+                            setUploadedFiles(prev => prev.map(f => ({ ...f, visible: false })));
+                            // Clear radius/draw if active
+                            if (radiusMode || referencePoint || drawnArea) {
+                              setRadiusMode(false);
+                              setAwaitingMapClick(false);
+                              setDrawMode(false);
+                              clearRadius();
+                              clearDrawnArea();
+                            }
+                            alert(`Saved "${listName}" with ${filteredCustomers.length} customers!`);
                           }}
                           style={{
                             width: '100%',
@@ -11224,16 +11506,22 @@ onClick={exitRadiusMode}
                             fileName: listName.trim()
                           }));
 
-                          setSavedLists(prev => [...prev, {
+                          setSavedLists(prev => [...prev.map(l => ({ ...l, visible: false })), {
                             id: listId,
                             name: listName.trim(),
                             customers: customersToSave,
                             visible: true,
                             createdDate: new Date().toISOString()
                           }]);
+                          // Hide uploaded files too
+                          setUploadedFiles(prev => prev.map(f => ({ ...f, visible: false })));
 
-                          // Completely exit radius mode and clear everything
-                          exitRadiusMode();
+                          // Fully exit radius/draw mode and clear visual layers
+                          setRadiusMode(false);
+                          setAwaitingMapClick(false);
+                          setDrawMode(false);
+                          clearRadius();
+                          clearDrawnArea();
                         }
                       }}
                       style={{
@@ -11682,17 +11970,16 @@ onClick={exitRadiusMode}
                       </div>
                       <button
                         onClick={() => {
-                          // Remove list and reset view
-                          setSavedLists(prev => {
-                            const remaining = prev.filter(l => l.id !== list.id);
-                            // If no lists remain or none are visible, show all customers
-                            const anyVisible = remaining.some(l => l.visible);
-                            if (!anyVisible) {
-                              // Reset to all customers
-                              exitRadiusMode();
+                          const remaining = savedLists.filter(l => l.id !== list.id);
+                          setSavedLists(remaining);
+                          // If deleted list was visible, show the first remaining list or first uploaded file
+                          if (list.visible) {
+                            if (remaining.length > 0) {
+                              setSavedLists(remaining.map((l, i) => ({ ...l, visible: i === 0 })));
+                            } else if (uploadedFiles.length > 0) {
+                              setUploadedFiles(prev => prev.map((f, i) => ({ ...f, visible: i === 0 })));
                             }
-                            return remaining;
-                          });
+                          }
                         }}
                         style={{
                           background: 'rgba(239, 68, 68, 0.1)',
