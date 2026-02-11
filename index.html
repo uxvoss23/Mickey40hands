@@ -4762,19 +4762,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           }
 
           // Step 2: Build matching sets from local customers
-          const localPhones = new Set(customers.filter(c => c.phone).map(c => c.phone.trim()));
-          const localEmails = new Set(customers.filter(c => c.email).map(c => c.email.toLowerCase().trim()));
+          const localPhones = new Set(customers.filter(c => c.phone).map(c => String(c.phone).trim()));
+          const localEmails = new Set(customers.filter(c => c.email).map(c => String(c.email).toLowerCase().trim()));
           const localNameAddresses = new Set(customers.map(c => {
-            const name = (c.name || '').toLowerCase().trim();
-            const address = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
+            const name = String(c.name || '').toLowerCase().trim();
+            const address = String(c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
             return `${name}|${address}`;
           }));
 
           // Step 3: Find new rows in the sheet that don't exist locally
-          const nameCol = headers.findIndex(h => /customer\s*name|^name$/i.test(h.toLowerCase().trim()));
-          const addressCol = headers.findIndex(h => /^address/i.test(h.toLowerCase().trim()));
-          const phoneCol = headers.findIndex(h => /^phone|mobile|customer\s*mobile/i.test(h.toLowerCase().trim()));
-          const emailCol = headers.findIndex(h => /^email|customer\s*email/i.test(h.toLowerCase().trim()));
+          const nameCol = headers.findIndex(h => h && /customer\s*name|^name$/i.test(String(h).toLowerCase().trim()));
+          const addressCol = headers.findIndex(h => h && /^address/i.test(String(h).toLowerCase().trim()));
+          const phoneCol = headers.findIndex(h => h && /^phone|mobile|customer\s*mobile/i.test(String(h).toLowerCase().trim()));
+          const emailCol = headers.findIndex(h => h && /^email|customer\s*email/i.test(String(h).toLowerCase().trim()));
 
           const newSheetRows = [];
           currentRows.forEach(row => {
