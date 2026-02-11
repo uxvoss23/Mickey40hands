@@ -4204,7 +4204,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       /**
-       * Track a local override for a customer field so sheet sync won't overwrite it
+       * Track a local override for a customer field.
+       * NOTE: With one-way import architecture, sheet refreshes no longer overwrite local data,
+       * so these overrides are stored but not actively checked. Kept for potential future use.
        */
       const trackLocalOverride = (customerId, fieldName, value) => {
         setLocalOverrides(prev => ({
@@ -4218,9 +4220,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
       /**
        * Refresh Pipeline data from Google Sheets.
-       * Google Sheets is the single source of truth. On each refresh:
-       * - Fresh sheet data replaces sheetData (pipeline view)
-       * - Changes from the sheet flow into all site views (map, recurring, saved routes, profile)
+       * ONE-WAY IMPORT: Sheet is for intake only; local state is authoritative after import.
+       * - Fresh sheet data replaces sheetData (pipeline table view only)
+       * - Local customer stores (map, routes, profiles) are NEVER overwritten by sheet data
+       * - New customers from the sheet are imported via syncFromGoogleSheet, not here
        */
       const refreshPipelineData = async () => {
         if (!sheetsConnected || !googleSheetId) return;
@@ -4230,96 +4233,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           setSheetHeaders(headers);
           setSheetData(rows);
 
-          // Push fresh sheet data into all customer stores across the site
-          const getColIdx = (possibleNames) => {
-            for (const name of possibleNames) {
-              const idx = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()));
-              if (idx !== -1) return idx;
-            }
-            return -1;
-          };
-
-          const nameCol = getColIdx(['Customer Name', 'Name']);
-          const addressCol = getColIdx(['Address']);
-          const phoneCol = getColIdx(['Phone', 'Mobile', 'Customer Mobile']);
-          const emailCol = getColIdx(['Email', 'Customer Email']);
-
-          // For each row, find matching customer and push sheet values into the site
-          const customerUpdatesFromSheet = [];
-          rows.forEach(row => {
-            const rowName = (nameCol >= 0 ? row.values[nameCol] : '').toLowerCase().trim();
-            const rowAddress = (addressCol >= 0 ? row.values[addressCol] : '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-            const rowPhone = (phoneCol >= 0 ? row.values[phoneCol] : '').trim();
-            const rowEmail = (emailCol >= 0 ? row.values[emailCol] : '').toLowerCase().trim();
-
-            const matched = customers.find(c => {
-              const cName = (c.name || '').toLowerCase().trim();
-              const cAddr = (c.address || '').toLowerCase().trim().replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
-              if (rowName && rowAddress && cName === rowName && cAddr === rowAddress) return true;
-              if (rowPhone && c.phone && rowPhone === c.phone) return true;
-              if (rowEmail && c.email && rowEmail === c.email.toLowerCase().trim()) return true;
-              return false;
-            });
-
-            if (matched) {
-              const updates = {};
-              const customerOverrides = localOverrides[matched.id] || {};
-              headers.forEach((header, colIdx) => {
-                const mappings = mapSheetHeaderToCustomerProps(header);
-                mappings.forEach(({ prop, transform }) => {
-                  // Skip fields that were overridden locally (site changes take priority)
-                  if (customerOverrides[prop]) return;
-                  const sheetVal = row.values[colIdx] || '';
-                  if (sheetVal !== '') {
-                    updates[prop] = transform(sheetVal);
-                  }
-                });
-              });
-
-              if (Object.keys(updates).length > 0) {
-                customerUpdatesFromSheet.push({ customerId: matched.id, updates });
-              }
-            }
-          });
-
-          // Apply sheet data to all customer stores
-          if (customerUpdatesFromSheet.length > 0) {
-            setSavedLists(prev => prev.map(list => ({
-              ...list,
-              customers: list.customers.map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            setUploadedFiles(prev => prev.map(file => ({
-              ...file,
-              customers: file.customers.map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            setSavedRoutes(prev => prev.map(route => ({
-              ...route,
-              customers: (route.customers || []).map(c => {
-                const entry = customerUpdatesFromSheet.find(u => u.customerId === c.id);
-                return entry ? { ...c, ...entry.updates } : c;
-              })
-            })));
-
-            if (profileCustomer) {
-              const entry = customerUpdatesFromSheet.find(u => u.customerId === profileCustomer.id);
-              if (entry) {
-                setProfileCustomer(prev => prev ? { ...prev, ...entry.updates } : prev);
-              }
-            }
-
-            console.log(`📡 Synced ${customerUpdatesFromSheet.length} customers from Google Sheets → site`);
-          }
+          // Pipeline view uses sheetData directly — no push into local customer stores.
+          // Local customer data (savedLists, uploadedFiles, savedRoutes, profileCustomer)
+          // is owned by the site and never overwritten by sheet refreshes.
 
           setLastSheetSync(new Date());
-          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns`);
+          console.log(`🔄 Pipeline refreshed: ${rows.length} rows, ${headers.length} columns (view-only, no local overwrite)`);
         } catch (error) {
           console.error('Error refreshing pipeline:', error);
         }
@@ -4561,7 +4480,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             const updates = {};
             propMappings.forEach(({ prop, transform }) => {
               updates[prop] = transform(newValue);
-              // Protect each edited field from sheet sync overwriting it
+              // Track the edit (no longer needed for sync protection with one-way import,
+              // but kept for audit trail)
               trackLocalOverride(matchedCustomer.id, prop, transform(newValue));
             });
             propagateCustomerUpdate(matchedCustomer.id, updates);
