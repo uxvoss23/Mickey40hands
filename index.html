@@ -595,6 +595,7 @@
       const [showJobModal, setShowJobModal] = useState(false);
       const [showCustomerProfile, setShowCustomerProfile] = useState(false);
       const [profileCustomer, setProfileCustomer] = useState(null);
+      const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null);
       const [newJobNote, setNewJobNote] = useState('');
       const [newCustomerNote, setNewCustomerNote] = useState('');
 
@@ -9231,26 +9232,48 @@ const createJob = async () => {
                                           color: '#a78bfa', cursor: 'pointer'
                                         }}
                                       >Edit</button>
-                                      <button
-                                        onClick={async (e) => {
-                                          e.stopPropagation();
-                                          if (!confirm('Delete this job? This cannot be undone.')) return;
-                                          try {
-                                            await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
-                                            const updatedJobs = profileCustomer.jobHistory.filter(j => j.jobId !== job.jobId);
-                                            const updatedCustomer = { ...profileCustomer, jobHistory: updatedJobs };
-                                            setProfileCustomer(updatedCustomer);
-                                            setSavedLists(prev => prev.map(c => c.id === profileCustomer.id ? updatedCustomer : c));
-                                          } catch (err) {
-                                            alert('Failed to delete job: ' + err.message);
-                                          }
-                                        }}
-                                        style={{
-                                          padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
-                                          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
-                                          color: '#f87171', cursor: 'pointer'
-                                        }}
-                                      >Delete</button>
+                                      {confirmDeleteJobId === job.jobId ? (
+                                        <React.Fragment>
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              try {
+                                                await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
+                                                const updatedJobs = profileCustomer.jobHistory.filter(j => j.jobId !== job.jobId);
+                                                const updatedCustomer = { ...profileCustomer, jobHistory: updatedJobs };
+                                                setProfileCustomer(updatedCustomer);
+                                                setSavedLists(prev => prev.map(c => c.id === profileCustomer.id ? updatedCustomer : c));
+                                                setConfirmDeleteJobId(null);
+                                              } catch (err) {
+                                                console.error('Failed to delete job:', err);
+                                                setConfirmDeleteJobId(null);
+                                              }
+                                            }}
+                                            style={{
+                                              padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
+                                              background: 'rgba(239,68,68,0.3)', border: '1px solid rgba(239,68,68,0.5)',
+                                              color: '#fca5a5', cursor: 'pointer'
+                                            }}
+                                          >Yes, Delete</button>
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setConfirmDeleteJobId(null); }}
+                                            style={{
+                                              padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
+                                              background: 'rgba(148,163,184,0.1)', border: '1px solid rgba(148,163,184,0.25)',
+                                              color: '#94a3b8', cursor: 'pointer'
+                                            }}
+                                          >Cancel</button>
+                                        </React.Fragment>
+                                      ) : (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteJobId(job.jobId); }}
+                                          style={{
+                                            padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
+                                            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                                            color: '#f87171', cursor: 'pointer'
+                                          }}
+                                        >Delete</button>
+                                      )}
                                     </div>
                                   )}
                                 </div>
