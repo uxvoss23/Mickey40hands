@@ -83,6 +83,11 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
+- 2026-02-12: Simplified route scheduling: routes auto-display on map when selecting a day with a saved route (no toggle needed)
+- 2026-02-12: Added insert-into-route workflow: click unscheduled pin → type position number → job inserted at that slot, others shift down
+- 2026-02-12: Numbered stop markers show route sequence on map; route lines drawn automatically
+- 2026-02-12: Removed old "View Routes" overlay system, route picker popup, and related state/controls
+- 2026-02-12: Time recalculation on insert: 8am start, 75min spacing, sequential recalculation for all stops
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header
