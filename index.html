@@ -6724,39 +6724,41 @@ const createJob = async () => {
                                 return (
                                   <>
                                     {['Mon','Tue','Wed','Thu','Fri','Sat'].map(d => {
-                                      const lit = hp.toLowerCase().includes(d.toLowerCase());
-                                      const isHovSrc = hoveredPrefDay === d;
+                                      const litFromHover = hp.toLowerCase().includes(d.toLowerCase());
+                                      const isToggled = hoveredPrefDay === d;
+                                      const active = litFromHover || isToggled;
                                       return (
                                         <span key={d}
-                                          onMouseEnter={() => setHoveredPrefDay(d)}
-                                          onMouseLeave={() => setHoveredPrefDay(null)}
+                                          onClick={() => setHoveredPrefDay(prev => prev === d ? null : d)}
                                           style={{
                                             padding: '1px 3px', fontSize: '9px', fontWeight: 700,
                                             borderRadius: '3px', cursor: 'pointer',
-                                            background: (lit || isHovSrc) ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
-                                            color: (lit || isHovSrc) ? '#fbbf24' : '#3e4451',
+                                            background: active ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
+                                            color: active ? '#fbbf24' : '#3e4451',
                                             minWidth: '16px', lineHeight: '16px', textAlign: 'center',
                                             display: 'inline-block',
-                                            transition: 'all 0.15s ease'
+                                            transition: 'all 0.15s ease',
+                                            boxShadow: isToggled ? '0 0 0 1px rgba(234, 179, 8, 0.6)' : 'none'
                                           }}>{d.charAt(0)}</span>
                                       );
                                     })}
                                     <div style={{ width: '1px', height: '12px', background: 'rgba(100, 116, 139, 0.15)', margin: '0 1px' }} />
                                     {['AM','PM'].map(t => {
-                                      const lit = ht.includes(t);
-                                      const isHovSrc = hoveredPrefTime === t;
+                                      const litFromHover = ht.includes(t);
+                                      const isToggled = hoveredPrefTime === t;
+                                      const active = litFromHover || isToggled;
                                       return (
                                         <span key={t}
-                                          onMouseEnter={() => setHoveredPrefTime(t)}
-                                          onMouseLeave={() => setHoveredPrefTime(null)}
+                                          onClick={() => setHoveredPrefTime(prev => prev === t ? null : t)}
                                           style={{
                                             padding: '1px 3px', fontSize: '9px', fontWeight: 700,
                                             borderRadius: '3px', cursor: 'pointer',
-                                            background: (lit || isHovSrc) ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
-                                            color: (lit || isHovSrc) ? '#fbbf24' : '#3e4451',
+                                            background: active ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
+                                            color: active ? '#fbbf24' : '#3e4451',
                                             minWidth: '18px', lineHeight: '16px', textAlign: 'center',
                                             display: 'inline-block',
-                                            transition: 'all 0.15s ease'
+                                            transition: 'all 0.15s ease',
+                                            boxShadow: isToggled ? '0 0 0 1px rgba(234, 179, 8, 0.6)' : 'none'
                                           }}>{t}</span>
                                       );
                                     })}
