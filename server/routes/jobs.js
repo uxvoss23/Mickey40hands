@@ -40,8 +40,9 @@ router.post('/', async (req, res) => {
     const result = await pool.query(`
       INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
                         completed_date, amount, tip, notes, is_recurring, employee, panel_count,
-                        price, price_per_panel, preferred_days, preferred_time, technician)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                        price, price_per_panel, preferred_days, preferred_time, technician,
+                        recurrence_interval, next_service_date)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
     `, [
       j.customer_id, j.job_description || '', (j.status || '').toLowerCase(),
@@ -49,9 +50,64 @@ router.post('/', async (req, res) => {
       parseFloat(j.amount) || 0, parseFloat(j.tip) || 0, j.notes || '',
       j.is_recurring || false, j.employee || '', parseInt(j.panel_count) || 0,
       parseFloat(j.price) || 0, parseFloat(j.price_per_panel) || 0,
-      j.preferred_days || '', j.preferred_time || '', j.technician || ''
+      j.preferred_days || '', j.preferred_time || '', j.technician || '',
+      j.recurrence_interval || '', j.next_service_date || ''
     ]);
-    res.status(201).json(result.rows[0]);
+
+    const job = result.rows[0];
+
+    if (j.is_recurring && j.preferred_days && j.next_service_date) {
+      try {
+        const days = (j.preferred_days || '').split(',').filter(Boolean);
+        const nextDate = new Date(j.next_service_date);
+        const dayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+
+        for (const day of days) {
+          const targetDay = dayMap[day];
+          if (targetDay === undefined) continue;
+
+          const routeDate = new Date(nextDate);
+          const diff = (targetDay - routeDate.getDay() + 7) % 7;
+          routeDate.setDate(routeDate.getDate() + (diff === 0 ? 0 : diff));
+          const dateStr = routeDate.toISOString().split('T')[0];
+
+          let routeResult = await pool.query(
+            `SELECT id FROM routes WHERE scheduled_date = $1 AND name LIKE $2 LIMIT 1`,
+            [dateStr, `%${day}%`]
+          );
+
+          let routeId;
+          if (routeResult.rows.length > 0) {
+            routeId = routeResult.rows[0].id;
+          } else {
+            const newRoute = await pool.query(
+              `INSERT INTO routes (name, scheduled_date, status) VALUES ($1, $2, 'planned') RETURNING id`,
+              [`${day} Route - ${dateStr}`, dateStr]
+            );
+            routeId = newRoute.rows[0].id;
+          }
+
+          const existing = await pool.query(
+            `SELECT id FROM route_stops WHERE route_id = $1 AND customer_id = $2`,
+            [routeId, j.customer_id]
+          );
+          if (existing.rows.length === 0) {
+            const maxOrder = await pool.query(
+              `SELECT COALESCE(MAX(stop_order), 0) as max_order FROM route_stops WHERE route_id = $1`,
+              [routeId]
+            );
+            await pool.query(
+              `INSERT INTO route_stops (route_id, customer_id, stop_order, notes) VALUES ($1, $2, $3, $4)`,
+              [routeId, j.customer_id, (maxOrder.rows[0].max_order || 0) + 1, j.job_description || '']
+            );
+          }
+        }
+      } catch (routeErr) {
+        console.error('Error auto-adding to route:', routeErr);
+      }
+    }
+
+    res.status(201).json(job);
   } catch (err) {
     console.error('Error creating job:', err);
     res.status(500).json({ error: 'Failed to create job' });
@@ -67,7 +123,8 @@ router.patch('/:id', async (req, res) => {
 
     const fields = ['job_description', 'status', 'scheduled_date', 'scheduled_time',
                     'completed_date', 'amount', 'tip', 'notes', 'is_recurring', 'employee', 'panel_count',
-                    'price', 'price_per_panel', 'preferred_days', 'preferred_time', 'technician'];
+                    'price', 'price_per_panel', 'preferred_days', 'preferred_time', 'technician',
+                    'recurrence_interval', 'next_service_date'];
 
     for (const field of fields) {
       if (updates[field] !== undefined) {

@@ -637,7 +637,8 @@
       const [quickJobData, setQuickJobData] = useState({
         serviceType: '', notes: '', panels: '0',
         pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
-        preferredDays: [], preferredTime: '', technician: 'Chance T'
+        preferredDays: [], preferredTime: '', technician: 'Chance T',
+        isRecurring: false, recurrenceInterval: '', nextServiceDate: ''
       });
       
       // Job Creation Modal State
@@ -670,7 +671,8 @@
         setQuickJobData({
           serviceType: '', notes: '', panels: panels,
           pricePerPanel: '9', totalPrice: String((parseInt(panels) || 0) * 9),
-          priceOverridden: false, preferredDays: [], preferredTime: '', technician: 'Chance T'
+          priceOverridden: false, preferredDays: [], preferredTime: '', technician: 'Chance T',
+          isRecurring: false, recurrenceInterval: '', nextServiceDate: ''
         });
         setQuickAddJobPopup({
           customerId: customer.id,
@@ -10941,6 +10943,85 @@ const createJob = async () => {
                       />
                     </div>
 
+                    <div style={{ marginBottom: '12px' }}>
+                      <div
+                        onClick={() => {
+                          setQuickJobData(prev => {
+                            if (prev.isRecurring) {
+                              return { ...prev, isRecurring: false, recurrenceInterval: '', nextServiceDate: '' };
+                            }
+                            const d = new Date(); d.setMonth(d.getMonth() + 6);
+                            return { ...prev, isRecurring: true, recurrenceInterval: '6months', nextServiceDate: d.toISOString().split('T')[0] };
+                          });
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '10px 12px', borderRadius: '8px', cursor: 'pointer',
+                          border: quickJobData.isRecurring ? '1.5px solid rgba(251,191,36,0.4)' : '1px solid rgba(148,163,184,0.12)',
+                          background: quickJobData.isRecurring ? 'rgba(251,191,36,0.08)' : 'transparent',
+                          transition: 'all 0.15s'
+                        }}
+                      >
+                        <div style={{
+                          width: '18px', height: '18px', borderRadius: '4px',
+                          border: quickJobData.isRecurring ? '2px solid #fbbf24' : '2px solid #475569',
+                          background: quickJobData.isRecurring ? '#fbbf24' : 'transparent',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexShrink: 0, transition: 'all 0.15s'
+                        }}>
+                          {quickJobData.isRecurring && <span style={{ color: '#1e293b', fontSize: '12px', fontWeight: 700 }}>{'\u2713'}</span>}
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: quickJobData.isRecurring ? '#fbbf24' : '#94a3b8' }}>
+                          Recurring Service
+                        </span>
+                      </div>
+
+                      {quickJobData.isRecurring && (
+                        <div style={{
+                          marginTop: '10px', padding: '12px', borderRadius: '8px',
+                          background: 'rgba(251,191,36,0.04)',
+                          border: '1px solid rgba(251,191,36,0.1)'
+                        }}>
+                          <div style={{ marginBottom: '10px' }}>
+                            <label style={jobLabelStyle}>Frequency</label>
+                            <div style={{ display: 'flex', gap: '6px' }}>
+                              {[{val: '6months', label: 'Every 6 Months'}, {val: 'yearly', label: 'Yearly'}].map(opt => (
+                                <button key={opt.val} type="button"
+                                  onClick={() => {
+                                    const today = new Date();
+                                    const nextDate = new Date(today);
+                                    if (opt.val === '6months') nextDate.setMonth(nextDate.getMonth() + 6);
+                                    else nextDate.setFullYear(nextDate.getFullYear() + 1);
+                                    setQuickJobData(prev => ({
+                                      ...prev, recurrenceInterval: opt.val,
+                                      nextServiceDate: nextDate.toISOString().split('T')[0]
+                                    }));
+                                  }}
+                                  style={{
+                                    flex: 1, padding: '7px', borderRadius: '6px',
+                                    fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                    border: quickJobData.recurrenceInterval === opt.val ? '1.5px solid rgba(251,191,36,0.5)' : '1px solid rgba(148,163,184,0.12)',
+                                    background: quickJobData.recurrenceInterval === opt.val ? 'rgba(251,191,36,0.12)' : 'transparent',
+                                    color: quickJobData.recurrenceInterval === opt.val ? '#fbbf24' : '#94a3b8',
+                                    transition: 'all 0.15s'
+                                  }}
+                                >{opt.label}</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <label style={jobLabelStyle}>Next Service Date</label>
+                            <input
+                              type="date"
+                              value={quickJobData.nextServiceDate}
+                              onChange={(e) => setQuickJobData(prev => ({...prev, nextServiceDate: e.target.value}))}
+                              style={{ ...jobInputStyle, padding: '8px 10px' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div style={{ marginBottom: '16px' }}>
                       <label style={jobLabelStyle}>Technician</label>
                       <select
@@ -10988,22 +11069,31 @@ const createJob = async () => {
                                 price_per_panel: parseFloat(quickJobData.pricePerPanel) || 0,
                                 preferred_days: quickJobData.preferredDays.join(','),
                                 preferred_time: quickJobData.preferredTime,
-                                technician: quickJobData.technician
+                                technician: quickJobData.technician,
+                                is_recurring: quickJobData.isRecurring,
+                                recurrence_interval: quickJobData.recurrenceInterval,
+                                next_service_date: quickJobData.nextServiceDate
                               })
                             });
+                            const customerPatch = {
+                              status: 'unscheduled',
+                              job_description: quickJobData.serviceType,
+                              is_recurring: quickJobData.isRecurring
+                            };
+                            if (quickJobData.nextServiceDate) {
+                              customerPatch.next_service_date = quickJobData.nextServiceDate;
+                            }
                             await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
                               method: 'PATCH',
-                              body: JSON.stringify({
-                                status: 'unscheduled',
-                                job_description: quickJobData.serviceType
-                              })
+                              body: JSON.stringify(customerPatch)
                             });
                             await loadFromDatabase();
                             setQuickAddJobPopup(null);
                             setQuickJobData({
                               serviceType: '', notes: '', panels: '0',
                               pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
-                              preferredDays: [], preferredTime: '', technician: 'Chance T'
+                              preferredDays: [], preferredTime: '', technician: 'Chance T',
+                              isRecurring: false, recurrenceInterval: '', nextServiceDate: ''
                             });
                           } catch (err) {
                             console.error('Failed to create job:', err);

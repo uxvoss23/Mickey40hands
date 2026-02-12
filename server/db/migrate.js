@@ -118,6 +118,8 @@ const migrate = async () => {
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS preferred_days VARCHAR(255) DEFAULT '';
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS preferred_time VARCHAR(50) DEFAULT '';
       ALTER TABLE jobs ADD COLUMN IF NOT EXISTS technician VARCHAR(255) DEFAULT '';
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS recurrence_interval VARCHAR(50) DEFAULT '';
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS next_service_date VARCHAR(255) DEFAULT '';
 
       CREATE INDEX IF NOT EXISTS idx_jobs_customer_id ON jobs(customer_id);
       CREATE INDEX IF NOT EXISTS idx_route_stops_route_id ON route_stops(route_id);
