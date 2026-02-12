@@ -188,6 +188,36 @@ router.get('/filter-options', async (req, res) => {
   }
 });
 
+router.get('/autocomplete', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 4) {
+      return res.json([]);
+    }
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=us&addressdetails=1`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'SolarCRM/1.0' }
+    });
+    const data = await response.json();
+    const results = data.map(r => {
+      const a = r.address || {};
+      return {
+        display: r.display_name,
+        lat: parseFloat(r.lat),
+        lng: parseFloat(r.lon),
+        street: [a.house_number, a.road].filter(Boolean).join(' '),
+        city: a.city || a.town || a.village || a.hamlet || '',
+        state: a.state || '',
+        zip: a.postcode || ''
+      };
+    });
+    res.json(results);
+  } catch (err) {
+    console.error('Autocomplete error:', err);
+    res.json([]);
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM customers WHERE id = $1', [req.params.id]);

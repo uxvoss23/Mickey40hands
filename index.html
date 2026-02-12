@@ -10200,14 +10200,54 @@ const createJob = async () => {
               };
               const labelStyle = { fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' };
 
-              const geocodeAddress = async (fullAddress) => {
-                if (!fullAddress || fullAddress.length < 8) return;
+              const selectSuggestion = (s) => {
+                setNewCustomerData(prev => ({
+                  ...prev,
+                  address: s.street || prev.address,
+                  city: s.city, state: s.state, zip: s.zip,
+                  _lat: s.lat, _lng: s.lng,
+                  _geocodeStatus: 'found',
+                  _suggestions: [], _showSuggestions: false
+                }));
+              };
+
+              let _acTimer = null;
+              const handleAddressChange = (val) => {
+                setNewCustomerData(prev => ({
+                  ...prev, address: val,
+                  _geocodeStatus: null, _lat: null, _lng: null,
+                  _showSuggestions: true
+                }));
+                if (_acTimer) clearTimeout(_acTimer);
+                _acTimer = setTimeout(async () => {
+                  if (val.length < 5) {
+                    setNewCustomerData(prev => ({ ...prev, _suggestions: [] }));
+                    return;
+                  }
+                  try {
+                    const resp = await fetch(`/api/customers/autocomplete?q=${encodeURIComponent(val)}`);
+                    const data = await resp.json();
+                    setNewCustomerData(prev => ({ ...prev, _suggestions: data || [] }));
+                  } catch (e) {
+                    setNewCustomerData(prev => ({ ...prev, _suggestions: [] }));
+                  }
+                }, 350);
+              };
+
+              const handleAddressBlur = () => {
+                setTimeout(() => {
+                  setNewCustomerData(prev => ({ ...prev, _showSuggestions: false }));
+                }, 200);
+                const d = newCustomerData;
+                if (d._lat && d._lng) return;
+                if (!d.address || d.address.length < 5) return;
+                const hasCommas = (d.address.match(/,/g) || []).length >= 2;
+                const full = hasCommas ? d.address : [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
                 setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'looking up...' }));
-                try {
-                  const res = await apiFetch('/customers/geocode', {
-                    method: 'POST',
-                    body: JSON.stringify({ address: fullAddress })
-                  });
+                apiFetch('/customers/geocode', {
+                  method: 'POST',
+                  body: JSON.stringify({ address: full })
+                }).then(res => {
                   if (res.success) {
                     setNewCustomerData(prev => ({
                       ...prev,
@@ -10221,21 +10261,9 @@ const createJob = async () => {
                   } else {
                     setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'not found', _lat: null, _lng: null }));
                   }
-                } catch (err) {
+                }).catch(() => {
                   setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'error', _lat: null, _lng: null }));
-                }
-              };
-
-              let _geocodeTimer = null;
-              const handleAddressBlur = () => {
-                if (_geocodeTimer) clearTimeout(_geocodeTimer);
-                _geocodeTimer = setTimeout(() => {
-                  const d = newCustomerData;
-                  if (!d.address || d.address.length < 5) return;
-                  const hasCommas = (d.address.match(/,/g) || []).length >= 2;
-                  const full = hasCommas ? d.address : [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
-                  geocodeAddress(full);
-                }, 400);
+                });
               };
 
               return (
@@ -10269,27 +10297,63 @@ const createJob = async () => {
                     background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)',
                     borderRadius: '10px'
                   }}>
-                    <label style={{ ...labelStyle, color: '#a78bfa', fontSize: '13px' }}>Full Address (auto-locates on map)</label>
-                    <input
-                      type="text"
-                      value={newCustomerData.address}
-                      onChange={(e) => setNewCustomerData(prev => ({ ...prev, address: e.target.value, _geocodeStatus: null, _lat: null, _lng: null }))}
-                      onBlur={handleAddressBlur}
-                      placeholder="1234 Main St, Fort Worth, TX 76131"
-                      autoFocus
-                      style={{
-                        ...inputStyle,
-                        fontSize: '15px', padding: '12px',
-                        background: 'rgba(15, 23, 42, 0.6)',
-                        border: newCustomerData._geocodeStatus === 'found'
-                          ? '2px solid rgba(34, 197, 94, 0.5)'
-                          : newCustomerData._geocodeStatus === 'approximate'
-                          ? '2px solid rgba(251, 191, 36, 0.5)'
-                          : newCustomerData._geocodeStatus === 'not found'
-                          ? '2px solid rgba(239, 68, 68, 0.5)'
-                          : '1px solid rgba(139, 92, 246, 0.3)'
-                      }}
-                    />
+                    <label style={{ ...labelStyle, color: '#a78bfa', fontSize: '13px' }}>Start typing address...</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        value={newCustomerData.address}
+                        onChange={(e) => handleAddressChange(e.target.value)}
+                        onBlur={handleAddressBlur}
+                        onFocus={() => {
+                          if (newCustomerData._suggestions?.length > 0) {
+                            setNewCustomerData(prev => ({ ...prev, _showSuggestions: true }));
+                          }
+                        }}
+                        placeholder="800 Henslee Dr, Euless, TX"
+                        autoFocus
+                        autoComplete="off"
+                        style={{
+                          ...inputStyle,
+                          fontSize: '15px', padding: '12px',
+                          background: 'rgba(15, 23, 42, 0.6)',
+                          border: newCustomerData._geocodeStatus === 'found'
+                            ? '2px solid rgba(34, 197, 94, 0.5)'
+                            : newCustomerData._geocodeStatus === 'approximate'
+                            ? '2px solid rgba(251, 191, 36, 0.5)'
+                            : newCustomerData._geocodeStatus === 'not found'
+                            ? '2px solid rgba(239, 68, 68, 0.5)'
+                            : '1px solid rgba(139, 92, 246, 0.3)'
+                        }}
+                      />
+                      {newCustomerData._showSuggestions && newCustomerData._suggestions?.length > 0 && (
+                        <div style={{
+                          position: 'absolute', top: '100%', left: 0, right: 0,
+                          background: '#1e293b', border: '1px solid rgba(139, 92, 246, 0.4)',
+                          borderRadius: '0 0 8px 8px', zIndex: 100, maxHeight: '200px',
+                          overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                        }}>
+                          {newCustomerData._suggestions.map((s, i) => (
+                            <div key={i}
+                              onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}
+                              style={{
+                                padding: '10px 14px', cursor: 'pointer', fontSize: '13px',
+                                color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.1)',
+                                transition: 'background 0.15s'
+                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139,92,246,0.15)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div style={{ fontWeight: 600, marginBottom: '2px' }}>
+                                {s.street ? `${s.street}` : s.display.split(',')[0]}
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                                {[s.city, s.state, s.zip].filter(Boolean).join(', ')}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
                       {newCustomerData._geocodeStatus === 'looking up...' && (
                         <span style={{ fontSize: '11px', color: '#fbbf24' }}>Looking up location...</span>
@@ -10421,7 +10485,8 @@ const createJob = async () => {
                             firstName: '', lastName: '', phone: '', email: '',
                             address: '', city: '', state: '', zip: '',
                             status: 'unscheduled', panels: '0', notes: '',
-                            _lat: null, _lng: null, _geocodeStatus: null
+                            _lat: null, _lng: null, _geocodeStatus: null,
+                            _suggestions: [], _showSuggestions: false
                           });
                           if (lat && lng && mapInstanceRef.current) {
                             mapInstanceRef.current.setView([lat, lng], 14);
