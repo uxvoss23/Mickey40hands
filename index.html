@@ -10212,9 +10212,10 @@ const createJob = async () => {
                     setNewCustomerData(prev => ({
                       ...prev,
                       _lat: res.lat, _lng: res.lng,
-                      city: prev.city || res.city,
-                      state: prev.state || res.state,
-                      zip: prev.zip || res.zip,
+                      city: res.city || prev.city,
+                      state: res.state || prev.state,
+                      zip: res.zip || prev.zip,
+                      address: res.street || prev.address,
                       _geocodeStatus: res.approximate ? 'approximate' : 'found'
                     }));
                   } else {
@@ -10230,8 +10231,10 @@ const createJob = async () => {
                 if (_geocodeTimer) clearTimeout(_geocodeTimer);
                 _geocodeTimer = setTimeout(() => {
                   const d = newCustomerData;
-                  const full = [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
-                  if (d.address && d.address.length >= 5) geocodeAddress(full);
+                  if (!d.address || d.address.length < 5) return;
+                  const hasCommas = (d.address.match(/,/g) || []).length >= 2;
+                  const full = hasCommas ? d.address : [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
+                  geocodeAddress(full);
                 }, 400);
               };
 
