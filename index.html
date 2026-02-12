@@ -11238,13 +11238,39 @@ const createJob = async () => {
 
                             if (!isEditing && custLat && custLng) {
                               setCurrentView('map');
-                              setStatusFilter('all');
+                              setStatusFilter('scheduled');
+                              setShowNeedScheduling(true);
                               setProfileCustomer(null);
+
+                              const dayNameToNum = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+                              let targetDate = null;
+                              if (prefDays.length > 0) {
+                                const today = new Date();
+                                today.setHours(0,0,0,0);
+                                const prefNums = prefDays.map(d => dayNameToNum[d]).filter(n => n !== undefined);
+                                for (let offset = 0; offset < 30; offset++) {
+                                  const candidate = new Date(today);
+                                  candidate.setDate(today.getDate() + offset);
+                                  if (prefNums.includes(candidate.getDay())) {
+                                    targetDate = candidate;
+                                    break;
+                                  }
+                                }
+                              }
+                              if (targetDate) {
+                                const weekStart = new Date(targetDate);
+                                weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                                weekStart.setHours(0,0,0,0);
+                                setScheduledViewWeekStart(weekStart);
+                                setSelectedDate(targetDate);
+                                setFocusedDay(targetDate);
+                              }
+
                               setTimeout(() => {
                                 if (mapInstanceRef.current) {
-                                  mapInstanceRef.current.setView([custLat, custLng], 14);
+                                  mapInstanceRef.current.setView([custLat, custLng], 12);
                                 }
-                              }, 300);
+                              }, 400);
                             }
                           } catch (err) {
                             console.error('Failed to save job:', err);
@@ -11262,7 +11288,7 @@ const createJob = async () => {
                           cursor: quickJobData.serviceType ? 'pointer' : 'not-allowed'
                         }}
                       >
-                        {quickJobData.editingJobId ? 'Save Changes' : 'Submit Job'}
+                        {quickJobData.editingJobId ? 'Save Changes' : 'Schedule Job'}
                       </button>
                     </div>
                   </div>
