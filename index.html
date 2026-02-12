@@ -451,9 +451,10 @@
 
     const API_BASE = '';  // Same origin
     const apiFetch = async (endpoint, options = {}) => {
+      const { headers: customHeaders, ...restOptions } = options;
       const response = await fetch(`${API_BASE}/api${endpoint}`, {
-        headers: { 'Content-Type': 'application/json', ...options.headers },
-        ...options
+        headers: { 'Content-Type': 'application/json', ...customHeaders },
+        ...restOptions
       });
       if (!response.ok) throw new Error(`API Error: ${response.status}`);
       return response.json();
@@ -9240,9 +9241,31 @@ const createJob = async () => {
                                               try {
                                                 await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
                                                 const updatedJobs = profileCustomer.jobHistory.filter(j => j.jobId !== job.jobId);
-                                                const updatedCustomer = { ...profileCustomer, jobHistory: updatedJobs };
+                                                const prevJob = updatedJobs.length > 0 ? updatedJobs.sort((a,b) => new Date(b.date) - new Date(a.date))[0] : null;
+                                                const customerPatch = {};
+                                                if (prevJob) {
+                                                  customerPatch.job_description = prevJob.jobDescription || '';
+                                                  customerPatch.status = prevJob.status || '';
+                                                  customerPatch.is_recurring = prevJob.isRecurring || false;
+                                                } else {
+                                                  customerPatch.job_description = '';
+                                                  customerPatch.status = '';
+                                                  customerPatch.is_recurring = false;
+                                                }
+                                                await apiFetch(`/customers/${profileCustomer.id}`, {
+                                                  method: 'PATCH',
+                                                  body: JSON.stringify(customerPatch)
+                                                });
+                                                const updatedCustomer = {
+                                                  ...profileCustomer,
+                                                  jobHistory: updatedJobs,
+                                                  status: customerPatch.status,
+                                                  jobDescription: customerPatch.job_description,
+                                                  isRecurring: customerPatch.is_recurring
+                                                };
                                                 setProfileCustomer(updatedCustomer);
                                                 setSavedLists(prev => prev.map(c => c.id === profileCustomer.id ? updatedCustomer : c));
+                                                await loadFromDatabase();
                                                 setConfirmDeleteJobId(null);
                                               } catch (err) {
                                                 console.error('Failed to delete job:', err);
