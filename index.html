@@ -499,7 +499,7 @@
       const [showCalendar, setShowCalendar] = useState(true);
       const [showTip, setShowTip] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('week'); // 'week' or 'month'
-      const [statusFilter, setStatusFilter] = useState('scheduled');
+      const [statusFilter, setStatusFilter] = useState('all');
       const [preferredDateFilter, setPreferredDateFilter] = useState([]); // Array of dates
       const [preferredTimeFilter, setPreferredTimeFilter] = useState([]); // Array of time windows
       const [showDayView, setShowDayView] = useState(false);
@@ -510,6 +510,8 @@
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
       const [showNeedScheduling, setShowNeedScheduling] = useState(true);
+      const [addToRoutePopup, setAddToRoutePopup] = useState(null);
+      const [addToRouteSlot, setAddToRouteSlot] = useState('');
       const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
