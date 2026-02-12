@@ -760,7 +760,7 @@
                   _routeDate: routeDate,
                   _routeName: sr.name,
                   _dayOfWeek: routeDate.getDay(),
-                  _dayLabel: routeDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                  _dayLabel: routeDate.toLocaleDateString('en-US', { weekday: 'short' })
                 });
               }
             });
@@ -1842,13 +1842,8 @@
             let scheduledOtherDayBadge = '';
             let dayLabelBadge = '';
 
-            // Scheduled map view: color pins by day of week
             if (statusFilter === 'scheduled' && customer._dayOfWeek !== undefined) {
-              const dayInfo = DAY_COLORS[customer._dayOfWeek];
-              if (dayInfo) {
-                gradient = `linear-gradient(135deg, ${dayInfo.color} 0%, ${dayInfo.color}cc 100%)`;
-                dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: ${dayInfo.color}; color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${customer._dayLabel}</span>`;
-              }
+              gradient = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
             }
             if (statusFilter === 'scheduled' && (customer._needsScheduling || customer._dayOfWeek === undefined)) {
               gradient = 'linear-gradient(135deg, #64748b 0%, #475569 100%)';
@@ -2183,7 +2178,7 @@
                   _routeDate: custDate,
                   _routeName: 'Editing',
                   _dayOfWeek: custDate.getDay(),
-                  _dayLabel: custDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                  _dayLabel: custDate.toLocaleDateString('en-US', { weekday: 'short' })
                 });
               }
             }
