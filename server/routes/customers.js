@@ -426,11 +426,53 @@ router.post('/geocode', async (req, res) => {
       return res.status(400).json({ error: 'Address is required' });
     }
 
-    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us&addressdetails=1`;
-    const response = await fetch(url, {
-      headers: { 'User-Agent': 'SolarCRM/1.0' }
-    });
-    const data = await response.json();
+    const headers = { 'User-Agent': 'SolarCRM/1.0' };
+
+    const expandAbbreviations = (addr) => {
+      return addr
+        .replace(/\bFm\b/gi, 'Farm to Market Road')
+        .replace(/\bCr\b/gi, 'County Road')
+        .replace(/\bHwy\b/gi, 'Highway')
+        .replace(/\bRr\b/gi, 'Ranch Road');
+    };
+
+    const tryGeocode = async (query) => {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=us&addressdetails=1`;
+      const response = await fetch(url, { headers });
+      return response.json();
+    };
+
+    let data = await tryGeocode(address);
+
+    if (data.length === 0) {
+      const expanded = expandAbbreviations(address);
+      if (expanded !== address) {
+        data = await tryGeocode(expanded);
+      }
+    }
+
+    if (data.length === 0) {
+      const parts = address.split(',').map(p => p.trim());
+      if (parts.length >= 2) {
+        const cityStateZip = parts.slice(1).join(', ');
+        data = await tryGeocode(cityStateZip);
+        if (data.length > 0) {
+          const result = data[0];
+          const addr = result.address || {};
+          return res.json({
+            success: true,
+            lat: parseFloat(result.lat),
+            lng: parseFloat(result.lon),
+            display_name: result.display_name,
+            city: addr.city || addr.town || addr.village || addr.hamlet || '',
+            state: addr.state || '',
+            zip: addr.postcode || '',
+            street: '',
+            approximate: true
+          });
+        }
+      }
+    }
 
     if (data.length === 0) {
       return res.json({ success: false, error: 'Address not found' });
