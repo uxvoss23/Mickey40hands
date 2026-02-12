@@ -88,6 +88,11 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-12: Auto-fills city/state/zip from geocode results; green "Location Found" badge confirms success
 - 2026-02-12: Save & Show on Map button pans map to new customer after creation
 - 2026-02-12: Debounced geocode calls to prevent rate-limiting from Nominatim
+- 2026-02-12: Rebuilt Quick Add Customer form: replaced Status dropdown with "Add Job?" toggle button
+- 2026-02-12: Two-step customer creation: save customer first, then optional Add Job popup with 7 service types
+- 2026-02-12: Service types: Residential/Commercial Panel Cleaning, Critter Guard Install/Repair, General Repair, Pressure Washing, Site Visit
+- 2026-02-12: Jobs save to database via POST /api/jobs with customer_id, job_description, status, notes
+- 2026-02-12: Customer status defaults to blank (no job) or "unscheduled" (job added)
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

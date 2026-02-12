@@ -599,7 +599,12 @@
       const [newCustomerData, setNewCustomerData] = useState({
         firstName: '', lastName: '', phone: '', email: '',
         address: '', city: '', state: '', zip: '',
-        status: 'unscheduled', panels: '0', notes: ''
+        addJob: false, panels: '0', notes: ''
+      });
+      const [quickAddJobPopup, setQuickAddJobPopup] = useState(null);
+      const [quickJobData, setQuickJobData] = useState({
+        serviceType: 'Residential Panel Cleaning',
+        notes: '', panels: '0'
       });
       
       // Job Creation Modal State
@@ -10419,15 +10424,24 @@ const createJob = async () => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                     <div>
-                      <label style={labelStyle}>Status</label>
-                      <select value={newCustomerData.status} onChange={(e) => setNewCustomerData(prev => ({...prev, status: e.target.value}))} style={inputStyle}>
-                        <option value="unscheduled">Unscheduled</option>
-                        <option value="scheduled">Scheduled</option>
-                      </select>
-                    </div>
-                    <div>
                       <label style={labelStyle}>Panels</label>
                       <input type="number" value={newCustomerData.panels} onChange={(e) => setNewCustomerData(prev => ({...prev, panels: e.target.value}))} placeholder="0" style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => setNewCustomerData(prev => ({...prev, addJob: !prev.addJob}))}
+                        style={{
+                          width: '100%', padding: '10px', borderRadius: '8px',
+                          fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                          border: newCustomerData.addJob ? '2px solid rgba(139,92,246,0.6)' : '1px solid rgba(148,163,184,0.2)',
+                          background: newCustomerData.addJob ? 'rgba(139,92,246,0.15)' : 'rgba(15,23,42,0.8)',
+                          color: newCustomerData.addJob ? '#a78bfa' : '#94a3b8',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {newCustomerData.addJob ? '+ Job will be added' : '+ Add Job?'}
+                      </button>
                     </div>
                   </div>
 
@@ -10461,6 +10475,7 @@ const createJob = async () => {
                           }
 
                           const fullAddr = [newCustomerData.address, newCustomerData.city, newCustomerData.state, newCustomerData.zip].filter(Boolean).join(', ');
+                          const wantsJob = newCustomerData.addJob;
                           const customerPayload = {
                             first_name: newCustomerData.firstName,
                             last_name: newCustomerData.lastName,
@@ -10473,23 +10488,35 @@ const createJob = async () => {
                             lat: lat, lng: lng,
                             phone: newCustomerData.phone,
                             email: newCustomerData.email,
-                            status: newCustomerData.status || 'unscheduled',
+                            status: '',
                             panel_count: parseInt(newCustomerData.panels) || 0,
                             notes: newCustomerData.notes,
                             source: 'quick-add'
                           };
-                          await apiFetch('/customers', { method: 'POST', body: JSON.stringify(customerPayload) });
+                          const savedCustomer = await apiFetch('/customers', { method: 'POST', body: JSON.stringify(customerPayload) });
                           await loadFromDatabase();
                           setShowNewCustomerForm(false);
+
+                          const panelCount = newCustomerData.panels;
                           setNewCustomerData({
                             firstName: '', lastName: '', phone: '', email: '',
                             address: '', city: '', state: '', zip: '',
-                            status: 'unscheduled', panels: '0', notes: '',
+                            addJob: false, panels: '0', notes: '',
                             _lat: null, _lng: null, _geocodeStatus: null,
                             _suggestions: [], _showSuggestions: false
                           });
+
                           if (lat && lng && mapInstanceRef.current) {
                             mapInstanceRef.current.setView([lat, lng], 14);
+                          }
+
+                          if (wantsJob && savedCustomer) {
+                            setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: panelCount });
+                            setQuickAddJobPopup({
+                              customerId: savedCustomer.id,
+                              customerName: fullName,
+                              lat: lat, lng: lng
+                            });
                           }
                         } catch (err) {
                           console.error('Failed to create customer:', err);
@@ -10505,7 +10532,10 @@ const createJob = async () => {
                         color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
                       }}
                     >
-                      {(newCustomerData._geocodeStatus === 'found' || newCustomerData._geocodeStatus === 'approximate') ? 'Save & Show on Map' : 'Save Customer'}
+                      {newCustomerData.addJob
+                        ? (newCustomerData._geocodeStatus === 'found' || newCustomerData._geocodeStatus === 'approximate' ? 'Save & Add Job' : 'Save & Add Job')
+                        : (newCustomerData._geocodeStatus === 'found' || newCustomerData._geocodeStatus === 'approximate' ? 'Save & Show on Map' : 'Save Customer')
+                      }
                     </button>
                   </div>
                 </div>
@@ -10513,6 +10543,135 @@ const createJob = async () => {
               );
             })()}
           </div>
+
+          {quickAddJobPopup && (() => {
+              const jobInputStyle = {
+                width: '100%', padding: '10px',
+                background: 'rgba(15, 23, 42, 0.8)',
+                border: '1px solid rgba(148, 163, 184, 0.2)',
+                borderRadius: '8px', color: '#f1f5f9',
+                fontSize: '14px', outline: 'none', fontFamily: 'inherit'
+              };
+              const jobLabelStyle = { fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' };
+
+              const serviceTypes = [
+                'Residential Panel Cleaning',
+                'Commercial Panel Cleaning',
+                'Critter Guard Installation',
+                'Critter Guard Repair',
+                'General Repair',
+                'Pressure Washing',
+                'Site Visit'
+              ];
+
+              return (
+                <div style={{
+                  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                  background: 'rgba(0,0,0,0.7)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  zIndex: 10000
+                }} onClick={() => setQuickAddJobPopup(null)}>
+                  <div style={{
+                    background: '#1e293b', borderRadius: '16px', padding: '28px',
+                    width: '440px', border: '1px solid rgba(148, 163, 184, 0.2)'
+                  }} onClick={(e) => e.stopPropagation()}>
+
+                    <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '6px' }}>
+                      Add Job
+                    </h3>
+                    <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+                      for {quickAddJobPopup.customerName}
+                    </p>
+
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={jobLabelStyle}>Service Type</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        {serviceTypes.map(type => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setQuickJobData(prev => ({...prev, serviceType: type}))}
+                            style={{
+                              padding: '10px 14px', borderRadius: '8px',
+                              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
+                              textAlign: 'left', transition: 'all 0.15s',
+                              border: quickJobData.serviceType === type
+                                ? '2px solid rgba(139,92,246,0.6)'
+                                : '1px solid rgba(148,163,184,0.15)',
+                              background: quickJobData.serviceType === type
+                                ? 'rgba(139,92,246,0.15)'
+                                : 'rgba(15,23,42,0.5)',
+                              color: quickJobData.serviceType === type ? '#c4b5fd' : '#cbd5e1'
+                            }}
+                          >
+                            {quickJobData.serviceType === type && '\u2713  '}{type}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={jobLabelStyle}>Job Notes (optional)</label>
+                      <textarea
+                        value={quickJobData.notes}
+                        onChange={(e) => setQuickJobData(prev => ({...prev, notes: e.target.value}))}
+                        placeholder="Special instructions, access details..."
+                        rows={2}
+                        style={{ ...jobInputStyle, resize: 'vertical' }}
+                      />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => setQuickAddJobPopup(null)}
+                        style={{
+                          padding: '10px 20px', background: 'rgba(100, 116, 139, 0.2)',
+                          border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '8px',
+                          color: '#94a3b8', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
+                        }}
+                      >Skip</button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await apiFetch('/jobs', {
+                              method: 'POST',
+                              body: JSON.stringify({
+                                customer_id: quickAddJobPopup.customerId,
+                                job_description: quickJobData.serviceType,
+                                status: 'unscheduled',
+                                notes: quickJobData.notes,
+                                panel_count: parseInt(quickJobData.panels) || 0
+                              })
+                            });
+                            await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({
+                                status: 'unscheduled',
+                                job_description: quickJobData.serviceType
+                              })
+                            });
+                            await loadFromDatabase();
+                            setQuickAddJobPopup(null);
+                            setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: '0' });
+                          } catch (err) {
+                            console.error('Failed to create job:', err);
+                            alert('Failed to create job: ' + err.message);
+                          }
+                        }}
+                        style={{
+                          padding: '10px 24px',
+                          background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                          border: 'none', borderRadius: '8px',
+                          color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
+                        }}
+                      >
+                        Submit Job
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+          })()}
 
           {/* Radius Search Floating Control Panel */}
           {radiusMode && (
