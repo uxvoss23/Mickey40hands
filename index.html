@@ -2439,8 +2439,8 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
-        // If route overlay is active and customer is unscheduled, show route picker
-        if (showRouteOverlay && (!customer.status || customer.status === 'unscheduled' || customer.status === '')) {
+        // If route overlay is active (but NOT editing a specific route) and customer is unscheduled, show route picker
+        if (showRouteOverlay && !editingSavedRouteId && (!customer.status || customer.status === 'unscheduled' || customer.status === '')) {
           let rangeStart, rangeEnd;
           if (routeOverlayView === 'week') {
             rangeStart = new Date(routeOverlayWeekStart); rangeStart.setHours(0,0,0,0);
@@ -5893,6 +5893,7 @@ const createJob = async () => {
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                   setStatusFilter('unscheduled');
+                                  setShowRouteOverlay(false);
                                 }}
                                 className="button-secondary"
                                 style={{
