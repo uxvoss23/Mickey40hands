@@ -534,6 +534,10 @@
       const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
       const [addToRouteCustomer, setAddToRouteCustomer] = useState(null);
       const [routeEditMode, setRouteEditMode] = useState(false);
+      const routeEditModeRef = useRef(false);
+      const savedRoutesRef = useRef([]);
+      const selectedDateRef = useRef(new Date());
+      const handleCustomerClickRef = useRef(null);
       const [insertIntoRouteCustomer, setInsertIntoRouteCustomer] = useState(null); // Customer being inserted into a route at a position
       const [insertPosition, setInsertPosition] = useState(''); // Position number for route insertion
       const routeOverlayLinesRef = useRef([]);
@@ -1497,7 +1501,7 @@
           const customerId = e.detail;
           const customer = customers.find(c => c.id === customerId);
           if (customer) {
-            handleCustomerClick(customer);
+            if (handleCustomerClickRef.current) handleCustomerClickRef.current(customer);
             // Close any open popups
             if (mapInstanceRef.current) {
               mapInstanceRef.current.closePopup();
@@ -2020,8 +2024,8 @@
             // Click = add to route instantly
             marker.on('click', (e) => {
               L.DomEvent.stopPropagation(e);
-              marker.closePopup(); // Close popup if open
-              handleCustomerClick(customer);
+              marker.closePopup();
+              if (handleCustomerClickRef.current) handleCustomerClickRef.current(customer);
             });
             
             // Hover = show popup with delay
@@ -2219,6 +2223,22 @@
         setInsertPosition('');
         setRouteEditMode(false);
       }, [selectedDate, statusFilter]);
+
+      useEffect(() => {
+        routeEditModeRef.current = routeEditMode;
+      }, [routeEditMode]);
+
+      useEffect(() => {
+        savedRoutesRef.current = savedRoutes;
+      }, [savedRoutes]);
+
+      useEffect(() => {
+        selectedDateRef.current = selectedDate;
+      }, [selectedDate]);
+
+      useEffect(() => {
+        handleCustomerClickRef.current = handleCustomerClick;
+      });
 
             // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
@@ -2452,9 +2472,9 @@
         // Check if selected day has a saved route - if so, show position input to insert into route
         // Otherwise open profile
         if (statusFilter === 'unscheduled' && !editingSavedRouteId) {
-          if (routeEditMode) {
-            const dateKey = selectedDate.toDateString();
-            const routeForDay = savedRoutes.find(sr => {
+          if (routeEditModeRef.current) {
+            const dateKey = selectedDateRef.current.toDateString();
+            const routeForDay = savedRoutesRef.current.find(sr => {
               const rDate = new Date(sr.scheduledDate);
               return rDate.toDateString() === dateKey && !sr.sentToTech;
             });
