@@ -2440,12 +2440,6 @@
             scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
           }
 
-          setRoutesByDay(prev => {
-            const existing = prev[dateKey] || [];
-            if (existing.some(r => r.id === customer.id)) return prev;
-            return { ...prev, [dateKey]: [...existing, customer] };
-          });
-
           const savedRoutesForDay = savedRoutes.filter(r => {
             const rDate = new Date(r.scheduledDate);
             return rDate.toDateString() === dateKey;
@@ -2453,25 +2447,39 @@
           const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
           const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
 
-          if (savedRouteForDay) {
-            const scheduledCustomer = {
-              ...customer,
-              scheduledDate: selectedDate.toISOString().split('T')[0],
-              scheduledTime: nextSlot ? nextSlot.time : '08:00',
-              status: 'scheduled',
-              routeConfirmed: true,
-              distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, customer.lat, customer.lng) : null
-            };
-            setSavedRoutes(prev => prev.map(r => {
-              if (r.id === savedRouteForDay.id) {
-                const alreadyInRoute = (r.customers || []).some(c => c.id === customer.id);
-                if (alreadyInRoute) return r;
-                return { ...r, customers: [...(r.customers || []), scheduledCustomer] };
+          if (savedRouteForDay && savedViewDays[dateKey] === true) {
+            const routeCustomerMap = new Map();
+            savedRouteForDay.customers.forEach(rc => {
+              routeCustomerMap.set(rc.id, rc);
+            });
+            setCustomers(prev => prev.map(c => {
+              const rc = routeCustomerMap.get(c.id);
+              if (rc) {
+                return {
+                  ...c,
+                  scheduledTime: rc.scheduledTime || c.scheduledTime,
+                  scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                  status: 'scheduled',
+                  routeConfirmed: true
+                };
               }
-              return r;
+              return c;
             }));
+
+            setRoutesByDay(prev => ({
+              ...prev,
+              [dateKey]: [...savedRouteForDay.customers, customer]
+            }));
+            setEditingSavedRouteId(savedRouteForDay.id);
+            setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+          } else {
+            setRoutesByDay(prev => {
+              const existing = prev[dateKey] || [];
+              if (existing.some(r => r.id === customer.id)) return prev;
+              return { ...prev, [dateKey]: [...existing, customer] };
+            });
           }
-          
+
           const availableCustomers = filteredCustomers.filter(c => 
             c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
           );
