@@ -2109,7 +2109,7 @@
               return (aH * 60 + aM) - (bH * 60 + bM);
             });
 
-          if (todaysJobs.length > 0 && homeBase) {
+          if (todaysJobs.length > 0 && homeBase && statusFilter === 'scheduled') {
             // Line from home to first job
             const line1 = L.polyline(
               [[homeBase.lat, homeBase.lng], [todaysJobs[0].lat, todaysJobs[0].lng]],
@@ -2127,7 +2127,7 @@
             }
           }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
