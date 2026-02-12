@@ -718,11 +718,16 @@
       };
 
       const customerHasOpenJobs = (customer) => {
-        if (!customer || !customer.serviceHistory || customer.serviceHistory.length === 0) return false;
-        return customer.serviceHistory.some(j => {
-          const s = (j.status || '').toLowerCase();
-          return s !== 'completed' && s !== 'cancelled' && (j.jobDescription || j.date);
-        });
+        if (!customer) return false;
+        const custStatus = (customer.status || '').toLowerCase();
+        if (custStatus === 'unscheduled' || custStatus === 'scheduled') return true;
+        if (customer.serviceHistory && customer.serviceHistory.length > 0) {
+          return customer.serviceHistory.some(j => {
+            const s = (j.status || '').toLowerCase();
+            return s !== 'completed' && s !== 'cancelled' && (j.jobDescription || j.date);
+          });
+        }
+        return false;
       };
       const getStatusAfterUnschedule = (customer) => customerHasOpenJobs(customer) ? 'unscheduled' : '';
       const [customerSearchResults, setCustomerSearchResults] = useState([]);
@@ -9240,26 +9245,26 @@ const createJob = async () => {
                                               e.stopPropagation();
                                               try {
                                                 await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
-                                                const updatedJobs = profileCustomer.jobHistory.filter(j => j.jobId !== job.jobId);
-                                                const prevJob = updatedJobs.length > 0 ? updatedJobs.sort((a,b) => new Date(b.date) - new Date(a.date))[0] : null;
-                                                const customerPatch = {};
-                                                if (prevJob) {
-                                                  customerPatch.job_description = prevJob.jobDescription || '';
-                                                  customerPatch.status = prevJob.status || '';
-                                                  customerPatch.is_recurring = prevJob.isRecurring || false;
-                                                } else {
-                                                  customerPatch.job_description = '';
-                                                  customerPatch.status = '';
-                                                  customerPatch.is_recurring = false;
-                                                }
+                                                const updatedHistory = (profileCustomer.serviceHistory || []).filter(j => j.jobId !== job.jobId);
+                                                const activeJobs = updatedHistory.filter(j => {
+                                                  const s = (j.status || '').toLowerCase();
+                                                  return s !== 'completed' && s !== 'cancelled' && (j.jobDescription || j.date);
+                                                });
+                                                const prevJob = updatedHistory.length > 0 ? [...updatedHistory].sort((a,b) => new Date(b.date) - new Date(a.date))[0] : null;
+                                                const newStatus = activeJobs.length > 0 ? (prevJob ? prevJob.status || 'unscheduled' : 'unscheduled') : '';
+                                                const customerPatch = {
+                                                  job_description: prevJob ? (prevJob.jobDescription || '') : '',
+                                                  status: newStatus,
+                                                  is_recurring: prevJob ? (prevJob.isRecurring || false) : false
+                                                };
                                                 await apiFetch(`/customers/${profileCustomer.id}`, {
                                                   method: 'PATCH',
                                                   body: JSON.stringify(customerPatch)
                                                 });
                                                 const updatedCustomer = {
                                                   ...profileCustomer,
-                                                  jobHistory: updatedJobs,
-                                                  status: customerPatch.status,
+                                                  serviceHistory: updatedHistory,
+                                                  status: newStatus,
                                                   jobDescription: customerPatch.job_description,
                                                   isRecurring: customerPatch.is_recurring
                                                 };
