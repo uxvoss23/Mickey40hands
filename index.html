@@ -5789,6 +5789,7 @@ const createJob = async () => {
                                     });
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                  setStatusFilter('all');
                                 }}
                                 className="button-secondary"
                                 style={{
@@ -6451,6 +6452,60 @@ const createJob = async () => {
 
               {/* Map Container */}
               <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                {/* Route Editing Mode Banner */}
+                {currentView === 'map' && editingSavedRouteId && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '0',
+                    left: '0',
+                    right: '0',
+                    zIndex: 1002,
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.95), rgba(99, 52, 206, 0.95))',
+                    padding: '8px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
+                        Editing Route — Click pins to add/remove jobs
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={() => {
+                          setEditingSavedRouteId(null);
+                          setStatusFilter('unscheduled');
+                        }}
+                        style={{
+                          padding: '4px 12px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: 'rgba(255,255,255,0.15)',
+                          border: '1px solid rgba(255,255,255,0.3)',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          cursor: 'pointer'
+                        }}
+                      >Cancel</button>
+                      <button
+                        onClick={() => setShowSaveRouteModal(true)}
+                        style={{
+                          padding: '4px 12px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          background: '#22c55e',
+                          border: 'none',
+                          borderRadius: '6px',
+                          color: '#fff',
+                          cursor: 'pointer'
+                        }}
+                      >Save Route</button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Compact Filter Bar - Top of Map */}
                 {currentView === 'map' && customers.length > 0 && (
                   <div style={{
@@ -9415,6 +9470,7 @@ const createJob = async () => {
                                   ...prev,
                                   [routeDateKey]: false
                                 }));
+                                setStatusFilter('all');
                                 setCurrentView('map');
                               }}
                               className="button-secondary"
