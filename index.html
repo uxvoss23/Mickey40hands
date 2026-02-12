@@ -538,6 +538,7 @@
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
       const [editedNotes, setEditedNotes] = useState('');
+      const [expandedSavedRouteId, setExpandedSavedRouteId] = useState(null);
       const [draggedIndex, setDraggedIndex] = useState(null);
       const [stats, setStats] = useState({
         total: 0,
@@ -741,6 +742,14 @@
         4: { color: '#3b82f6', label: 'Thu', bg: 'rgba(59, 130, 246, 0.3)' },  // Blue
         5: { color: '#8b5cf6', label: 'Fri', bg: 'rgba(139, 92, 246, 0.3)' },  // Purple
         6: { color: '#ec4899', label: 'Sat', bg: 'rgba(236, 72, 153, 0.3)' }   // Pink
+      };
+
+      const formatTime12h = (time24) => {
+        if (!time24) return '';
+        const [h, m] = time24.split(':').map(Number);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
       };
 
       // Get customers from saved routes for a date range
@@ -1999,7 +2008,7 @@
                   <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">${customer.name}</div>
                   <div style="font-size: 9px; color: #94a3b8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📍 ${customer.address}</div>
                   ${customer.panelCount ? `<div style="font-size: 9px; color: #fbbf24;">${customer.panelCount} panels</div>` : ''}
-                  ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + customer.scheduledTime : ''}</div>` : ''}
+                  ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + formatTime12h(customer.scheduledTime) : ''}</div>` : ''}
                 </div>
                 
                 ${customer.existingJob ? `
@@ -9502,69 +9511,182 @@ const createJob = async () => {
                           </div>
                         </div>
 
-                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflowY: 'auto' }} className="scrollbar-custom">
+                        {(() => {
+                          const isExpanded = expandedSavedRouteId === savedRoute.id;
+                          return (
+                          <>
+                        <div 
+                          onClick={() => setExpandedSavedRouteId(isExpanded ? null : savedRoute.id)}
+                          style={{ 
+                            padding: '6px 14px', fontSize: '11px', color: '#94a3b8', cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                            background: 'rgba(15, 23, 42, 0.3)', borderBottom: isExpanded ? '1px solid rgba(139, 92, 246, 0.1)' : 'none'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.08)'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.3)'}
+                        >
+                          <span style={{ fontWeight: 600 }}>{isExpanded ? '▼' : '▶'} {savedRoute.customers.length} stops</span>
+                          <span style={{ fontSize: '10px' }}>{isExpanded ? 'Collapse' : 'Expand'}</span>
+                        </div>
+
+                        {!isExpanded && (
+                        <div style={{ padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                           {savedRoute.customers.map((customer, index) => {
                             const timeSlot = customer.scheduledTime || '';
                             return (
-                            <div
-                              key={customer.id}
-                              onClick={() => {
-                                const fullCustomer = customers.find(c => c.id === customer.id) || customer;
-                                setProfileCustomer(fullCustomer);
-                                setShowCustomerProfile(true);
-                              }}
-                              style={{
-                                padding: '8px 10px',
-                                background: 'rgba(15, 23, 42, 0.4)',
-                                borderRadius: '6px',
-                                border: '1px solid rgba(139, 92, 246, 0.1)',
-                                cursor: 'pointer',
-                                transition: 'background 0.15s'
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)'}
-                              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.4)'}
-                            >
-                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                                <div style={{
-                                  width: '22px', height: '22px', borderRadius: '50%',
-                                  background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '11px', fontWeight: 700, color: 'white', flexShrink: 0
-                                }}>{index + 1}</div>
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {customer.name}
-                                  </div>
-                                  <div style={{ fontSize: '10px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                    {customer.address}
-                                  </div>
-                                </div>
-                                {timeSlot && (
-                                  <div style={{
-                                    padding: '2px 6px', fontSize: '9px', fontWeight: 700,
-                                    background: 'rgba(251, 191, 36, 0.2)', border: '1px solid rgba(251, 191, 36, 0.3)',
-                                    borderRadius: '4px', color: '#fbbf24', flexShrink: 0, whiteSpace: 'nowrap'
-                                  }}>{timeSlot}</div>
-                                )}
+                            <div key={customer.id} style={{ display: 'flex', gap: '6px', alignItems: 'center', padding: '3px 4px' }}>
+                              <div style={{
+                                width: '18px', height: '18px', borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '9px', fontWeight: 700, color: 'white', flexShrink: 0
+                              }}>{index + 1}</div>
+                              <div style={{ flex: 1, minWidth: 0, fontSize: '11px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {customer.name}
                               </div>
-                              {(customer.panelCount || customer.customerNotes || customer.notes) && (
-                                <div style={{ display: 'flex', gap: '4px', marginTop: '4px', marginLeft: '30px', flexWrap: 'wrap' }}>
-                                  {customer.panelCount && (
-                                    <span style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(251, 191, 36, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
-                                      ☀️ {customer.panelCount}
-                                    </span>
-                                  )}
-                                  {(customer.customerNotes || customer.notes) && (
-                                    <span style={{ fontSize: '9px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}
-                                      title={customer.customerNotes || customer.notes}
-                                    >📝 {customer.customerNotes || customer.notes}</span>
-                                  )}
-                                </div>
+                              {timeSlot && (
+                                <div style={{
+                                  padding: '1px 5px', fontSize: '9px', fontWeight: 700,
+                                  background: 'rgba(251, 191, 36, 0.2)', border: '1px solid rgba(251, 191, 36, 0.3)',
+                                  borderRadius: '3px', color: '#fbbf24', flexShrink: 0, whiteSpace: 'nowrap'
+                                }}>{formatTime12h(timeSlot)}</div>
                               )}
                             </div>
                             );
                           })}
                         </div>
+                        )}
+
+                        {isExpanded && (
+                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '500px', overflowY: 'auto' }} className="scrollbar-custom">
+                          {savedRoute.customers.map((customer, index) => {
+                            const timeSlot = customer.scheduledTime || '';
+                            return (
+                            <div
+                              key={customer.id}
+                              style={{
+                                padding: '10px',
+                                background: 'rgba(15, 23, 42, 0.4)',
+                                borderRadius: '8px',
+                                border: '1px solid rgba(139, 92, 246, 0.15)'
+                              }}
+                            >
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
+                                <div style={{
+                                  width: '24px', height: '24px', borderRadius: '50%',
+                                  background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '11px', fontWeight: 700, color: 'white', flexShrink: 0
+                                }}>{index + 1}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div 
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === customer.id) || customer;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{ fontSize: '13px', fontWeight: 600, color: '#c4b5fd', cursor: 'pointer' }}
+                                    onMouseEnter={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                                    onMouseLeave={(e) => e.currentTarget.style.textDecoration = 'none'}
+                                  >{customer.name}</div>
+                                </div>
+                              </div>
+
+                              <div style={{ marginLeft: '32px' }}>
+                                <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '4px' }}>
+                                  📍 {customer.address}
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '10px', color: '#94a3b8', marginBottom: '6px' }}>
+                                  {customer.phone && <span>📞 {customer.phone}</span>}
+                                  {customer.email && <span>📧 {customer.email}</span>}
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                                  <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>Time:</span>
+                                  <input
+                                    type="time"
+                                    value={timeSlot}
+                                    onChange={(e) => {
+                                      const newTime = e.target.value;
+                                      setSavedRoutes(prev => prev.map(r => {
+                                        if (r.id === savedRoute.id) {
+                                          return { ...r, customers: r.customers.map(c =>
+                                            c.id === customer.id ? { ...c, scheduledTime: newTime } : c
+                                          )};
+                                        }
+                                        return r;
+                                      }));
+                                      setCustomers(prev => prev.map(c =>
+                                        c.id === customer.id ? { ...c, scheduledTime: newTime } : c
+                                      ));
+                                      propagateCustomerUpdate(customer.id, { scheduledTime: newTime });
+                                    }}
+                                    style={{
+                                      padding: '3px 6px', fontSize: '11px', fontWeight: 600,
+                                      background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '4px', color: '#fbbf24', fontFamily: 'inherit'
+                                    }}
+                                  />
+                                  {timeSlot && <span style={{ fontSize: '10px', color: '#fbbf24', fontWeight: 600 }}>{formatTime12h(timeSlot)}</span>}
+                                </div>
+
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                                  {customer.panelCount && (
+                                    <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(251, 191, 36, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
+                                      ☀️ {customer.panelCount} panels
+                                    </span>
+                                  )}
+                                  {(customer.isRecurring || customer.recurring) && (
+                                    <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(59, 130, 246, 0.15)', borderRadius: '3px', color: '#3b82f6' }}>Recurring</span>
+                                  )}
+                                  {customer.lastServiceDate && (
+                                    <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(100, 116, 139, 0.15)', borderRadius: '3px', color: '#94a3b8' }}>
+                                      Last: {new Date(customer.lastServiceDate).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {editingCustomerNotes?.routeId === savedRoute.id && editingCustomerNotes?.customerId === customer.id ? (
+                                  <div>
+                                    <textarea
+                                      value={editedNotes}
+                                      onChange={(e) => setEditedNotes(e.target.value)}
+                                      placeholder="Gate codes, instructions..."
+                                      autoFocus rows="2"
+                                      style={{
+                                        width: '100%', padding: '6px', background: 'rgba(15, 23, 42, 0.5)',
+                                        border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px',
+                                        color: '#f1f5f9', fontSize: '10px', resize: 'vertical', fontFamily: 'inherit', marginBottom: '4px'
+                                      }}
+                                    />
+                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                                      <button onClick={() => { setEditingCustomerNotes(null); setEditedNotes(''); }}
+                                        style={{ padding: '3px 8px', background: 'rgba(100,116,139,0.2)', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '4px', color: '#94a3b8', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                                      <button onClick={() => {
+                                        setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, customerNotes: editedNotes, notes: editedNotes } : c) } : r));
+                                        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, notes: editedNotes } : c));
+                                        setEditingCustomerNotes(null); setEditedNotes('');
+                                      }}
+                                        style={{ padding: '3px 8px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div 
+                                    onClick={() => { setEditingCustomerNotes({ routeId: savedRoute.id, customerId: customer.id }); setEditedNotes(customer.customerNotes || customer.notes || ''); }}
+                                    style={{ padding: '4px 6px', background: 'rgba(139,92,246,0.08)', borderRadius: '4px', fontSize: '10px', color: '#c4b5fd', cursor: 'pointer', lineHeight: '1.4' }}
+                                  >
+                                    📝 {customer.customerNotes || customer.notes || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>Add notes...</span>}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            );
+                          })}
+                        </div>
+                        )}
+                          </>
+                          );
+                        })()}
                       </div>
                         );
                     })}
