@@ -35,15 +35,9 @@ router.get('/', async (req, res) => {
     }
 
     if (status && status !== 'all') {
-      if (status === 'unscheduled') {
-        query += ` AND (SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled'))) > 0`;
-      } else if (status === 'completed') {
-        query += ` AND c.last_service_date IS NOT NULL AND c.last_service_date != ''`;
-      } else {
-        query += ` AND LOWER(c.status) = $${paramIndex}`;
-        params.push(status.toLowerCase());
-        paramIndex++;
-      }
+      query += ` AND LOWER(c.status) = $${paramIndex}`;
+      params.push(status.toLowerCase());
+      paramIndex++;
     }
 
     if (city) {
