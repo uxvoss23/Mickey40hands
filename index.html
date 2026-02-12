@@ -630,6 +630,7 @@
         return allColumnKeys.filter(k => !hidden.includes(k));
       };
       const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+      const [csvUploadStatus, setCsvUploadStatus] = useState('');
       const [newCustomerData, setNewCustomerData] = useState({
         firstName: '', lastName: '', phone: '', email: '',
         address: '', city: '', state: '', zip: '',
@@ -3531,6 +3532,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
 
               const newCustomers = [];
               const failed = [];
+              let geocodedCount = 0;
+              const totalRows = dataRows.length;
+              const needsGeocode = [];
               
               for (const row of dataRows) {
                 const customer = {};
@@ -3554,23 +3558,38 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 const email = customer['customeremail'] || customer['email'] || '';
                 const phone = customer['customermobilenumber'] || customer['customermobile'] || customer['phone'] || customer['phonenumber'] || customer['mobile'] || '';
 
-                // Get lat/lng from provided coordinates
-                const lat = parseFloat(customer['latitude'] || customer['lat']);
-                const lng = parseFloat(customer['longitude'] || customer['lng'] || customer['lon']);
+                let lat = parseFloat(customer['latitude'] || customer['lat']);
+                let lng = parseFloat(customer['longitude'] || customer['lng'] || customer['lon']);
 
-                // Use full address if provided, otherwise build from components
                 const displayAddress = fullAddress || 
                   (street ? `${street}, ${city}, ${state} ${zipCode}`.trim() : `${city}, ${state} ${zipCode}`.trim());
                 
-                // Validate required fields
-                if (!displayAddress) {
+                if (!displayAddress || displayAddress === ',' || displayAddress.trim() === ',') {
                   console.warn('Skipping customer with no address:', fullName);
                   continue;
                 }
 
                 if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
-                  console.warn('Skipping customer with invalid coordinates:', fullName, displayAddress);
-                  // Store failed customer for later editing
+                  geocodedCount++;
+                  try {
+                    setCsvUploadStatus && setCsvUploadStatus(`Geocoding ${geocodedCount}/${totalRows}: ${fullName}...`);
+                    const geocodeResult = await apiFetch('/customers/geocode', {
+                      method: 'POST',
+                      body: JSON.stringify({ address: displayAddress })
+                    });
+                    if (geocodeResult.success) {
+                      lat = geocodeResult.lat;
+                      lng = geocodeResult.lng;
+                      console.log(`Geocoded (${geocodedCount}/${totalRows}): ${fullName} → ${lat}, ${lng}`);
+                    }
+                    await new Promise(r => setTimeout(r, 1100));
+                  } catch (e) {
+                    console.warn('Geocode failed for:', fullName, displayAddress);
+                  }
+                }
+
+                if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+                  console.warn('Could not geocode:', fullName, displayAddress);
                   failed.push({
                     id: Math.random().toString(36).substr(2, 9),
                     name: fullName,
@@ -3584,7 +3603,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                     email: email,
                     phone: phone,
                     panelCount: customer['panelcount'] || customer['panels'] || '0',
-                    reason: 'Invalid or missing coordinates',
+                    reason: 'Could not find coordinates for this address',
                     originalData: customer
                   });
                   continue;
@@ -3607,8 +3626,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   status: (customer['jobstatus'] || customer['status'] || '').toLowerCase(),
                   jobDescription: customer['jobdescription'] || customer['description'] || '',
                   isRecurring: (customer['recurring'] || '').toUpperCase() === 'TRUE' || customer['recurring'] === 'Yes',
-                  amountPaid: parseFloat(customer['jobamount'] || customer['amount'] || '0') || 0,
-                  tipAmount: parseFloat(customer['tipamount'] || customer['tip'] || '0') || 0,
+                  amountPaid: parseFloat((customer['jobamount'] || customer['amount'] || '0').toString().replace(/[$,\s]/g, '')) || 0,
+                  tipAmount: parseFloat((customer['tipamount'] || customer['tip'] || '0').toString().replace(/[$,\s]/g, '')) || 0,
                   lastServiceDate: customer['jobcompleteddate'] || customer['completeddate'] || customer['completed'] || '',
                   notes: customer['notes'] || customer['customernotes'] || '',
                   preferredDate: customer['preferreddate'] || customer['preferredservicedate'] || '',
@@ -3622,6 +3641,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 });
               }
 
+              setCsvUploadStatus('');
               console.log(`Successfully processed ${newCustomers.length} of ${dataRows.length} rows from ${file.name}`);
               if (failed.length > 0) {
                 console.log(`${failed.length} customers could not be geocoded and are available for editing`);
@@ -10088,6 +10108,11 @@ const createJob = async () => {
                     >
                       📤 Upload CSV
                     </button>
+                    {csvUploadStatus && (
+                      <span style={{ color: '#fbbf24', fontSize: '12px', padding: '8px 12px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '8px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
+                        ⏳ {csvUploadStatus}
+                      </span>
+                    )}
                     <button
                       onClick={() => setShowNewCustomerForm(true)}
                       style={{
