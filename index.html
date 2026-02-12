@@ -499,7 +499,7 @@
       const [showCalendar, setShowCalendar] = useState(true);
       const [showTip, setShowTip] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('week'); // 'week' or 'month'
-      const [statusFilter, setStatusFilter] = useState('unscheduled'); // Default to unscheduled - highest priority
+      const [statusFilter, setStatusFilter] = useState('scheduled'); // Default to scheduled view
       const [preferredDateFilter, setPreferredDateFilter] = useState([]); // Array of dates
       const [preferredTimeFilter, setPreferredTimeFilter] = useState([]); // Array of time windows
       const [showDayView, setShowDayView] = useState(false);
@@ -6568,7 +6568,6 @@ const createJob = async () => {
                       {/* Status pills */}
                       {[
                         { value: 'all', label: 'All' },
-                        { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
                         { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
                       ].map(s => (
                         <button
@@ -6799,8 +6798,8 @@ const createJob = async () => {
                         </>
                       )}
 
-                      {/* Preferred time chips - only when unscheduled */}
-                      {statusFilter === 'unscheduled' && (
+                      {/* Preferred time chips - when viewing unscheduled jobs */}
+                      {(statusFilter === 'unscheduled' || showNeedScheduling) && (
                         <>
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
                           {['morning', 'afternoon', 'evening'].map(tw => {
@@ -6846,7 +6845,7 @@ const createJob = async () => {
                         return hasAny ? (
                           <button
                             onClick={() => {
-                              setStatusFilter('all');
+                              setStatusFilter('scheduled');
                               setStateFilter('');
                               setCityFilter('');
                               setZipFilter('');
@@ -6854,6 +6853,7 @@ const createJob = async () => {
                               setPreferredDateFilter([]);
                               setPreferredTimeFilter([]);
                               setActiveFilters({ verifiedSolar: false, existingJob: false, recurring: false, minPanels: '', lastService: '' });
+                              setFocusedDay(null);
                             }}
                             style={{
                               padding: '3px 8px',
@@ -6872,8 +6872,8 @@ const createJob = async () => {
                       })()}
                     </div>
 
-                    {/* Row 3: Date picker - only when unscheduled */}
-                    {statusFilter === 'unscheduled' && (
+                    {/* Row 3: Date picker - when viewing unscheduled jobs */}
+                    {(statusFilter === 'unscheduled' || showNeedScheduling) && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
