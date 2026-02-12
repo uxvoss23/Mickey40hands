@@ -5661,6 +5661,47 @@ const createJob = async () => {
                           {getRoutesForDate(selectedDate).length} route{getRoutesForDate(selectedDate).length > 1 ? 's' : ''} scheduled
                         </div>
                       )}
+                      {getRoutesForDate(selectedDate).length > 0 && !editingSavedRouteId && (
+                        <button
+                          onClick={() => {
+                            const dayRoutes = getRoutesForDate(selectedDate);
+                            if (dayRoutes.length === 0) return;
+                            const routeToEdit = dayRoutes[0];
+                            if (routeToEdit.sentToTech) {
+                              alert('This route has already been sent to the technician.');
+                              return;
+                            }
+                            const routeDateKey = new Date(routeToEdit.scheduledDate).toDateString();
+                            setRoutesByDay(prev => ({ ...prev, [routeDateKey]: routeToEdit.customers }));
+                            setEditingSavedRouteId(routeToEdit.id);
+                            setSelectedDate(new Date(routeToEdit.scheduledDate));
+                            setCustomers(prev => {
+                              const rcMap = new Map();
+                              routeToEdit.customers.forEach(rc => rcMap.set(rc.id, rc));
+                              return prev.map(cust => {
+                                const rc = rcMap.get(cust.id);
+                                if (rc) return { ...cust, scheduledTime: rc.scheduledTime || cust.scheduledTime, scheduledDate: routeToEdit.scheduledDate || cust.scheduledDate, status: 'scheduled', routeConfirmed: true };
+                                return cust;
+                              });
+                            });
+                            setStatusFilter('scheduled');
+                            setShowNeedScheduling(true);
+                          }}
+                          style={{
+                            marginTop: '6px', width: '100%', padding: '6px 10px',
+                            background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)',
+                            borderRadius: '6px', color: '#60a5fa', cursor: 'pointer',
+                            fontSize: '10px', fontWeight: 600
+                          }}
+                        >
+                          ✏️ Edit Route
+                        </button>
+                      )}
+                      {editingSavedRouteId && (
+                        <div style={{ marginTop: '4px', fontSize: '9px', color: '#f59e0b', fontWeight: 600 }}>
+                          Editing route — click grey pins to add
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -8939,7 +8980,8 @@ const createJob = async () => {
                                   ...prev,
                                   [routeDateKey]: false
                                 }));
-                                setStatusFilter('unscheduled');
+                                setStatusFilter('scheduled');
+                                setShowNeedScheduling(true);
                                 setCurrentView('map');
                               }}
                               className="button-secondary"
