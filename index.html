@@ -2223,22 +2223,7 @@
           results = results.filter(c => (c.status || '').toLowerCase() === statusFilter);
         }
 
-        // Preferred Day filter (Mon, Tue, etc.)
-        if (preferredDateFilter.length > 0) {
-          results = results.filter(c => {
-            if (!c.preferredDate) return false;
-            const pref = (c.preferredDate || '').toLowerCase();
-            return preferredDateFilter.some(day => pref.includes(day.toLowerCase()));
-          });
-        }
-
-        // Preferred Time filter (AM/PM)
-        if (preferredTimeFilter.length > 0) {
-          results = results.filter(c => {
-            const tw = (c.preferredTimeWindow || '').toUpperCase();
-            return preferredTimeFilter.some(t => tw.includes(t));
-          });
-        }
+        // Preferred day/time filters are now highlight-only, no filtering
 
         // --- Active toggle filters ---
         if (activeFilters.verifiedSolar) {
