@@ -5789,7 +5789,7 @@ const createJob = async () => {
                                     });
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
-                                  setStatusFilter('all');
+                                  setStatusFilter('unscheduled');
                                 }}
                                 className="button-secondary"
                                 style={{
@@ -6469,7 +6469,7 @@ const createJob = async () => {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: '#fff' }}>
-                        Editing Route — Click pins to add/remove jobs
+                        Editing Route — Click unscheduled pins to add to route
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -9470,7 +9470,7 @@ const createJob = async () => {
                                   ...prev,
                                   [routeDateKey]: false
                                 }));
-                                setStatusFilter('all');
+                                setStatusFilter('unscheduled');
                                 setCurrentView('map');
                               }}
                               className="button-secondary"
