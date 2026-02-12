@@ -532,7 +532,7 @@
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
       const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
-      const [showRouteOverlay, setShowRouteOverlay] = useState(false); // Show saved routes on map in unscheduled view
+      const [showRouteOverlay, setShowRouteOverlay] = useState(false);
       const [routeOverlayView, setRouteOverlayView] = useState('week'); // 'week' or 'month'
       const [routeOverlayWeekStart, setRouteOverlayWeekStart] = useState(() => {
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
@@ -2162,6 +2162,7 @@
         // Draw lines for each saved route in the range
         savedRoutes.forEach(sr => {
           if (sr.sentToTech) return;
+          if (editingSavedRouteId && sr.id === editingSavedRouteId) return;
           const routeDate = new Date(sr.scheduledDate);
           if (routeDate < rangeStart || routeDate > rangeEnd) return;
           const dayColor = DAY_COLORS[routeDate.getDay()];
@@ -2208,7 +2209,7 @@
             routeOverlayLinesRef.current.push(label);
           }
         });
-      }, [showRouteOverlay, routeOverlayView, routeOverlayWeekStart, savedRoutes, statusFilter, homeBase]);
+      }, [showRouteOverlay, routeOverlayView, routeOverlayWeekStart, savedRoutes, statusFilter, homeBase, editingSavedRouteId]);
 
             // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
@@ -10696,6 +10697,7 @@ const createJob = async () => {
                   }
                   const visRoutes = savedRoutes.filter(sr => {
                     if (sr.sentToTech) return false;
+                    if (editingSavedRouteId && sr.id === editingSavedRouteId) return false;
                     const d = new Date(sr.scheduledDate);
                     return d >= rs && d <= re;
                   });
