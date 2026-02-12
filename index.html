@@ -6599,6 +6599,7 @@ const createJob = async () => {
                       {statusFilter === 'scheduled' && (
                         <>
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+                          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>View:</span>
                           {['week', 'month'].map(view => (
                             <button
                               key={view}
@@ -6615,9 +6616,11 @@ const createJob = async () => {
                                 boxShadow: scheduledMapView === view ? '0 0 0 1px rgba(234, 179, 8, 0.5)' : 'none'
                               }}
                             >
-                              {view === 'week' ? '📅 Week' : '🗓️ Month'}
+                              {view === 'week' ? 'This Week' : 'This Month'}
                             </button>
                           ))}
+
+                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
 
                           <button
                             onClick={() => setShowNeedScheduling(!showNeedScheduling)}
@@ -6633,7 +6636,7 @@ const createJob = async () => {
                               boxShadow: showNeedScheduling ? '0 0 0 1px rgba(100, 116, 139, 0.5)' : 'none'
                             }}
                           >
-                            {showNeedScheduling ? '👁️' : '👁️‍🗨️'} Unscheduled
+                            {showNeedScheduling ? '👁️ Hide' : '👁️‍🗨️ Show'} Unrouted
                           </button>
 
                           <button
