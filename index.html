@@ -6553,7 +6553,7 @@ const createJob = async () => {
                       </button>
                     ) : (
                     <>
-                    {/* Row 1: Status pills + Location + Service date */}
+                    {/* Row 1: Essential controls - clean and minimal */}
                     <div style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -6596,169 +6596,9 @@ const createJob = async () => {
                         </button>
                       ))}
 
-                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
-
-                      {/* Location selects - inline */}
-                      <select
-                        value={stateFilter}
-                        onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
-                        style={{
-                          padding: '4px 6px',
-                          fontSize: '11px',
-                          background: stateFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                          border: stateFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
-                          borderRadius: '6px',
-                          color: '#f1f5f9',
-                          cursor: 'pointer',
-                          maxWidth: '90px'
-                        }}
-                      >
-                        <option value="">State</option>
-                        {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
-                          <option key={state} value={state}>{state}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={cityFilter}
-                        onChange={(e) => setCityFilter(e.target.value)}
-                        style={{
-                          padding: '4px 6px',
-                          fontSize: '11px',
-                          background: cityFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                          border: cityFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
-                          borderRadius: '6px',
-                          color: '#f1f5f9',
-                          cursor: 'pointer',
-                          maxWidth: '110px'
-                        }}
-                      >
-                        <option value="">City</option>
-                        {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        value={zipFilter}
-                        onChange={(e) => setZipFilter(e.target.value)}
-                        placeholder="ZIP"
-                        style={{
-                          padding: '4px 6px',
-                          fontSize: '11px',
-                          background: zipFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                          border: zipFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
-                          borderRadius: '6px',
-                          color: '#f1f5f9',
-                          width: '60px',
-                          boxSizing: 'border-box'
-                        }}
-                      />
-
-                      <div style={{ width: '1px', height: '20px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 4px' }} />
-
-                      {/* Last service dropdown */}
-                      <select
-                        value={lastServiceFilter}
-                        onChange={(e) => setLastServiceFilter(e.target.value)}
-                        style={{
-                          padding: '4px 6px',
-                          fontSize: '11px',
-                          background: lastServiceFilter ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                          border: lastServiceFilter ? '1px solid rgba(251, 191, 36, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
-                          borderRadius: '6px',
-                          color: lastServiceFilter ? '#fbbf24' : '#f1f5f9',
-                          cursor: 'pointer',
-                          maxWidth: '130px'
-                        }}
-                      >
-                        <option value="">Last Service</option>
-                        <option value="3months">3+ months ago</option>
-                        <option value="6months">6+ months ago</option>
-                        <option value="12months">12+ months ago</option>
-                      </select>
-
-                      <div style={{ flex: 1 }} />
-                      <button
-                        onClick={() => setShowFilterPanel(false)}
-                        title="Hide filters"
-                        style={{
-                          padding: '3px 8px',
-                          fontSize: '10px',
-                          fontWeight: 600,
-                          background: 'rgba(100, 116, 139, 0.2)',
-                          border: '1px solid rgba(100, 116, 139, 0.3)',
-                          borderRadius: '6px',
-                          color: '#94a3b8',
-                          cursor: 'pointer'
-                        }}
-                      >▲ Hide</button>
-                    </div>
-
-                    {/* Row 2: Toggle chips + panels + results count */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      flexWrap: 'wrap',
-                      background: 'rgba(10, 14, 39, 0.88)',
-                      backdropFilter: 'blur(16px)',
-                      border: '1px solid rgba(139, 92, 246, 0.15)',
-                      borderRadius: '12px',
-                      padding: '6px 12px'
-                    }}>
-                      {/* Toggle chips */}
-                      {[
-                        { key: 'recurring', label: '🦖 Recurring', color: '#3b82f6' }
-                      ].map(chip => (
-                        <button
-                          key={chip.key}
-                          onClick={() => setActiveFilters(prev => ({ ...prev, [chip.key]: !prev[chip.key] }))}
-                          style={{
-                            padding: '3px 10px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            border: 'none',
-                            borderRadius: '6px',
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                            background: activeFilters[chip.key] ? `${chip.color}30` : 'rgba(30, 41, 59, 0.4)',
-                            color: activeFilters[chip.key] ? chip.color : '#94a3b8',
-                            boxShadow: activeFilters[chip.key] ? `0 0 0 1px ${chip.color}80` : 'none'
-                          }}
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-
-                      <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
-
-                      {/* Min panels inline */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>Min panels:</span>
-                        <input
-                          type="number"
-                          value={activeFilters.minPanels}
-                          onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
-                          placeholder="0"
-                          min="0"
-                          style={{
-                            width: '48px',
-                            padding: '3px 6px',
-                            fontSize: '11px',
-                            background: activeFilters.minPanels ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                            border: activeFilters.minPanels ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
-                            borderRadius: '6px',
-                            color: '#f1f5f9',
-                            boxSizing: 'border-box'
-                          }}
-                        />
-                      </div>
-
-                      {/* Scheduled view controls - week/month toggle + needs scheduling */}
                       {statusFilter === 'scheduled' && (
                         <>
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
-                          {/* Week / Month toggle */}
                           {['week', 'month'].map(view => (
                             <button
                               key={view}
@@ -6778,7 +6618,7 @@ const createJob = async () => {
                               {view === 'week' ? '📅 Week' : '🗓️ Month'}
                             </button>
                           ))}
-                          {/* Needs Scheduling toggle */}
+
                           <button
                             onClick={() => setShowNeedScheduling(!showNeedScheduling)}
                             style={{
@@ -6793,59 +6633,70 @@ const createJob = async () => {
                               boxShadow: showNeedScheduling ? '0 0 0 1px rgba(100, 116, 139, 0.5)' : 'none'
                             }}
                           >
-                            {showNeedScheduling ? '👁️' : '👁️‍🗨️'} Needs Sched
+                            {showNeedScheduling ? '👁️' : '👁️‍🗨️'} Unscheduled
+                          </button>
+
+                          <button
+                            onClick={() => setActiveFilters(prev => ({ ...prev, recurring: !prev.recurring }))}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                              color: activeFilters.recurring ? '#3b82f6' : '#94a3b8',
+                              boxShadow: activeFilters.recurring ? '0 0 0 1px rgba(59, 130, 246, 0.5)' : 'none'
+                            }}
+                          >
+                            🦖 Recurring
                           </button>
                         </>
                       )}
 
-                      {/* Preferred time chips - when viewing unscheduled jobs */}
-                      {(statusFilter === 'unscheduled' || showNeedScheduling) && (
-                        <>
-                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
-                          {['morning', 'afternoon', 'evening'].map(tw => {
-                            const isOn = preferredTimeFilter.includes(tw);
-                            const icon = tw === 'morning' ? '🌅' : tw === 'afternoon' ? '☀️' : '🌆';
-                            return (
-                              <button
-                                key={tw}
-                                onClick={() => {
-                                  if (isOn) setPreferredTimeFilter(prev => prev.filter(t => t !== tw));
-                                  else setPreferredTimeFilter(prev => [...prev, tw]);
-                                }}
-                                style={{
-                                  padding: '3px 8px',
-                                  fontSize: '11px',
-                                  fontWeight: 600,
-                                  border: 'none',
-                                  borderRadius: '6px',
-                                  cursor: 'pointer',
-                                  background: isOn ? 'rgba(239, 68, 68, 0.25)' : 'rgba(30, 41, 59, 0.4)',
-                                  color: isOn ? '#fca5a5' : '#94a3b8',
-                                  boxShadow: isOn ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none'
-                                }}
-                                title={tw === 'morning' ? '8am-12pm' : tw === 'afternoon' ? '12pm-4pm' : '4pm-8pm'}
-                              >
-                                {icon} {tw.charAt(0).toUpperCase() + tw.slice(1, 3)}
-                              </button>
-                            );
-                          })}
-                        </>
-                      )}
-
-                      {/* Spacer + results + clear */}
                       <div style={{ flex: 1 }} />
+
                       <span style={{ fontSize: '11px', color: '#22c55e', fontWeight: 700 }}>
                         {filteredCustomers.length} results
                       </span>
+
+                      {/* More Filters toggle */}
                       {(() => {
-                        const hasAny = statusFilter !== 'all' || stateFilter || cityFilter || zipFilter ||
+                        const advFilterCount = [stateFilter, cityFilter, zipFilter, lastServiceFilter,
+                          activeFilters.minPanels, preferredDateFilter.length > 0, preferredTimeFilter.length > 0].filter(Boolean).length;
+                        return (
+                          <button
+                            onClick={() => setShowFilterPanel(showFilterPanel === 'advanced' ? true : 'advanced')}
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              background: showFilterPanel === 'advanced' ? 'rgba(139, 92, 246, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                              border: advFilterCount > 0 ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.2)',
+                              borderRadius: '6px',
+                              color: showFilterPanel === 'advanced' ? '#a78bfa' : '#94a3b8',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            Filters {advFilterCount > 0 && <span style={{ background: 'rgba(139,92,246,0.5)', padding: '1px 6px', borderRadius: '8px', fontSize: '9px', color: '#fff' }}>{advFilterCount}</span>}
+                            <span style={{ fontSize: '8px' }}>{showFilterPanel === 'advanced' ? '▲' : '▼'}</span>
+                          </button>
+                        );
+                      })()}
+
+                      {/* Clear all */}
+                      {(() => {
+                        const hasAny = stateFilter || cityFilter || zipFilter ||
                           lastServiceFilter || activeFilters.verifiedSolar || activeFilters.existingJob ||
                           activeFilters.recurring || activeFilters.minPanels || preferredDateFilter.length > 0 ||
                           preferredTimeFilter.length > 0;
                         return hasAny ? (
                           <button
                             onClick={() => {
-                              setStatusFilter('scheduled');
                               setStateFilter('');
                               setCityFilter('');
                               setZipFilter('');
@@ -6866,14 +6717,157 @@ const createJob = async () => {
                               cursor: 'pointer'
                             }}
                           >
-                            Clear all
+                            Clear
                           </button>
                         ) : null;
                       })()}
+
+                      <button
+                        onClick={() => setShowFilterPanel(false)}
+                        title="Hide filters"
+                        style={{
+                          padding: '3px 6px',
+                          fontSize: '10px',
+                          fontWeight: 600,
+                          background: 'rgba(100, 116, 139, 0.2)',
+                          border: '1px solid rgba(100, 116, 139, 0.3)',
+                          borderRadius: '6px',
+                          color: '#94a3b8',
+                          cursor: 'pointer'
+                        }}
+                      >▲</button>
                     </div>
 
-                    {/* Row 3: Date picker - when viewing unscheduled jobs */}
-                    {(statusFilter === 'unscheduled' || showNeedScheduling) && (
+                    {/* Advanced Filters Panel - collapsible */}
+                    {showFilterPanel === 'advanced' && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        background: 'rgba(10, 14, 39, 0.92)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(139, 92, 246, 0.15)',
+                        borderRadius: '12px',
+                        padding: '8px 12px'
+                      }}>
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Location:</span>
+                        <select
+                          value={stateFilter}
+                          onChange={(e) => { setStateFilter(e.target.value); setCityFilter(''); }}
+                          style={{
+                            padding: '4px 6px', fontSize: '11px',
+                            background: stateFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: stateFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px', color: '#f1f5f9', cursor: 'pointer', maxWidth: '90px'
+                          }}
+                        >
+                          <option value="">State</option>
+                          {[...new Set(customers.map(c => c.state).filter(Boolean))].sort().map(state => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={cityFilter}
+                          onChange={(e) => setCityFilter(e.target.value)}
+                          style={{
+                            padding: '4px 6px', fontSize: '11px',
+                            background: cityFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: cityFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px', color: '#f1f5f9', cursor: 'pointer', maxWidth: '110px'
+                          }}
+                        >
+                          <option value="">City</option>
+                          {[...new Set(customers.filter(c => !stateFilter || c.state === stateFilter).map(c => c.city).filter(Boolean))].sort().map(city => (
+                            <option key={city} value={city}>{city}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={zipFilter}
+                          onChange={(e) => setZipFilter(e.target.value)}
+                          placeholder="ZIP"
+                          style={{
+                            padding: '4px 6px', fontSize: '11px',
+                            background: zipFilter ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: zipFilter ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px', color: '#f1f5f9', width: '60px', boxSizing: 'border-box'
+                          }}
+                        />
+
+                        <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 4px' }} />
+
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Service:</span>
+                        <select
+                          value={lastServiceFilter}
+                          onChange={(e) => setLastServiceFilter(e.target.value)}
+                          style={{
+                            padding: '4px 6px', fontSize: '11px',
+                            background: lastServiceFilter ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                            border: lastServiceFilter ? '1px solid rgba(251, 191, 36, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                            borderRadius: '6px', color: lastServiceFilter ? '#fbbf24' : '#f1f5f9', cursor: 'pointer', maxWidth: '130px'
+                          }}
+                        >
+                          <option value="">Last Service</option>
+                          <option value="3months">3+ months ago</option>
+                          <option value="6months">6+ months ago</option>
+                          <option value="12months">12+ months ago</option>
+                        </select>
+
+                        <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 4px' }} />
+
+                        <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Panels:</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>Min:</span>
+                          <input
+                            type="number"
+                            value={activeFilters.minPanels}
+                            onChange={(e) => setActiveFilters(prev => ({ ...prev, minPanels: e.target.value }))}
+                            placeholder="0"
+                            min="0"
+                            style={{
+                              width: '48px', padding: '3px 6px', fontSize: '11px',
+                              background: activeFilters.minPanels ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                              border: activeFilters.minPanels ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid rgba(100, 116, 139, 0.2)',
+                              borderRadius: '6px', color: '#f1f5f9', boxSizing: 'border-box'
+                            }}
+                          />
+                        </div>
+
+                        {showNeedScheduling && (
+                          <>
+                            <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 4px' }} />
+                            <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Time:</span>
+                            {['morning', 'afternoon', 'evening'].map(tw => {
+                              const isOn = preferredTimeFilter.includes(tw);
+                              const icon = tw === 'morning' ? '🌅' : tw === 'afternoon' ? '☀️' : '🌆';
+                              return (
+                                <button
+                                  key={tw}
+                                  onClick={() => {
+                                    if (isOn) setPreferredTimeFilter(prev => prev.filter(t => t !== tw));
+                                    else setPreferredTimeFilter(prev => [...prev, tw]);
+                                  }}
+                                  style={{
+                                    padding: '3px 8px', fontSize: '11px', fontWeight: 600,
+                                    border: 'none', borderRadius: '6px', cursor: 'pointer',
+                                    background: isOn ? 'rgba(239, 68, 68, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                    color: isOn ? '#fca5a5' : '#94a3b8',
+                                    boxShadow: isOn ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none'
+                                  }}
+                                  title={tw === 'morning' ? '8am-12pm' : tw === 'afternoon' ? '12pm-4pm' : '4pm-8pm'}
+                                >
+                                  {icon} {tw.charAt(0).toUpperCase() + tw.slice(1, 3)}
+                                </button>
+                              );
+                            })}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Preferred dates row - when viewing unscheduled jobs and advanced filters open */}
+                    {showNeedScheduling && showFilterPanel === 'advanced' && (
                       <div style={{
                         display: 'flex',
                         alignItems: 'center',
