@@ -6652,50 +6652,43 @@ const createJob = async () => {
                           {showNeedScheduling && (
                             <>
                               <div style={{ width: '1px', height: '14px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 1px' }} />
-                              <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, letterSpacing: '0.3px' }}>PREF:</span>
-                              {['Mon','Tue','Wed','Thu','Fri','Sat'].map(d => {
-                                const isOn = preferredDateFilter.includes(d);
+                              {(() => {
+                                const hp = hoveredCustomer?.preferredDate || '';
+                                const ht = (hoveredCustomer?.preferredTimeWindow || '').toUpperCase();
                                 return (
-                                  <button key={d}
-                                    onClick={() => {
-                                      if (isOn) setPreferredDateFilter(prev => prev.filter(x => x !== d));
-                                      else setPreferredDateFilter(prev => [...prev, d]);
-                                    }}
-                                    style={{
-                                      padding: '1px 4px', fontSize: '9px', fontWeight: 700,
-                                      border: 'none', borderRadius: '4px', cursor: 'pointer',
-                                      background: isOn ? 'rgba(234, 179, 8, 0.3)' : 'transparent',
-                                      color: isOn ? '#fbbf24' : '#475569',
-                                      minWidth: '22px', lineHeight: '16px'
-                                    }}
-                                  >{d.charAt(0)}</button>
+                                  <>
+                                    {['Mon','Tue','Wed','Thu','Fri','Sat'].map(d => {
+                                      const lit = hp.toLowerCase().includes(d.toLowerCase());
+                                      return (
+                                        <span key={d} style={{
+                                          padding: '1px 3px', fontSize: '9px', fontWeight: 700,
+                                          borderRadius: '3px',
+                                          background: lit ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
+                                          color: lit ? '#fbbf24' : '#3e4451',
+                                          minWidth: '16px', lineHeight: '16px', textAlign: 'center',
+                                          display: 'inline-block',
+                                          transition: 'all 0.15s ease'
+                                        }}>{d.charAt(0)}</span>
+                                      );
+                                    })}
+                                    <div style={{ width: '1px', height: '12px', background: 'rgba(100, 116, 139, 0.15)', margin: '0 1px' }} />
+                                    {['AM','PM'].map(t => {
+                                      const lit = ht.includes(t);
+                                      return (
+                                        <span key={t} style={{
+                                          padding: '1px 3px', fontSize: '9px', fontWeight: 700,
+                                          borderRadius: '3px',
+                                          background: lit ? 'rgba(234, 179, 8, 0.35)' : 'transparent',
+                                          color: lit ? '#fbbf24' : '#3e4451',
+                                          minWidth: '18px', lineHeight: '16px', textAlign: 'center',
+                                          display: 'inline-block',
+                                          transition: 'all 0.15s ease'
+                                        }}>{t}</span>
+                                      );
+                                    })}
+                                  </>
                                 );
-                              })}
-                              <div style={{ width: '1px', height: '14px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 1px' }} />
-                              {['AM','PM'].map(t => {
-                                const isOn = preferredTimeFilter.includes(t);
-                                return (
-                                  <button key={t}
-                                    onClick={() => {
-                                      if (isOn) setPreferredTimeFilter(prev => prev.filter(x => x !== t));
-                                      else setPreferredTimeFilter(prev => [...prev, t]);
-                                    }}
-                                    style={{
-                                      padding: '1px 4px', fontSize: '9px', fontWeight: 700,
-                                      border: 'none', borderRadius: '4px', cursor: 'pointer',
-                                      background: isOn ? 'rgba(96, 165, 250, 0.3)' : 'transparent',
-                                      color: isOn ? '#60a5fa' : '#475569',
-                                      minWidth: '22px', lineHeight: '16px'
-                                    }}
-                                  >{t}</button>
-                                );
-                              })}
-                              {(preferredDateFilter.length > 0 || preferredTimeFilter.length > 0) && (
-                                <button
-                                  onClick={() => { setPreferredDateFilter([]); setPreferredTimeFilter([]); }}
-                                  style={{ padding: '0 3px', fontSize: '9px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700, lineHeight: '16px' }}
-                                >✕</button>
-                              )}
+                              })()}
                             </>
                           )}
 
