@@ -1850,8 +1850,7 @@
                 dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: ${dayInfo.color}; color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${customer._dayLabel}</span>`;
               }
             }
-            // Needs-scheduling pins: gray/dashed style
-            if (statusFilter === 'scheduled' && customer._needsScheduling) {
+            if (statusFilter === 'scheduled' && (customer._needsScheduling || customer._dayOfWeek === undefined)) {
               gradient = 'linear-gradient(135deg, #64748b 0%, #475569 100%)';
               dayLabelBadge = '';
             }
