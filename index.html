@@ -2102,7 +2102,8 @@
             markersMapRef.current.set(customer.id, marker);
           });
 
-          // Draw route lines - ONLY FOR SELECTED DAY
+          // Draw route lines - ONLY FOR SELECTED DAY and only in scheduled view
+          if (statusFilter === 'scheduled') {
           const dateKey = selectedDate.toDateString();
           const todaysJobs = customers
             .filter(c => {
@@ -2133,8 +2134,9 @@
               routeLinesRef.current.push(line);
             }
           }
+          }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter]);
 
       // Route Overlay - draw saved route lines when in unscheduled view with overlay on
       useEffect(() => {
