@@ -2169,6 +2169,23 @@
           const scheduledInRange = getScheduledCustomersForRange(rangeStart, rangeEnd);
           const scheduledIds = new Set(scheduledInRange.map(c => c.id));
 
+          // Also include customers actively scheduled via edit mode (not yet saved to route)
+          results.forEach(c => {
+            if (c.scheduledDate && c.scheduledTime && c.status === 'scheduled') {
+              const custDate = new Date(c.scheduledDate);
+              if (custDate >= rangeStart && custDate <= rangeEnd && !scheduledIds.has(c.id)) {
+                scheduledIds.add(c.id);
+                scheduledInRange.push({
+                  ...c,
+                  _routeDate: custDate,
+                  _routeName: 'Editing',
+                  _dayOfWeek: custDate.getDay(),
+                  _dayLabel: custDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                });
+              }
+            }
+          });
+
           // Tag customers with route day info
           const dayInfoMap = new Map();
           scheduledInRange.forEach(c => {
