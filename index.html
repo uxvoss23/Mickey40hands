@@ -6555,8 +6555,7 @@ const createJob = async () => {
                         Filters
                         {(() => {
                           const cnt = [statusFilter !== 'all', stateFilter, cityFilter, zipFilter, lastServiceFilter,
-                            activeFilters.verifiedSolar, activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels,
-                            preferredDateFilter.length > 0, preferredTimeFilter.length > 0].filter(Boolean).length;
+                            activeFilters.verifiedSolar, activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels].filter(Boolean).length;
                           return cnt > 0 ? <span style={{ background: 'rgba(139,92,246,0.4)', padding: '1px 7px', borderRadius: '8px', fontSize: '10px', color: '#fff' }}>{cnt}</span> : null;
                         })()}
                         <span style={{ fontSize: '10px' }}>▼</span>
@@ -6606,6 +6605,24 @@ const createJob = async () => {
                         </button>
                       ))}
 
+                      {statusFilter !== 'scheduled' && (
+                        <>
+                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
+                          <button
+                            onClick={() => setActiveFilters(prev => ({ ...prev, recurring: !prev.recurring }))}
+                            style={{
+                              padding: '3px 8px', fontSize: '11px', fontWeight: 600,
+                              border: 'none', borderRadius: '6px', cursor: 'pointer',
+                              background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                              color: activeFilters.recurring ? '#3b82f6' : '#94a3b8',
+                              boxShadow: activeFilters.recurring ? '0 0 0 1px rgba(59, 130, 246, 0.5)' : 'none'
+                            }}
+                          >
+                            🦖 Recurring
+                          </button>
+                        </>
+                      )}
+
                       {statusFilter === 'scheduled' && (
                         <>
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
@@ -6649,22 +6666,6 @@ const createJob = async () => {
                             {showNeedScheduling ? '👁️ Hide' : '👁️‍🗨️ Show'} Unrouted
                           </button>
 
-                          <button
-                            onClick={() => setActiveFilters(prev => ({ ...prev, recurring: !prev.recurring }))}
-                            style={{
-                              padding: '3px 8px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.25)' : 'rgba(30, 41, 59, 0.4)',
-                              color: activeFilters.recurring ? '#3b82f6' : '#94a3b8',
-                              boxShadow: activeFilters.recurring ? '0 0 0 1px rgba(59, 130, 246, 0.5)' : 'none'
-                            }}
-                          >
-                            🦖 Recurring
-                          </button>
                         </>
                       )}
 
@@ -6677,7 +6678,7 @@ const createJob = async () => {
                       {/* More Filters toggle */}
                       {(() => {
                         const advFilterCount = [stateFilter, cityFilter, zipFilter, lastServiceFilter,
-                          activeFilters.minPanels, preferredDateFilter.length > 0, preferredTimeFilter.length > 0].filter(Boolean).length;
+                          activeFilters.minPanels, activeFilters.recurring].filter(Boolean).length;
                         return (
                           <button
                             onClick={() => setShowFilterPanel(showFilterPanel === 'advanced' ? true : 'advanced')}
@@ -6705,8 +6706,7 @@ const createJob = async () => {
                       {(() => {
                         const hasAny = stateFilter || cityFilter || zipFilter ||
                           lastServiceFilter || activeFilters.verifiedSolar || activeFilters.existingJob ||
-                          activeFilters.recurring || activeFilters.minPanels || preferredDateFilter.length > 0 ||
-                          preferredTimeFilter.length > 0;
+                          activeFilters.recurring || activeFilters.minPanels;
                         return hasAny ? (
                           <button
                             onClick={() => {
@@ -6847,108 +6847,27 @@ const createJob = async () => {
                           />
                         </div>
 
-                        {showNeedScheduling && (
+                        {statusFilter === 'scheduled' && (
                           <>
                             <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 4px' }} />
-                            <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Time:</span>
-                            {['morning', 'afternoon', 'evening'].map(tw => {
-                              const isOn = preferredTimeFilter.includes(tw);
-                              const icon = tw === 'morning' ? '🌅' : tw === 'afternoon' ? '☀️' : '🌆';
-                              return (
-                                <button
-                                  key={tw}
-                                  onClick={() => {
-                                    if (isOn) setPreferredTimeFilter(prev => prev.filter(t => t !== tw));
-                                    else setPreferredTimeFilter(prev => [...prev, tw]);
-                                  }}
-                                  style={{
-                                    padding: '3px 8px', fontSize: '11px', fontWeight: 600,
-                                    border: 'none', borderRadius: '6px', cursor: 'pointer',
-                                    background: isOn ? 'rgba(239, 68, 68, 0.25)' : 'rgba(30, 41, 59, 0.4)',
-                                    color: isOn ? '#fca5a5' : '#94a3b8',
-                                    boxShadow: isOn ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none'
-                                  }}
-                                  title={tw === 'morning' ? '8am-12pm' : tw === 'afternoon' ? '12pm-4pm' : '4pm-8pm'}
-                                >
-                                  {icon} {tw.charAt(0).toUpperCase() + tw.slice(1, 3)}
-                                </button>
-                              );
-                            })}
+                            <span style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Show:</span>
+                            <button
+                              onClick={() => setActiveFilters(prev => ({ ...prev, recurring: !prev.recurring }))}
+                              style={{
+                                padding: '3px 8px', fontSize: '11px', fontWeight: 600,
+                                border: 'none', borderRadius: '6px', cursor: 'pointer',
+                                background: activeFilters.recurring ? 'rgba(59, 130, 246, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                color: activeFilters.recurring ? '#3b82f6' : '#94a3b8',
+                                boxShadow: activeFilters.recurring ? '0 0 0 1px rgba(59, 130, 246, 0.5)' : 'none'
+                              }}
+                            >
+                              🦖 Recurring Only
+                            </button>
                           </>
                         )}
                       </div>
                     )}
 
-                    {/* Preferred dates row - when viewing unscheduled jobs and advanced filters open */}
-                    {showNeedScheduling && showFilterPanel === 'advanced' && (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        background: 'rgba(10, 14, 39, 0.88)',
-                        backdropFilter: 'blur(16px)',
-                        border: '1px solid rgba(239, 68, 68, 0.2)',
-                        borderRadius: '12px',
-                        padding: '6px 12px'
-                      }}>
-                        <span style={{ fontSize: '11px', color: '#fca5a5', fontWeight: 600, whiteSpace: 'nowrap' }}>Preferred dates:</span>
-                        <button
-                          onClick={() => {
-                            const newWeek = new Date(filterWeekStart);
-                            newWeek.setDate(newWeek.getDate() - 7);
-                            setFilterWeekStart(newWeek);
-                          }}
-                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
-                        >◀</button>
-                        {getWeekDays(filterWeekStart).map((date, index) => {
-                          const dateStr = date.toISOString().split('T')[0];
-                          const isSelected = preferredDateFilter.includes(dateStr);
-                          const isToday = date.toDateString() === new Date().toDateString();
-                          return (
-                            <button
-                              key={index}
-                              onClick={() => {
-                                if (isSelected) setPreferredDateFilter(prev => prev.filter(d => d !== dateStr));
-                                else setPreferredDateFilter(prev => [...prev, dateStr]);
-                              }}
-                              style={{
-                                padding: '4px 8px',
-                                fontSize: '10px',
-                                fontWeight: 700,
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                background: isSelected ? 'rgba(239, 68, 68, 0.3)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
-                                color: isSelected ? '#fca5a5' : '#f1f5f9',
-                                boxShadow: isSelected ? '0 0 0 1px rgba(239, 68, 68, 0.5)' : 'none',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                lineHeight: 1.2,
-                                minWidth: '36px'
-                              }}
-                            >
-                              <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 600 }}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                              <span>{date.getDate()}</span>
-                            </button>
-                          );
-                        })}
-                        <button
-                          onClick={() => {
-                            const newWeek = new Date(filterWeekStart);
-                            newWeek.setDate(newWeek.getDate() + 7);
-                            setFilterWeekStart(newWeek);
-                          }}
-                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer' }}
-                        >▶</button>
-                        {preferredDateFilter.length > 0 && (
-                          <button
-                            onClick={() => setPreferredDateFilter([])}
-                            style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: '4px', color: '#fca5a5', cursor: 'pointer', fontWeight: 600 }}
-                          >Clear</button>
-                        )}
-                      </div>
-                    )}
 
                     {/* Row 3b: Week/Month navigator - only when scheduled */}
                     {statusFilter === 'scheduled' && (
