@@ -499,7 +499,7 @@
       const [showCalendar, setShowCalendar] = useState(true);
       const [showTip, setShowTip] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('week'); // 'week' or 'month'
-      const [statusFilter, setStatusFilter] = useState('all');
+      const [statusFilter, setStatusFilter] = useState('scheduled');
       const [preferredDateFilter, setPreferredDateFilter] = useState([]); // Array of dates
       const [preferredTimeFilter, setPreferredTimeFilter] = useState([]); // Array of time windows
       const [showDayView, setShowDayView] = useState(false);
@@ -511,8 +511,7 @@
       });
       const [showNeedScheduling, setShowNeedScheduling] = useState(true);
       const [addToRoutePopup, setAddToRoutePopup] = useState(null);
-      const [addToRouteSlot, setAddToRouteSlot] = useState('');
-      const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
+            const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
         const today = new Date();
@@ -2473,109 +2472,61 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
-        // If in unscheduled view and NOT editing a route:
-        // Check if selected day has a saved route - if so, show position input to insert into route
-        // Otherwise open profile
-        if (statusFilter === 'scheduled' && !editingSavedRouteId) {
+        if (editingSavedRouteId) {
+          const editingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+          if (!editingRoute) { setSelectedCustomer(customer); return; }
+          const alreadyInRoute = editingRoute.customers.some(c => String(c.id) === String(customer.id));
+          if (alreadyInRoute) {
+            setSelectedCustomer(customer);
+            return;
+          }
+          const isUnscheduled = !customer.status || customer.status === 'unscheduled' || customer.status === 'new';
+          if (isUnscheduled) {
+            setAddToRoutePopup({ customer, route: editingRoute });
+            return;
+          }
           setSelectedCustomer(customer);
           return;
         }
+        setSelectedCustomer(customer);
+      };
 
-        const dateKey = selectedDate.toDateString();
-        const currentDayRoute = routesByDay[dateKey] || [];
-
-        // Check BOTH routesByDay AND customers state for existing scheduling
-        const isInRoutesByDay = currentDayRoute.some(r => r.id === customer.id);
-        const isScheduledForDay = customers.some(c => {
-          if (c.id !== customer.id) return false;
-          if (!c.scheduledDate) return false;
-          return new Date(c.scheduledDate).toDateString() === dateKey;
-        });
-        const isInRoute = isInRoutesByDay || isScheduledForDay;
-
-        if (isInRoute) {
-          // Remove from THIS DAY'S route AND clear scheduling
-          setRoutesByDay(prev => ({
-            ...prev,
-            [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
-          }));
-
-          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
-          setCustomers(prev => prev.map(c => {
-            if (c.id === customer.id) {
-              return { ...c, ...unscheduleUpdates };
-            }
-            return c;
-          }));
-          propagateCustomerUpdate(customer.id, unscheduleUpdates);
-          setSuggestedCustomers([]);
-        } else {
-          // Auto-schedule with 1 hour 15 minute spacing
-          const allSlots = generateTimeSlots();
-
-          // Get all jobs for THIS SPECIFIC DAY sorted by time
-          const jobsForDay = customers
-            .filter(c => {
-              if (!c.scheduledDate || !c.scheduledTime) return false;
-              const custDate = new Date(c.scheduledDate);
-              return custDate.toDateString() === selectedDate.toDateString();
-            })
-            .sort((a, b) => {
-              const [aH, aM] = a.scheduledTime.split(':').map(Number);
-              const [bH, bM] = b.scheduledTime.split(':').map(Number);
-              return (aH * 60 + aM) - (bH * 60 + bM);
-            });
-
-          let nextSlot = null;
-
-          if (jobsForDay.length === 0) {
-            // First job for THIS DAY - start at 8:00 AM
-            nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
-          } else {
-            // Find last scheduled job for THIS DAY and add 1 hour 15 minutes (75 minutes)
-            const lastJob = jobsForDay[jobsForDay.length - 1];
-            const [lastH, lastM] = lastJob.scheduledTime.split(':').map(Number);
-            const lastMinutes = lastH * 60 + lastM;
-            const nextMinutes = lastMinutes + 75; // 1 hour 15 minutes
-            const nextH = Math.floor(nextMinutes / 60);
-            const nextM = nextMinutes % 60;
-
-            // Make sure it's not past 8pm
-            if (nextH < 20) {
-              nextSlot = {
-                time: `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`,
-                hour: nextH,
-                minute: nextM
-              };
-            }
+      const confirmAddToRoute = () => {
+        if (!addToRoutePopup) return;
+        const { customer, route } = addToRoutePopup;
+        const SPACING = 75;
+        const currentStops = route.customers || [];
+        let newTime = '08:00';
+        if (currentStops.length > 0) {
+          const lastStop = currentStops[currentStops.length - 1];
+          if (lastStop.scheduledTime) {
+            const [lH, lM] = lastStop.scheduledTime.split(':').map(Number);
+            const nextMins = (lH * 60 + lM) + SPACING;
+            newTime = String(Math.floor(nextMins / 60)).padStart(2, '0') + ':' + String(nextMins % 60).padStart(2, '0');
           }
-
-          // Schedule customer to the next slot
-          if (nextSlot) {
-            scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
-          }
-
-          // Add to THIS DAY'S route (prevent duplicates)
-          setRoutesByDay(prev => {
-            const existing = prev[dateKey] || [];
-            if (existing.some(r => r.id === customer.id)) return prev;
-            return { ...prev, [dateKey]: [...existing, customer] };
-          });
-          
-          const availableCustomers = filteredCustomers.filter(c => 
-            c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
-          );
-
-          const closest = availableCustomers
-            .map(c => ({
-              ...c,
-              distance: calculateDistance(customer.lat, customer.lng, c.lat, c.lng)
-            }))
-            .sort((a, b) => a.distance - b.distance)
-            .slice(0, 3);
-
-          setSuggestedCustomers(closest);
         }
+        const scheduleUpdates = {
+          scheduledDate: route.scheduledDate,
+          scheduledTime: newTime,
+          status: 'scheduled',
+          routeConfirmed: true,
+          confirmedRouteName: route.name
+        };
+        const newCustomer = { ...customer, ...scheduleUpdates };
+        const updatedStops = [...currentStops, newCustomer];
+        setSavedRoutes(prev => prev.map(r => {
+          if (r.id === route.id) return { ...r, customers: updatedStops };
+          return r;
+        }));
+        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, ...scheduleUpdates } : c));
+        propagateCustomerUpdate(customer.id, scheduleUpdates);
+        const dateKey = new Date(route.scheduledDate).toDateString();
+        setRoutesByDay(prev => {
+          const existing = prev[dateKey] || [];
+          if (existing.some(r => r.id === customer.id)) return prev;
+          return { ...prev, [dateKey]: [...existing, newCustomer] };
+        });
+        setAddToRoutePopup(null);
       };
 
       // Sync route state with current day's route when switching days
@@ -10496,6 +10447,37 @@ onClick={exitRadiusMode}
             </div>
           )}
 
+
+                    {/* Add to Route Confirmation Popup */}
+          {addToRoutePopup && (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', zIndex: 10000
+            }} onClick={() => setAddToRoutePopup(null)}>
+              <div style={{
+                background: '#1e293b', borderRadius: '12px', padding: '24px',
+                maxWidth: '380px', width: '90%', border: '1px solid rgba(255,255,255,0.1)',
+                boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+              }} onClick={e => e.stopPropagation()}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#f1f5f9', fontSize: '18px' }}>Add to Route</h3>
+                <p style={{ color: '#94a3b8', margin: '0 0 20px 0', fontSize: '14px', lineHeight: '1.5' }}>
+                  Add <strong style={{ color: '#60a5fa' }}>{addToRoutePopup.customer.name || addToRoutePopup.customer.firstName + ' ' + addToRoutePopup.customer.lastName}</strong> to <strong style={{ color: '#60a5fa' }}>{addToRoutePopup.route.name}</strong>?
+                </p>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setAddToRoutePopup(null)} style={{
+                    padding: '8px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
+                    background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '14px'
+                  }}>Cancel</button>
+                  <button onClick={confirmAddToRoute} style={{
+                    padding: '8px 20px', borderRadius: '8px', border: 'none',
+                    background: '#3b82f6', color: 'white', cursor: 'pointer', fontSize: '14px',
+                    fontWeight: 600
+                  }}>Add to Route</button>
+                </div>
+              </div>
+            </div>
+          )}
 
                     {/* Save Route Modal */}
           {showSaveModal && (
