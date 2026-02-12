@@ -6911,28 +6911,31 @@ const createJob = async () => {
                         >◀</button>
 
                         {scheduledMapView === 'week' ? (
-                          // Show days of the week with color-coded dots
+                          // Show days of the week with color-coded dots - clickable to highlight route
                           getWeekDays(scheduledViewWeekStart).map((date, index) => {
                             const dayColor = DAY_COLORS[date.getDay()];
                             const isToday = date.toDateString() === new Date().toDateString();
+                            const isSelected = date.toDateString() === selectedDate.toDateString();
                             const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                             const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
                             return (
-                              <div key={index} style={{
+                              <div key={index} onClick={() => setSelectedDate(new Date(date))} style={{
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
                                 padding: '3px 6px',
                                 borderRadius: '6px',
-                                background: isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
-                                border: `1px solid ${jobCount > 0 ? dayColor.color + '55' : 'transparent'}`,
+                                cursor: 'pointer',
+                                background: isSelected ? 'rgba(234, 179, 8, 0.25)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
+                                border: `1px solid ${isSelected ? '#fbbf24' : jobCount > 0 ? dayColor.color + '55' : 'transparent'}`,
                                 minWidth: '36px',
-                                lineHeight: 1.2
+                                lineHeight: 1.2,
+                                transition: 'all 0.15s ease'
                               }}>
-                                <span style={{ fontSize: '8px', color: dayColor.color, fontWeight: 700 }}>{dayColor.label}</span>
-                                <span style={{ fontSize: '11px', color: '#f1f5f9', fontWeight: 600 }}>{date.getDate()}</span>
+                                <span style={{ fontSize: '8px', color: isSelected ? '#fbbf24' : dayColor.color, fontWeight: 700 }}>{dayColor.label}</span>
+                                <span style={{ fontSize: '11px', color: isSelected ? '#fbbf24' : '#f1f5f9', fontWeight: 600 }}>{date.getDate()}</span>
                                 {jobCount > 0 && (
-                                  <span style={{ fontSize: '8px', color: dayColor.color, fontWeight: 700 }}>{jobCount} jobs</span>
+                                  <span style={{ fontSize: '8px', color: isSelected ? '#fbbf24' : dayColor.color, fontWeight: 700 }}>{jobCount} jobs</span>
                                 )}
                               </div>
                             );
