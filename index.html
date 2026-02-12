@@ -2437,6 +2437,9 @@
             if (existing.some(r => r.id === customer.id)) return prev;
             return { ...prev, [dateKey]: [...existing, customer] };
           });
+
+          // Switch sidebar out of saved view so newly added stop shows instantly
+          setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
           
           const availableCustomers = filteredCustomers.filter(c => 
             c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
