@@ -10783,77 +10783,56 @@ const createJob = async () => {
                 }} onClick={() => setQuickAddJobPopup(null)}>
                   <div style={{
                     background: '#1e293b', borderRadius: '16px', padding: '28px',
-                    width: '480px', maxHeight: '90vh', overflowY: 'auto',
+                    width: '420px', maxHeight: '90vh', overflowY: 'auto',
                     border: '1px solid rgba(148, 163, 184, 0.2)'
                   }} onClick={(e) => e.stopPropagation()}>
 
-                    <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '16px' }}>
-                      Add Job
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>Add Job</h3>
+                      <button onClick={() => setQuickAddJobPopup(null)} style={{
+                        background: 'none', border: 'none', color: '#64748b', fontSize: '20px', cursor: 'pointer', padding: '4px'
+                      }}>&times;</button>
+                    </div>
 
                     <div style={{
-                      background: 'rgba(15, 23, 42, 0.5)', borderRadius: '10px',
-                      padding: '14px', marginBottom: '18px',
-                      border: '1px solid rgba(148, 163, 184, 0.1)'
+                      display: 'flex', alignItems: 'center', gap: '10px',
+                      padding: '10px 12px', marginBottom: '16px',
+                      background: 'rgba(15, 23, 42, 0.4)', borderRadius: '8px',
+                      border: '1px solid rgba(148, 163, 184, 0.08)'
                     }}>
-                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>
-                        {quickAddJobPopup.customerName}
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                        {quickAddJobPopup.customerPhone && (
-                          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                            {quickAddJobPopup.customerPhone}
-                          </span>
-                        )}
-                        {quickAddJobPopup.customerEmail && (
-                          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
-                            {quickAddJobPopup.customerEmail}
-                          </span>
-                        )}
-                        {quickAddJobPopup.customerAddress && (
-                          <span style={{ fontSize: '13px', color: '#64748b' }}>
-                            {quickAddJobPopup.customerAddress}
-                          </span>
-                        )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#f1f5f9', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {quickAddJobPopup.customerName}
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {[quickAddJobPopup.customerPhone, quickAddJobPopup.customerEmail].filter(Boolean).join(' \u00b7 ')}
+                        </div>
                       </div>
                     </div>
 
                     <div style={{ marginBottom: '16px' }}>
-                      <label style={jobLabelStyle}>Service Type</label>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <label style={jobLabelStyle}>Service</label>
+                      <select
+                        value={quickJobData.serviceType}
+                        onChange={(e) => setQuickJobData(prev => ({...prev, serviceType: e.target.value}))}
+                        style={jobInputStyle}
+                      >
+                        <option value="">Select a service...</option>
                         {serviceTypes.map(type => (
-                          <button
-                            key={type}
-                            type="button"
-                            onClick={() => setQuickJobData(prev => ({...prev, serviceType: type}))}
-                            style={{
-                              padding: '8px 14px', borderRadius: '8px',
-                              fontSize: '13px', fontWeight: 500, cursor: 'pointer',
-                              transition: 'all 0.15s',
-                              border: quickJobData.serviceType === type
-                                ? '2px solid rgba(139,92,246,0.6)'
-                                : '1px solid rgba(148,163,184,0.15)',
-                              background: quickJobData.serviceType === type
-                                ? 'rgba(139,92,246,0.15)'
-                                : 'rgba(15,23,42,0.5)',
-                              color: quickJobData.serviceType === type ? '#c4b5fd' : '#cbd5e1'
-                            }}
-                          >
-                            {quickJobData.serviceType === type && '\u2713 '}{type}
-                          </button>
+                          <option key={type} value={type}>{type}</option>
                         ))}
-                      </div>
+                      </select>
                     </div>
 
                     {isResidential && (
                       <div style={{
-                        background: 'rgba(139, 92, 246, 0.05)', borderRadius: '10px',
-                        padding: '16px', marginBottom: '16px',
-                        border: '1px solid rgba(139, 92, 246, 0.15)'
+                        padding: '14px', marginBottom: '16px', borderRadius: '8px',
+                        background: 'rgba(139, 92, 246, 0.04)',
+                        border: '1px solid rgba(139, 92, 246, 0.12)'
                       }}>
-                        <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
                           <div style={{ flex: 1 }}>
-                            <label style={jobLabelStyle}>Number of Panels</label>
+                            <label style={jobLabelStyle}>Panels</label>
                             <input
                               type="number"
                               value={quickJobData.panels}
@@ -10862,17 +10841,16 @@ const createJob = async () => {
                                 const count = parseInt(panels) || 0;
                                 const ppp = parseFloat(quickJobData.pricePerPanel) || 9;
                                 setQuickJobData(prev => ({
-                                  ...prev, panels: panels,
+                                  ...prev, panels,
                                   totalPrice: prev.priceOverridden ? prev.totalPrice : String(count * ppp)
                                 }));
                               }}
-                              placeholder="0"
-                              min="0"
-                              style={jobInputStyle}
+                              placeholder="0" min="0"
+                              style={{ ...jobInputStyle, padding: '8px 10px' }}
                             />
                           </div>
-                          <div style={{ flex: 1 }}>
-                            <label style={jobLabelStyle}>Price Per Panel</label>
+                          <div style={{ width: '80px' }}>
+                            <label style={jobLabelStyle}>$/Panel</label>
                             <select
                               value={quickJobData.pricePerPanel}
                               onChange={(e) => {
@@ -10883,7 +10861,7 @@ const createJob = async () => {
                                   totalPrice: prev.priceOverridden ? prev.totalPrice : String(count * ppp)
                                 }));
                               }}
-                              style={jobInputStyle}
+                              style={{ ...jobInputStyle, padding: '8px 10px' }}
                             >
                               <option value="9">$9</option>
                               <option value="8">$8</option>
@@ -10892,60 +10870,39 @@ const createJob = async () => {
                             </select>
                           </div>
                           <div style={{ flex: 1 }}>
-                            <label style={jobLabelStyle}>Total Price</label>
+                            <label style={jobLabelStyle}>
+                              Total{quickJobData.priceOverridden && (
+                                <button onClick={() => {
+                                  const count = parseInt(quickJobData.panels) || 0;
+                                  const ppp = parseFloat(quickJobData.pricePerPanel) || 9;
+                                  setQuickJobData(prev => ({ ...prev, totalPrice: String(count * ppp), priceOverridden: false }));
+                                }} style={{ marginLeft: '6px', fontSize: '10px', color: '#8b5cf6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>reset</button>
+                              )}
+                            </label>
                             <div style={{ position: 'relative' }}>
-                              <span style={{
-                                position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)',
-                                color: '#94a3b8', fontSize: '14px', pointerEvents: 'none'
-                              }}>$</span>
+                              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px', pointerEvents: 'none' }}>$</span>
                               <input
                                 type="number"
                                 value={quickJobData.totalPrice}
-                                onChange={(e) => {
-                                  setQuickJobData(prev => ({
-                                    ...prev, totalPrice: e.target.value, priceOverridden: true
-                                  }));
-                                }}
-                                style={{ ...jobInputStyle, paddingLeft: '22px' }}
+                                onChange={(e) => setQuickJobData(prev => ({ ...prev, totalPrice: e.target.value, priceOverridden: true }))}
+                                style={{ ...jobInputStyle, padding: '8px 10px 8px 22px' }}
                               />
                             </div>
-                            {quickJobData.priceOverridden && (
-                              <button
-                                onClick={() => {
-                                  const count = parseInt(quickJobData.panels) || 0;
-                                  const ppp = parseFloat(quickJobData.pricePerPanel) || 9;
-                                  setQuickJobData(prev => ({
-                                    ...prev, totalPrice: String(count * ppp), priceOverridden: false
-                                  }));
-                                }}
-                                style={{
-                                  marginTop: '4px', fontSize: '11px', color: '#8b5cf6',
-                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0
-                                }}
-                              >Reset to auto</button>
-                            )}
                           </div>
                         </div>
 
-                        <div style={{ marginBottom: '14px' }}>
+                        <div style={{ marginBottom: '10px' }}>
                           <label style={jobLabelStyle}>Preferred Days</label>
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '4px' }}>
                             {daysOfWeek.map(day => (
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => toggleDay(day)}
+                              <button key={day} type="button" onClick={() => toggleDay(day)}
                                 style={{
-                                  flex: 1, padding: '8px 4px', borderRadius: '6px',
-                                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-                                  transition: 'all 0.15s',
-                                  border: quickJobData.preferredDays.includes(day)
-                                    ? '2px solid rgba(34, 197, 94, 0.5)'
-                                    : '1px solid rgba(148,163,184,0.15)',
-                                  background: quickJobData.preferredDays.includes(day)
-                                    ? 'rgba(34, 197, 94, 0.15)'
-                                    : 'rgba(15,23,42,0.5)',
-                                  color: quickJobData.preferredDays.includes(day) ? '#4ade80' : '#94a3b8'
+                                  flex: 1, padding: '6px 2px', borderRadius: '5px',
+                                  fontSize: '11px', fontWeight: 600, cursor: 'pointer',
+                                  border: quickJobData.preferredDays.includes(day) ? '1.5px solid rgba(34,197,94,0.5)' : '1px solid rgba(148,163,184,0.12)',
+                                  background: quickJobData.preferredDays.includes(day) ? 'rgba(34,197,94,0.12)' : 'transparent',
+                                  color: quickJobData.preferredDays.includes(day) ? '#4ade80' : '#94a3b8',
+                                  transition: 'all 0.15s'
                                 }}
                               >{day}</button>
                             ))}
@@ -10954,23 +10911,17 @@ const createJob = async () => {
 
                         <div>
                           <label style={jobLabelStyle}>Preferred Time</label>
-                          <div style={{ display: 'flex', gap: '8px' }}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
                             {['AM', 'PM'].map(t => (
-                              <button
-                                key={t}
-                                type="button"
+                              <button key={t} type="button"
                                 onClick={() => setQuickJobData(prev => ({...prev, preferredTime: prev.preferredTime === t ? '' : t}))}
                                 style={{
-                                  flex: 1, padding: '8px', borderRadius: '6px',
-                                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-                                  transition: 'all 0.15s',
-                                  border: quickJobData.preferredTime === t
-                                    ? '2px solid rgba(59, 130, 246, 0.5)'
-                                    : '1px solid rgba(148,163,184,0.15)',
-                                  background: quickJobData.preferredTime === t
-                                    ? 'rgba(59, 130, 246, 0.15)'
-                                    : 'rgba(15,23,42,0.5)',
-                                  color: quickJobData.preferredTime === t ? '#60a5fa' : '#94a3b8'
+                                  flex: 1, padding: '6px', borderRadius: '5px',
+                                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                  border: quickJobData.preferredTime === t ? '1.5px solid rgba(59,130,246,0.5)' : '1px solid rgba(148,163,184,0.12)',
+                                  background: quickJobData.preferredTime === t ? 'rgba(59,130,246,0.12)' : 'transparent',
+                                  color: quickJobData.preferredTime === t ? '#60a5fa' : '#94a3b8',
+                                  transition: 'all 0.15s'
                                 }}
                               >{t}</button>
                             ))}
@@ -10979,23 +10930,23 @@ const createJob = async () => {
                       </div>
                     )}
 
-                    <div style={{ marginBottom: '14px' }}>
-                      <label style={jobLabelStyle}>Job Notes (optional)</label>
+                    <div style={{ marginBottom: '12px' }}>
+                      <label style={jobLabelStyle}>Notes <span style={{ fontWeight: 400, color: '#475569' }}>(optional)</span></label>
                       <textarea
                         value={quickJobData.notes}
                         onChange={(e) => setQuickJobData(prev => ({...prev, notes: e.target.value}))}
                         placeholder="Special instructions, access details..."
                         rows={2}
-                        style={{ ...jobInputStyle, resize: 'vertical' }}
+                        style={{ ...jobInputStyle, resize: 'vertical', padding: '8px 10px' }}
                       />
                     </div>
 
-                    <div style={{ marginBottom: '18px' }}>
-                      <label style={jobLabelStyle}>Assign Technician</label>
+                    <div style={{ marginBottom: '16px' }}>
+                      <label style={jobLabelStyle}>Technician</label>
                       <select
                         value={quickJobData.technician}
                         onChange={(e) => setQuickJobData(prev => ({...prev, technician: e.target.value}))}
-                        style={jobInputStyle}
+                        style={{ ...jobInputStyle, padding: '8px 10px' }}
                       >
                         <option value="Chance T">Chance T</option>
                       </select>
