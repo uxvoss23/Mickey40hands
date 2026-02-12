@@ -510,6 +510,7 @@
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
       const [showNeedScheduling, setShowNeedScheduling] = useState(false); // Toggle unscheduled overlay
+      const [focusedDay, setFocusedDay] = useState(null); // null = show all routes for week, Date = show only that day's route
       const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
@@ -2143,16 +2144,19 @@
         // --- Navigation bar filters ---
         // Status filter (unscheduled, scheduled)
         if (statusFilter === 'scheduled') {
-          // Build date range based on week/month view
           let rangeStart, rangeEnd;
-          if (scheduledMapView === 'week') {
+          if (focusedDay) {
+            rangeStart = new Date(focusedDay);
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd = new Date(focusedDay);
+            rangeEnd.setHours(23, 59, 59, 999);
+          } else if (scheduledMapView === 'week') {
             rangeStart = new Date(scheduledViewWeekStart);
             rangeStart.setHours(0, 0, 0, 0);
             rangeEnd = new Date(rangeStart);
             rangeEnd.setDate(rangeEnd.getDate() + 6);
             rangeEnd.setHours(23, 59, 59, 999);
           } else {
-            // Month view: start of month to end of month
             rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
             rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23, 59, 59, 999);
           }
@@ -2370,7 +2374,7 @@
       }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter,
           drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
           preferredTimeFilter, showRecurringList, referencePoint, radiusMiles,
-          scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes]);
+          scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDay]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
@@ -6573,7 +6577,7 @@ const createJob = async () => {
                       ].map(s => (
                         <button
                           key={s.value}
-                          onClick={() => setStatusFilter(statusFilter === s.value ? 'all' : s.value)}
+                          onClick={() => { setStatusFilter(statusFilter === s.value ? 'all' : s.value); setFocusedDay(null); }}
                           style={{
                             padding: '4px 10px',
                             fontSize: '11px',
@@ -6974,27 +6978,36 @@ const createJob = async () => {
                           getWeekDays(scheduledViewWeekStart).map((date, index) => {
                             const dayColor = DAY_COLORS[date.getDay()];
                             const isToday = date.toDateString() === new Date().toDateString();
+                            const isFocused = focusedDay && date.toDateString() === focusedDay.toDateString();
                             const isSelected = date.toDateString() === selectedDate.toDateString();
                             const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                             const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
                             return (
-                              <div key={index} onClick={() => setSelectedDate(new Date(date))} style={{
+                              <div key={index} onClick={() => {
+                                const clickedDate = new Date(date);
+                                if (focusedDay && focusedDay.toDateString() === clickedDate.toDateString()) {
+                                  setFocusedDay(null);
+                                } else {
+                                  setFocusedDay(clickedDate);
+                                  setSelectedDate(clickedDate);
+                                }
+                              }} style={{
                                 display: 'flex',
                                 flexDirection: 'column',
                                 alignItems: 'center',
                                 padding: '3px 6px',
                                 borderRadius: '6px',
                                 cursor: 'pointer',
-                                background: isSelected ? 'rgba(234, 179, 8, 0.25)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.4)',
-                                border: `1px solid ${isSelected ? '#fbbf24' : jobCount > 0 ? dayColor.color + '55' : 'transparent'}`,
+                                background: isFocused ? 'rgba(234, 179, 8, 0.35)' : isToday ? 'rgba(59, 130, 246, 0.15)' : focusedDay ? 'rgba(30, 41, 59, 0.2)' : 'rgba(30, 41, 59, 0.4)',
+                                border: `1px solid ${isFocused ? '#fbbf24' : jobCount > 0 && !focusedDay ? dayColor.color + '55' : 'transparent'}`,
                                 minWidth: '36px',
                                 lineHeight: 1.2,
                                 transition: 'all 0.15s ease'
                               }}>
-                                <span style={{ fontSize: '8px', color: isSelected ? '#fbbf24' : dayColor.color, fontWeight: 700 }}>{dayColor.label}</span>
-                                <span style={{ fontSize: '11px', color: isSelected ? '#fbbf24' : '#f1f5f9', fontWeight: 600 }}>{date.getDate()}</span>
+                                <span style={{ fontSize: '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{dayColor.label}</span>
+                                <span style={{ fontSize: '11px', color: isFocused ? '#fbbf24' : '#f1f5f9', fontWeight: 600, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{date.getDate()}</span>
                                 {jobCount > 0 && (
-                                  <span style={{ fontSize: '8px', color: isSelected ? '#fbbf24' : dayColor.color, fontWeight: 700 }}>{jobCount} jobs</span>
+                                  <span style={{ fontSize: '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{jobCount} jobs</span>
                                 )}
                               </div>
                             );
@@ -7023,6 +7036,12 @@ const createJob = async () => {
                           }}
                           style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 600 }}
                         >Today</button>
+                        {focusedDay && (
+                          <button
+                            onClick={() => setFocusedDay(null)}
+                            style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.3)', border: '1px solid #fbbf24', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 700 }}
+                          >All Routes</button>
+                        )}
                       </div>
                     )}
                     </>
