@@ -9360,9 +9360,9 @@ const createJob = async () => {
                 right: 0,
                 bottom: 0,
                 overflow: 'auto',
-                padding: '32px'
+                padding: '24px'
               }} className="scrollbar-custom">
-                <h2 style={{ fontSize: '24px', fontWeight: 800, marginBottom: '24px' }}>📁 Saved Routes</h2>
+                <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '16px' }}>📁 Saved Routes</h2>
                 
                 {savedRoutes.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
@@ -9371,213 +9371,117 @@ const createJob = async () => {
                     <div style={{ fontSize: '14px' }}>Build a route on the Map tab and save it!</div>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gap: '24px', maxWidth: '1200px' }}>
-                    {savedRoutes.map((savedRoute) => (
-                      <div key={savedRoute.id} className="glass-card" style={{ padding: '24px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '20px' }}>
-                          <div>
-                            {/* Editable Title */}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                              {editingRouteId === savedRoute.id ? (
-                                <>
-                                  <input
-                                    type="text"
-                                    value={editedRouteName}
-                                    onChange={(e) => setEditedRouteName(e.target.value)}
-                                    onBlur={() => {
-                                      if (editedRouteName.trim()) {
-                                        setSavedRoutes(prev => prev.map(r => 
-                                          r.id === savedRoute.id ? { ...r, name: editedRouteName } : r
-                                        ));
-                                      }
-                                      setEditingRouteId(null);
-                                    }}
-                                    onKeyPress={(e) => {
-                                      if (e.key === 'Enter' && editedRouteName.trim()) {
-                                        setSavedRoutes(prev => prev.map(r => 
-                                          r.id === savedRoute.id ? { ...r, name: editedRouteName } : r
-                                        ));
-                                        setEditingRouteId(null);
-                                      }
-                                    }}
-                                    autoFocus
-                                    style={{
-                                      fontSize: '20px',
-                                      fontWeight: 700,
-                                      background: 'rgba(139, 92, 246, 0.1)',
-                                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                                      borderRadius: '6px',
-                                      padding: '4px 8px',
-                                      color: '#f1f5f9',
-                                      flex: 1
-                                    }}
-                                  />
-                                  <button
-                                    onClick={() => {
-                                      if (editedRouteName.trim()) {
-                                        setSavedRoutes(prev => prev.map(r => 
-                                          r.id === savedRoute.id ? { ...r, name: editedRouteName } : r
-                                        ));
-                                      }
-                                      setEditingRouteId(null);
-                                    }}
-                                    style={{
-                                      padding: '4px 12px',
-                                      background: 'rgba(34, 197, 94, 0.2)',
-                                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                                      borderRadius: '6px',
-                                      color: '#22c55e',
-                                      fontSize: '12px',
-                                      cursor: 'pointer',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    ✓
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <h3 style={{ fontSize: '20px', fontWeight: 700, flex: 1, margin: 0 }}>{savedRoute.name}</h3>
-                                  <button
-                                    onClick={() => {
-                                      setEditingRouteId(savedRoute.id);
-                                      setEditedRouteName(savedRoute.name);
-                                    }}
-                                    style={{
-                                      padding: '4px 12px',
-                                      background: 'rgba(139, 92, 246, 0.1)',
-                                      border: '1px solid rgba(139, 92, 246, 0.3)',
-                                      borderRadius: '6px',
-                                      color: '#8b5cf6',
-                                      fontSize: '12px',
-                                      cursor: 'pointer',
-                                      fontWeight: 600
-                                    }}
-                                  >
-                                    ✏️ Edit
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            
-                            <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '8px' }}>
-                              Created: {new Date(savedRoute.date).toLocaleDateString()} • {savedRoute.customers.length} stops • {(savedRoute.totalDistance || 0).toFixed(1)} miles
-                            </div>
-                            {savedRoute.scheduledDate && (
-                              <div style={{
-                                display: 'inline-block',
-                                padding: '6px 12px',
-                                background: 'rgba(139, 92, 246, 0.2)',
-                                border: '1px solid rgba(139, 92, 246, 0.3)',
-                                borderRadius: '8px',
-                                fontSize: '12px',
-                                fontWeight: 600,
-                                color: '#a78bfa'
-                              }}>
-                                📅 Scheduled: {new Date(savedRoute.scheduledDate).toLocaleDateString('en-US', { 
-                                  weekday: 'short',
-                                  month: 'short', 
-                                  day: 'numeric',
-                                  year: 'numeric'
-                                })}
-                              </div>
-                            )}
-                            
-                            
-                            {/* Sent Status */}
-                            {savedRoute.sentToTech && (
-                              <div style={{
-                                marginTop: '12px',
-                                padding: '8px 12px',
-                                background: 'rgba(34, 197, 94, 0.1)',
-                                border: '1px solid rgba(34, 197, 94, 0.3)',
-                                borderRadius: '8px',
-                                fontSize: '11px',
-                                color: '#22c55e',
-                                fontWeight: 600,
-                                display: 'inline-block'
-                              }}>
-                                ✓ Sent to Tech: {new Date(savedRoute.sentDate).toLocaleDateString()}
-                              </div>
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    {savedRoutes
+                      .sort((a, b) => new Date(a.scheduledDate || a.date) - new Date(b.scheduledDate || b.date))
+                      .map((savedRoute) => {
+                        const schedDate = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate) : null;
+                        const dayLabel = schedDate ? schedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unscheduled';
+                        return (
+                      <div key={savedRoute.id} className="glass-card" style={{ 
+                        padding: '0', 
+                        width: '280px',
+                        minWidth: '260px',
+                        flex: '0 0 280px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{ 
+                          padding: '12px 14px',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          borderBottom: '1px solid rgba(139, 92, 246, 0.2)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            {editingRouteId === savedRoute.id ? (
+                              <input
+                                type="text"
+                                value={editedRouteName}
+                                onChange={(e) => setEditedRouteName(e.target.value)}
+                                onBlur={() => {
+                                  if (editedRouteName.trim()) {
+                                    setSavedRoutes(prev => prev.map(r => 
+                                      r.id === savedRoute.id ? { ...r, name: editedRouteName } : r
+                                    ));
+                                  }
+                                  setEditingRouteId(null);
+                                }}
+                                onKeyPress={(e) => {
+                                  if (e.key === 'Enter' && editedRouteName.trim()) {
+                                    setSavedRoutes(prev => prev.map(r => 
+                                      r.id === savedRoute.id ? { ...r, name: editedRouteName } : r
+                                    ));
+                                    setEditingRouteId(null);
+                                  }
+                                }}
+                                autoFocus
+                                style={{
+                                  fontSize: '14px', fontWeight: 700,
+                                  background: 'rgba(139, 92, 246, 0.1)',
+                                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '4px', padding: '2px 6px',
+                                  color: '#f1f5f9', flex: 1, width: '100%'
+                                }}
+                              />
+                            ) : (
+                              <h3 
+                                onClick={() => { setEditingRouteId(savedRoute.id); setEditedRouteName(savedRoute.name); }}
+                                style={{ fontSize: '14px', fontWeight: 700, margin: 0, cursor: 'pointer', flex: 1 }}
+                                title="Click to rename"
+                              >{savedRoute.name}</h3>
                             )}
                           </div>
-                          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: '#a78bfa', marginBottom: '4px' }}>
+                            📅 {dayLabel}
+                          </div>
+                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                            {savedRoute.customers.length} stops • {(savedRoute.totalDistance || 0).toFixed(1)} mi
+                            {savedRoute.sentToTech && <span style={{ color: '#22c55e', marginLeft: '6px' }}>✓ Sent</span>}
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
                             <button
                               onClick={() => {
                                 if (savedRoute.sentToTech) {
-                                  alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                  alert('This route has already been sent to the technician.');
                                   return;
                                 }
-                                // Load route into map editor
                                 const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
-                                setRoutesByDay(prev => ({
-                                  ...prev,
-                                  [routeDateKey]: savedRoute.customers
-                                }));
+                                setRoutesByDay(prev => ({ ...prev, [routeDateKey]: savedRoute.customers }));
                                 setEditingSavedRouteId(savedRoute.id);
                                 setSelectedDate(new Date(savedRoute.scheduledDate));
-
-                                // Restore scheduledTime into customers state for time slot display
                                 setCustomers(prev => {
                                   const rcMap = new Map();
                                   savedRoute.customers.forEach(rc => rcMap.set(rc.id, rc));
                                   return prev.map(c => {
                                     const rc = rcMap.get(c.id);
-                                    if (rc) {
-                                      return {
-                                        ...c,
-                                        scheduledTime: rc.scheduledTime || c.scheduledTime,
-                                        scheduledDate: savedRoute.scheduledDate || rc.scheduledDate || c.scheduledDate,
-                                        status: 'scheduled',
-                                        routeConfirmed: true
-                                      };
-                                    }
+                                    if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: savedRoute.scheduledDate || rc.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
                                     return c;
                                   });
                                 });
-
-                                setSavedViewDays(prev => ({
-                                  ...prev,
-                                  [routeDateKey]: false
-                                }));
+                                setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                 setCurrentView('map');
                               }}
-                              className="button-secondary"
-                              style={{ padding: '12px 16px', fontSize: '14px', fontWeight: 600 }}
-                            >
-                              ✏️ Edit Route
-                            </button>
+                              style={{
+                                padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                                background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                                borderRadius: '5px', color: '#a78bfa', cursor: 'pointer'
+                              }}
+                            >✏️ Edit</button>
                             <button
                               onClick={() => emailRouteToTech(savedRoute)}
-                              className="button-primary"
-                            >
-                              📧 Email to Tech
-                            </button>
+                              style={{
+                                padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                                background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                                borderRadius: '5px', color: '#22c55e', cursor: 'pointer'
+                              }}
+                            >📧 Send</button>
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
-                                  // Unschedule all customers in this route and propagate changes
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
-                                  const unscheduleUpdates = {
-                                    scheduledDate: null,
-                                    scheduledTime: null,
-                                    status: 'unscheduled',
-                                    routeConfirmed: false,
-                                    confirmedRouteName: null
-                                  };
-
-                                  // Propagate unschedule updates to all data stores for each customer
-                                  savedRoute.customers.forEach(c => {
-                                    propagateCustomerUpdate(c.id, unscheduleUpdates);
-                                  });
-
-                                  setCustomers(prev => prev.map(c => {
-                                    if (routeCustomerIds.has(c.id)) {
-                                      return { ...c, ...unscheduleUpdates };
-                                    }
-                                    return c;
-                                  }));
-                                  // Clear routesByDay for this route's date
+                                  const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null };
+                                  savedRoute.customers.forEach(c => propagateCustomerUpdate(c.id, unscheduleUpdates));
+                                  setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...unscheduleUpdates } : c));
                                   const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                   setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                   setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
@@ -9585,283 +9489,80 @@ const createJob = async () => {
                                 }
                               }}
                               style={{
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '1px solid rgba(239, 68, 68, 0.3)',
-                                borderRadius: '10px',
-                                padding: '12px 16px',
-                                color: '#fca5a5',
-                                cursor: 'pointer',
-                                fontSize: '14px',
-                                fontWeight: 600,
-                                transition: 'all 0.2s'
+                                padding: '4px 8px', fontSize: '11px', fontWeight: 600,
+                                background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '5px', color: '#fca5a5', cursor: 'pointer', marginLeft: 'auto'
                               }}
-                            >
-                              🗑️ Delete
-                            </button>
+                            >🗑️</button>
                           </div>
                         </div>
 
-                        <div style={{ display: 'grid', gap: '12px' }}>
-                          {savedRoute.customers.map((customer, index) => (
+                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflowY: 'auto' }} className="scrollbar-custom">
+                          {savedRoute.customers.map((customer, index) => {
+                            const timeSlot = customer.scheduledTime || '';
+                            return (
                             <div
                               key={customer.id}
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData('customer', JSON.stringify(customer));
-                                e.currentTarget.style.opacity = '0.5';
-                              }}
-                              onDragEnd={(e) => {
-                                e.currentTarget.style.opacity = '1';
+                              onClick={() => {
+                                const fullCustomer = customers.find(c => c.id === customer.id) || customer;
+                                setProfileCustomer(fullCustomer);
+                                setShowCustomerProfile(true);
                               }}
                               style={{
-                                padding: '16px',
+                                padding: '8px 10px',
                                 background: 'rgba(15, 23, 42, 0.4)',
-                                borderRadius: '12px',
-                                border: '1px solid rgba(139, 92, 246, 0.2)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '8px',
-                                cursor: 'grab'
+                                borderRadius: '6px',
+                                border: '1px solid rgba(139, 92, 246, 0.1)',
+                                cursor: 'pointer',
+                                transition: 'background 0.15s'
                               }}
-                              onMouseDown={(e) => {
-                                e.currentTarget.style.cursor = 'grabbing';
-                              }}
-                              onMouseUp={(e) => {
-                                e.currentTarget.style.cursor = 'grab';
-                              }}
+                              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)'}
+                              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.4)'}
                             >
-                              <div style={{ display: 'flex', gap: '16px', alignItems: 'start' }}>
-                                <div className="route-number" style={{ width: '28px', height: '28px', fontSize: '13px', flexShrink: 0 }}>
-                                  {index + 1}
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                  <div
-                                    onClick={() => {
-                                      const fullCustomer = customers.find(c => c.id === customer.id) || customer;
-                                      setProfileCustomer(fullCustomer);
-                                      setShowCustomerProfile(true);
-                                    }}
-                                    style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px', color: '#c4b5fd', cursor: 'pointer', textDecoration: 'underline', textDecorationColor: 'rgba(139, 92, 246, 0.3)' }}
-                                    onMouseEnter={(e) => e.currentTarget.style.color = '#a78bfa'}
-                                    onMouseLeave={(e) => e.currentTarget.style.color = '#c4b5fd'}
-                                  >
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <div style={{
+                                  width: '22px', height: '22px', borderRadius: '50%',
+                                  background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                  fontSize: '11px', fontWeight: 700, color: 'white', flexShrink: 0
+                                }}>{index + 1}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                     {customer.name}
                                   </div>
-                                  <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
-                                    📍 {customer.address}
-                                  </div>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '11px', color: '#94a3b8' }}>
-                                    {customer.phone && (
-                                      <span>📞 {customer.phone}</span>
-                                    )}
-                                    {customer.secondaryPhones && customer.secondaryPhones.length > 0 && (
-                                      <span style={{ color: '#64748b' }}>
-                                        ({customer.secondaryPhones.join(', ')})
-                                      </span>
-                                    )}
-                                    {customer.email && (
-                                      <span>📧 {customer.email}</span>
-                                    )}
-                                    {customer.secondaryEmails && customer.secondaryEmails.length > 0 && (
-                                      <span style={{ color: '#64748b' }}>
-                                        ({customer.secondaryEmails.join(', ')})
-                                      </span>
-                                    )}
-                                  </div>
-                                  
-                                  {/* Customer Notes - Editable */}
-                                  <div style={{
-                                    marginTop: '8px',
-                                    padding: '8px',
-                                    background: 'rgba(139, 92, 246, 0.1)',
-                                    border: '1px solid rgba(139, 92, 246, 0.2)',
-                                    borderRadius: '6px',
-                                    fontSize: '11px',
-                                    color: '#c4b5fd',
-                                    lineHeight: '1.5'
-                                  }}>
-                                    {editingCustomerNotes?.routeId === savedRoute.id && editingCustomerNotes?.customerId === customer.id ? (
-                                      <div>
-                                        <textarea
-                                          value={editedNotes}
-                                          onChange={(e) => setEditedNotes(e.target.value)}
-                                          placeholder="Add notes (gate codes, special instructions, etc.)"
-                                          autoFocus
-                                          rows="3"
-                                          style={{
-                                            width: '100%',
-                                            padding: '8px',
-                                            background: 'rgba(15, 23, 42, 0.5)',
-                                            border: '1px solid rgba(139, 92, 246, 0.3)',
-                                            borderRadius: '4px',
-                                            color: '#f1f5f9',
-                                            fontSize: '11px',
-                                            resize: 'vertical',
-                                            fontFamily: 'inherit',
-                                            marginBottom: '8px'
-                                          }}
-                                        />
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                                          <button
-                                            onClick={() => {
-                                              setEditingCustomerNotes(null);
-                                              setEditedNotes('');
-                                            }}
-                                            style={{
-                                              padding: '4px 12px',
-                                              background: 'rgba(100, 116, 139, 0.2)',
-                                              border: '1px solid rgba(100, 116, 139, 0.3)',
-                                              borderRadius: '4px',
-                                              color: '#94a3b8',
-                                              fontSize: '11px',
-                                              cursor: 'pointer',
-                                              fontWeight: 600
-                                            }}
-                                          >
-                                            Cancel
-                                          </button>
-                                          <button
-                                            onClick={() => {
-                                              // Update customer notes in saved route
-                                              setSavedRoutes(prev => prev.map(r => {
-                                                if (r.id === savedRoute.id) {
-                                                  return {
-                                                    ...r,
-                                                    customers: r.customers.map(c => 
-                                                      c.id === customer.id 
-                                                        ? { ...c, customerNotes: editedNotes, notes: editedNotes }
-                                                        : c
-                                                    )
-                                                  };
-                                                }
-                                                return r;
-                                              }));
-                                              
-                                              // Update customer in main customers array
-                                              setCustomers(prev => prev.map(c => {
-                                                if (c.id === customer.id) {
-                                                  return {
-                                                    ...c,
-                                                    notes: editedNotes,
-                                                    notesHistory: [
-                                                      ...(c.notesHistory || []),
-                                                      {
-                                                        id: Date.now().toString(),
-                                                        date: new Date().toISOString(),
-                                                        note: editedNotes,
-                                                        addedBy: 'User'
-                                                      }
-                                                    ]
-                                                  };
-                                                }
-                                                return c;
-                                              }));
-                                              
-                                              setEditingCustomerNotes(null);
-                                              setEditedNotes('');
-                                            }}
-                                            style={{
-                                              padding: '4px 12px',
-                                              background: 'rgba(34, 197, 94, 0.2)',
-                                              border: '1px solid rgba(34, 197, 94, 0.3)',
-                                              borderRadius: '4px',
-                                              color: '#22c55e',
-                                              fontSize: '11px',
-                                              cursor: 'pointer',
-                                              fontWeight: 600
-                                            }}
-                                          >
-                                            💾 Save
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <div 
-                                        onClick={() => {
-                                          setEditingCustomerNotes({ routeId: savedRoute.id, customerId: customer.id });
-                                          setEditedNotes(customer.customerNotes || customer.notes || '');
-                                        }}
-                                        style={{ cursor: 'pointer' }}
-                                      >
-                                        <strong>📝 Notes:</strong> {customer.customerNotes || customer.notes || <span style={{ fontStyle: 'italic', opacity: 0.7 }}>Click to add notes...</span>}
-                                      </div>
-                                    )}
-                                  </div>
-                                  
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
-                                    {customer.panelCount && (
-                                      <span style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        background: 'rgba(251, 191, 36, 0.2)',
-                                        border: '1px solid rgba(251, 191, 36, 0.3)',
-                                        borderRadius: '4px',
-                                        color: '#fbbf24'
-                                      }}>
-                                        ☀️ {customer.panelCount} panels
-                                      </span>
-                                    )}
-                                    {(customer.isRecurring || customer.recurring) && (
-                                      <span style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        background: 'rgba(59, 130, 246, 0.2)',
-                                        border: '1px solid rgba(59, 130, 246, 0.3)',
-                                        borderRadius: '4px',
-                                        color: '#3b82f6'
-                                      }}>
-                                        🦖 Recurring
-                                      </span>
-                                    )}
-                                    {customer.existingJob && !(customer.isRecurring || customer.recurring) && (
-                                      <span style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        background: 'rgba(34, 197, 94, 0.2)',
-                                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                                        borderRadius: '4px',
-                                        color: '#22c55e'
-                                      }}>
-                                        🦕 Past
-                                      </span>
-                                    )}
-                                    {customer.lastServiceDate && (
-                                      <span style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        background: 'rgba(100, 116, 139, 0.2)',
-                                        border: '1px solid rgba(100, 116, 139, 0.3)',
-                                        borderRadius: '4px',
-                                        color: '#94a3b8'
-                                      }}>
-                                        Last: {new Date(customer.lastServiceDate).toLocaleDateString()}
-                                      </span>
-                                    )}
-                                    {customer.amountPaid && (
-                                      <span style={{
-                                        fontSize: '10px',
-                                        padding: '3px 8px',
-                                        background: 'rgba(34, 197, 94, 0.2)',
-                                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                                        borderRadius: '4px',
-                                        color: '#22c55e'
-                                      }}>
-                                        💵 ${customer.amountPaid}
-                                      </span>
-                                    )}
+                                  <div style={{ fontSize: '10px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                    {customer.address}
                                   </div>
                                 </div>
-                                {customer.distanceFromHome && (
-                                  <span className="distance-badge" style={{ flexShrink: 0 }}>
-                                    🏠 {(customer.distanceFromHome || 0).toFixed(1)} mi
-                                  </span>
+                                {timeSlot && (
+                                  <div style={{
+                                    padding: '2px 6px', fontSize: '9px', fontWeight: 700,
+                                    background: 'rgba(251, 191, 36, 0.2)', border: '1px solid rgba(251, 191, 36, 0.3)',
+                                    borderRadius: '4px', color: '#fbbf24', flexShrink: 0, whiteSpace: 'nowrap'
+                                  }}>{timeSlot}</div>
                                 )}
                               </div>
+                              {(customer.panelCount || customer.customerNotes || customer.notes) && (
+                                <div style={{ display: 'flex', gap: '4px', marginTop: '4px', marginLeft: '30px', flexWrap: 'wrap' }}>
+                                  {customer.panelCount && (
+                                    <span style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(251, 191, 36, 0.15)', borderRadius: '3px', color: '#fbbf24' }}>
+                                      ☀️ {customer.panelCount}
+                                    </span>
+                                  )}
+                                  {(customer.customerNotes || customer.notes) && (
+                                    <span style={{ fontSize: '9px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '150px' }}
+                                      title={customer.customerNotes || customer.notes}
+                                    >📝 {customer.customerNotes || customer.notes}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
-                    ))}
+                        );
+                    })}
                   </div>
                 )}
               </div>
