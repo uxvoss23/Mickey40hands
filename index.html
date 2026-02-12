@@ -2223,23 +2223,21 @@
           results = results.filter(c => (c.status || '').toLowerCase() === statusFilter);
         }
 
-        // Preferred Date filter (multi-select)
+        // Preferred Day filter (Mon, Tue, etc.)
         if (preferredDateFilter.length > 0) {
           results = results.filter(c => {
             if (!c.preferredDate) return false;
-            const prefDate = new Date(c.preferredDate);
-            return preferredDateFilter.some(filterDate => {
-              const fDate = new Date(filterDate);
-              return prefDate.toDateString() === fDate.toDateString();
-            });
+            const pref = (c.preferredDate || '').toLowerCase();
+            return preferredDateFilter.some(day => pref.includes(day.toLowerCase()));
           });
         }
 
-        // Preferred Time Window filter (multi-select)
+        // Preferred Time filter (AM/PM)
         if (preferredTimeFilter.length > 0) {
-          results = results.filter(c =>
-            preferredTimeFilter.includes(c.preferredTimeWindow)
-          );
+          results = results.filter(c => {
+            const tw = (c.preferredTimeWindow || '').toUpperCase();
+            return preferredTimeFilter.some(t => tw.includes(t));
+          });
         }
 
         // --- Active toggle filters ---
@@ -6665,6 +6663,56 @@ const createJob = async () => {
                           >
                             {showNeedScheduling ? '👁️ Hide' : '👁️‍🗨️ Show'} Unrouted
                           </button>
+
+                          {showNeedScheduling && (
+                            <>
+                              <div style={{ width: '1px', height: '14px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 1px' }} />
+                              <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, letterSpacing: '0.3px' }}>PREF:</span>
+                              {['Mon','Tue','Wed','Thu','Fri','Sat'].map(d => {
+                                const isOn = preferredDateFilter.includes(d);
+                                return (
+                                  <button key={d}
+                                    onClick={() => {
+                                      if (isOn) setPreferredDateFilter(prev => prev.filter(x => x !== d));
+                                      else setPreferredDateFilter(prev => [...prev, d]);
+                                    }}
+                                    style={{
+                                      padding: '1px 4px', fontSize: '9px', fontWeight: 700,
+                                      border: 'none', borderRadius: '4px', cursor: 'pointer',
+                                      background: isOn ? 'rgba(234, 179, 8, 0.3)' : 'transparent',
+                                      color: isOn ? '#fbbf24' : '#475569',
+                                      minWidth: '22px', lineHeight: '16px'
+                                    }}
+                                  >{d.charAt(0)}</button>
+                                );
+                              })}
+                              <div style={{ width: '1px', height: '14px', background: 'rgba(100, 116, 139, 0.2)', margin: '0 1px' }} />
+                              {['AM','PM'].map(t => {
+                                const isOn = preferredTimeFilter.includes(t);
+                                return (
+                                  <button key={t}
+                                    onClick={() => {
+                                      if (isOn) setPreferredTimeFilter(prev => prev.filter(x => x !== t));
+                                      else setPreferredTimeFilter(prev => [...prev, t]);
+                                    }}
+                                    style={{
+                                      padding: '1px 4px', fontSize: '9px', fontWeight: 700,
+                                      border: 'none', borderRadius: '4px', cursor: 'pointer',
+                                      background: isOn ? 'rgba(96, 165, 250, 0.3)' : 'transparent',
+                                      color: isOn ? '#60a5fa' : '#475569',
+                                      minWidth: '22px', lineHeight: '16px'
+                                    }}
+                                  >{t}</button>
+                                );
+                              })}
+                              {(preferredDateFilter.length > 0 || preferredTimeFilter.length > 0) && (
+                                <button
+                                  onClick={() => { setPreferredDateFilter([]); setPreferredTimeFilter([]); }}
+                                  style={{ padding: '0 3px', fontSize: '9px', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 700, lineHeight: '16px' }}
+                                >✕</button>
+                              )}
+                            </>
+                          )}
 
                         </>
                       )}
