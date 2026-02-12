@@ -507,7 +507,7 @@
       const [showDayView, setShowDayView] = useState(false);
       const [dayViewDate, setDayViewDate] = useState(null);
       // Scheduled map view: show routes on map by week or month
-      const [scheduledMapView, setScheduledMapView] = useState('week'); // 'week' or 'month'
+      const [scheduledMapView, setScheduledMapView] = useState('week'); // 'week', 'next', 'both', or 'month'
       const [scheduledViewWeekStart, setScheduledViewWeekStart] = useState(() => {
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
@@ -2179,6 +2179,19 @@
             rangeStart.setHours(0, 0, 0, 0);
             rangeEnd = new Date(rangeStart);
             rangeEnd.setDate(rangeEnd.getDate() + 6);
+            rangeEnd.setHours(23, 59, 59, 999);
+          } else if (scheduledMapView === 'next') {
+            rangeStart = new Date(scheduledViewWeekStart);
+            rangeStart.setDate(rangeStart.getDate() + 7);
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd = new Date(rangeStart);
+            rangeEnd.setDate(rangeEnd.getDate() + 6);
+            rangeEnd.setHours(23, 59, 59, 999);
+          } else if (scheduledMapView === 'both') {
+            rangeStart = new Date(scheduledViewWeekStart);
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd = new Date(rangeStart);
+            rangeEnd.setDate(rangeEnd.getDate() + 13);
             rangeEnd.setHours(23, 59, 59, 999);
           } else {
             rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
@@ -6643,26 +6656,45 @@ const createJob = async () => {
                       {statusFilter === 'scheduled' && (
                         <>
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
-                          <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>View:</span>
-                          {['week', 'month'].map(view => (
-                            <button
-                              key={view}
-                              onClick={() => setScheduledMapView(view)}
-                              style={{
-                                padding: '3px 8px',
-                                fontSize: '11px',
-                                fontWeight: 600,
-                                border: 'none',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                background: scheduledMapView === view ? 'rgba(234, 179, 8, 0.25)' : 'rgba(30, 41, 59, 0.4)',
-                                color: scheduledMapView === view ? '#fbbf24' : '#94a3b8',
-                                boxShadow: scheduledMapView === view ? '0 0 0 1px rgba(234, 179, 8, 0.5)' : 'none'
-                              }}
-                            >
-                              {view === 'week' ? 'This Week' : 'This Month'}
-                            </button>
-                          ))}
+                          {(() => {
+                            const viewBtns = [
+                              { key: 'week', label: 'This Week' },
+                              { key: 'next', label: 'Next Week' },
+                              { key: 'month', label: 'This Month' }
+                            ];
+                            const handleViewClick = (key) => {
+                              if (key === 'month') {
+                                setScheduledMapView('month');
+                              } else if (key === 'week') {
+                                if (scheduledMapView === 'next') setScheduledMapView('both');
+                                else if (scheduledMapView === 'both') setScheduledMapView('next');
+                                else setScheduledMapView('week');
+                              } else if (key === 'next') {
+                                if (scheduledMapView === 'week') setScheduledMapView('both');
+                                else if (scheduledMapView === 'both') setScheduledMapView('week');
+                                else setScheduledMapView('next');
+                              }
+                            };
+                            const isActive = (key) => {
+                              if (key === 'week') return scheduledMapView === 'week' || scheduledMapView === 'both';
+                              if (key === 'next') return scheduledMapView === 'next' || scheduledMapView === 'both';
+                              if (key === 'month') return scheduledMapView === 'month';
+                              return false;
+                            };
+                            return viewBtns.map(v => (
+                              <button
+                                key={v.key}
+                                onClick={() => handleViewClick(v.key)}
+                                style={{
+                                  padding: '3px 8px', fontSize: '11px', fontWeight: 600,
+                                  border: 'none', borderRadius: '6px', cursor: 'pointer',
+                                  background: isActive(v.key) ? 'rgba(234, 179, 8, 0.25)' : 'rgba(30, 41, 59, 0.4)',
+                                  color: isActive(v.key) ? '#fbbf24' : '#94a3b8',
+                                  boxShadow: isActive(v.key) ? '0 0 0 1px rgba(234, 179, 8, 0.5)' : 'none'
+                                }}
+                              >{v.label}</button>
+                            ));
+                          })()}
 
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
 
@@ -6950,82 +6982,101 @@ const createJob = async () => {
                         padding: '6px 12px',
                         flexWrap: 'wrap'
                       }}>
-                        <span style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                          {scheduledMapView === 'week' ? 'Week:' : 'Month:'}
-                        </span>
-                        <button
-                          onClick={() => {
-                            const d = new Date(scheduledViewWeekStart);
-                            if (scheduledMapView === 'week') d.setDate(d.getDate() - 7);
-                            else d.setMonth(d.getMonth() - 1);
-                            setScheduledViewWeekStart(d);
-                          }}
-                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
-                        >◀</button>
+                        {(() => {
+                          const isWeekish = scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both';
+                          const navLabel = scheduledMapView === 'month' ? 'Month:' : scheduledMapView === 'both' ? '2 Weeks:' : scheduledMapView === 'next' ? 'Next Week:' : 'Week:';
+                          return (
+                            <>
+                              <span style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 600, whiteSpace: 'nowrap' }}>{navLabel}</span>
+                              <button
+                                onClick={() => {
+                                  const d = new Date(scheduledViewWeekStart);
+                                  if (isWeekish) d.setDate(d.getDate() - 7);
+                                  else d.setMonth(d.getMonth() - 1);
+                                  setScheduledViewWeekStart(d);
+                                }}
+                                style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
+                              >◀</button>
+                            </>
+                          );
+                        })()}
 
-                        {scheduledMapView === 'week' ? (
-                          // Show days of the week with color-coded dots - clickable to highlight route
-                          getWeekDays(scheduledViewWeekStart).map((date, index) => {
-                            const dayColor = DAY_COLORS[date.getDay()];
-                            const isToday = date.toDateString() === new Date().toDateString();
-                            const isFocused = focusedDay && date.toDateString() === focusedDay.toDateString();
-                            const isSelected = date.toDateString() === selectedDate.toDateString();
-                            const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                            const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
-                            return (
-                              <div key={index} onClick={() => {
-                                const clickedDate = new Date(date);
-                                if (focusedDay && focusedDay.toDateString() === clickedDate.toDateString()) {
-                                  setFocusedDay(null);
-                                } else {
-                                  setFocusedDay(clickedDate);
-                                  setSelectedDate(clickedDate);
-                                }
-                              }} style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'center',
-                                padding: '3px 6px',
-                                borderRadius: '6px',
-                                cursor: 'pointer',
-                                background: isFocused ? 'rgba(234, 179, 8, 0.35)' : isToday ? 'rgba(59, 130, 246, 0.15)' : focusedDay ? 'rgba(30, 41, 59, 0.2)' : 'rgba(30, 41, 59, 0.4)',
-                                border: `1px solid ${isFocused ? '#fbbf24' : jobCount > 0 && !focusedDay ? dayColor.color + '55' : 'transparent'}`,
-                                minWidth: '36px',
-                                lineHeight: 1.2,
-                                transition: 'all 0.15s ease'
-                              }}>
-                                <span style={{ fontSize: '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{dayColor.label}</span>
-                                <span style={{ fontSize: '11px', color: isFocused ? '#fbbf24' : '#f1f5f9', fontWeight: 600, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{date.getDate()}</span>
-                                {jobCount > 0 && (
-                                  <span style={{ fontSize: '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{jobCount} jobs</span>
-                                )}
-                              </div>
-                            );
-                          })
-                        ) : (
-                          // Month view: show month name
+                        {scheduledMapView === 'month' ? (
                           <span style={{ fontSize: '13px', color: '#f1f5f9', fontWeight: 600 }}>
                             {scheduledViewWeekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                           </span>
+                        ) : (
+                          (() => {
+                            const weeks = scheduledMapView === 'both' ? 2 : 1;
+                            const startOffset = scheduledMapView === 'next' ? 7 : 0;
+                            const days = [];
+                            for (let w = 0; w < weeks; w++) {
+                              const weekStart = new Date(scheduledViewWeekStart);
+                              weekStart.setDate(weekStart.getDate() + startOffset + (w * 7));
+                              getWeekDays(weekStart).forEach(date => days.push(date));
+                            }
+                            return days.map((date, index) => {
+                              const dayColor = DAY_COLORS[date.getDay()];
+                              const isToday = date.toDateString() === new Date().toDateString();
+                              const isFocused = focusedDay && date.toDateString() === focusedDay.toDateString();
+                              const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                              const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
+                              const isWeekBoundary = index > 0 && index % 7 === 0;
+                              return (
+                                <React.Fragment key={index}>
+                                  {isWeekBoundary && <div style={{ width: '2px', height: '28px', background: 'rgba(234, 179, 8, 0.3)', margin: '0 2px', borderRadius: '1px' }} />}
+                                  <div onClick={() => {
+                                    const clickedDate = new Date(date);
+                                    if (focusedDay && focusedDay.toDateString() === clickedDate.toDateString()) {
+                                      setFocusedDay(null);
+                                    } else {
+                                      setFocusedDay(clickedDate);
+                                      setSelectedDate(clickedDate);
+                                    }
+                                  }} style={{
+                                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                    padding: scheduledMapView === 'both' ? '2px 4px' : '3px 6px',
+                                    borderRadius: '6px', cursor: 'pointer',
+                                    background: isFocused ? 'rgba(234, 179, 8, 0.35)' : isToday ? 'rgba(59, 130, 246, 0.15)' : focusedDay ? 'rgba(30, 41, 59, 0.2)' : 'rgba(30, 41, 59, 0.4)',
+                                    border: `1px solid ${isFocused ? '#fbbf24' : jobCount > 0 && !focusedDay ? dayColor.color + '55' : 'transparent'}`,
+                                    minWidth: scheduledMapView === 'both' ? '28px' : '36px',
+                                    lineHeight: 1.2, transition: 'all 0.15s ease'
+                                  }}>
+                                    <span style={{ fontSize: scheduledMapView === 'both' ? '7px' : '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{dayColor.label}</span>
+                                    <span style={{ fontSize: scheduledMapView === 'both' ? '9px' : '11px', color: isFocused ? '#fbbf24' : '#f1f5f9', fontWeight: 600, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{date.getDate()}</span>
+                                    {jobCount > 0 && (
+                                      <span style={{ fontSize: scheduledMapView === 'both' ? '7px' : '8px', color: isFocused ? '#fbbf24' : dayColor.color, fontWeight: 700, opacity: focusedDay && !isFocused ? 0.5 : 1 }}>{jobCount}</span>
+                                    )}
+                                  </div>
+                                </React.Fragment>
+                              );
+                            });
+                          })()
                         )}
 
-                        <button
-                          onClick={() => {
-                            const d = new Date(scheduledViewWeekStart);
-                            if (scheduledMapView === 'week') d.setDate(d.getDate() + 7);
-                            else d.setMonth(d.getMonth() + 1);
-                            setScheduledViewWeekStart(d);
-                          }}
-                          style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
-                        >▶</button>
-
-                        <button
-                          onClick={() => {
-                            const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0);
-                            setScheduledViewWeekStart(d);
-                          }}
-                          style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 600 }}
-                        >Today</button>
+                        {(() => {
+                          const isWeekish = scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both';
+                          return (
+                            <>
+                              <button
+                                onClick={() => {
+                                  const d = new Date(scheduledViewWeekStart);
+                                  if (isWeekish) d.setDate(d.getDate() + 7);
+                                  else d.setMonth(d.getMonth() + 1);
+                                  setScheduledViewWeekStart(d);
+                                }}
+                                style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
+                              >▶</button>
+                              <button
+                                onClick={() => {
+                                  const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0);
+                                  setScheduledViewWeekStart(d);
+                                }}
+                                style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 600 }}
+                              >Today</button>
+                            </>
+                          );
+                        })()}
                         {focusedDay && (
                           <button
                             onClick={() => setFocusedDay(null)}
@@ -7069,9 +7120,13 @@ const createJob = async () => {
                     <div style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', marginBottom: '2px' }}>Route Days</div>
                     {(() => {
                       let rangeStart, rangeEnd;
-                      if (scheduledMapView === 'week') {
-                        rangeStart = new Date(scheduledViewWeekStart); rangeStart.setHours(0,0,0,0);
-                        rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + 6); rangeEnd.setHours(23,59,59,999);
+                      if (scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both') {
+                        rangeStart = new Date(scheduledViewWeekStart);
+                        if (scheduledMapView === 'next') rangeStart.setDate(rangeStart.getDate() + 7);
+                        rangeStart.setHours(0,0,0,0);
+                        rangeEnd = new Date(rangeStart);
+                        rangeEnd.setDate(rangeEnd.getDate() + (scheduledMapView === 'both' ? 13 : 6));
+                        rangeEnd.setHours(23,59,59,999);
                       } else {
                         rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
                         rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23,59,59,999);
