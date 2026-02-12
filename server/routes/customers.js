@@ -13,7 +13,10 @@ router.get('/', async (req, res) => {
       lat_min, lat_max, lng_min, lng_max
     } = req.query;
 
-    let query = 'SELECT * FROM customers WHERE 1=1';
+    let query = `SELECT c.*, 
+      COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled'))), 0)::int AS active_job_count,
+      COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count
+    FROM customers c WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
 
