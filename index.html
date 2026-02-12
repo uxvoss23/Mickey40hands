@@ -10244,6 +10244,7 @@ const createJob = async () => {
                               </div>
                             </th>
                           ))}
+                          <th style={{ whiteSpace: 'nowrap', minWidth: '70px', textAlign: 'center' }}>Actions</th>
                         </tr>
 
                       </thead>
@@ -10370,7 +10371,7 @@ const createJob = async () => {
                                         return '1px solid rgba(100, 116, 139, 0.3)';
                                       })()
                                     }}>
-                                      {customer.status || 'Unscheduled'}
+                                      {customer.status || 'None'}
                                     </span>
                                   ) : col.key === 'isRecurring' ? (
                                     <span style={{
@@ -10392,6 +10393,30 @@ const createJob = async () => {
                                 </td>
                               );
                             })}
+                            <td style={{ padding: '4px 8px', textAlign: 'center' }}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: String(customer.panelCount || customer.totalPanels || '0') });
+                                  setQuickAddJobPopup({
+                                    customerId: customer.id,
+                                    customerName: customer.name || 'Customer',
+                                    lat: customer.lat, lng: customer.lng
+                                  });
+                                }}
+                                style={{
+                                  padding: '4px 10px', borderRadius: '4px',
+                                  background: 'rgba(34, 197, 94, 0.1)',
+                                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                                  color: '#22c55e', fontSize: '11px',
+                                  fontWeight: 600, cursor: 'pointer',
+                                  fontFamily: 'inherit', whiteSpace: 'nowrap'
+                                }}
+                                title="Add Job"
+                              >
+                                + Job
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
