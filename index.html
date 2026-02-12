@@ -2384,12 +2384,25 @@
             return c;
           }));
           propagateCustomerUpdate(customer.id, unscheduleUpdates);
+
+          const savedRoutesForDay = savedRoutes.filter(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === dateKey;
+          });
+          const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+          const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+          if (savedRouteForDay) {
+            setSavedRoutes(prev => prev.map(r => {
+              if (r.id === savedRouteForDay.id) {
+                return { ...r, customers: (r.customers || []).filter(c => c.id !== customer.id) };
+              }
+              return r;
+            }));
+          }
           setSuggestedCustomers([]);
         } else {
-          // Auto-schedule with 1 hour 15 minute spacing
           const allSlots = generateTimeSlots();
 
-          // Get all jobs for THIS SPECIFIC DAY sorted by time
           const jobsForDay = customers
             .filter(c => {
               if (!c.scheduledDate || !c.scheduledTime) return false;
@@ -2405,18 +2418,15 @@
           let nextSlot = null;
 
           if (jobsForDay.length === 0) {
-            // First job for THIS DAY - start at 8:00 AM
             nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
           } else {
-            // Find last scheduled job for THIS DAY and add 1 hour 15 minutes (75 minutes)
             const lastJob = jobsForDay[jobsForDay.length - 1];
             const [lastH, lastM] = lastJob.scheduledTime.split(':').map(Number);
             const lastMinutes = lastH * 60 + lastM;
-            const nextMinutes = lastMinutes + 75; // 1 hour 15 minutes
+            const nextMinutes = lastMinutes + 75;
             const nextH = Math.floor(nextMinutes / 60);
             const nextM = nextMinutes % 60;
 
-            // Make sure it's not past 8pm
             if (nextH < 20) {
               nextSlot = {
                 time: `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`,
@@ -2426,20 +2436,41 @@
             }
           }
 
-          // Schedule customer to the next slot
           if (nextSlot) {
             scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
           }
 
-          // Add to THIS DAY'S route (prevent duplicates)
           setRoutesByDay(prev => {
             const existing = prev[dateKey] || [];
             if (existing.some(r => r.id === customer.id)) return prev;
             return { ...prev, [dateKey]: [...existing, customer] };
           });
 
-          // Switch sidebar out of saved view so newly added stop shows instantly
-          setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+          const savedRoutesForDay = savedRoutes.filter(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === dateKey;
+          });
+          const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+          const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+
+          if (savedRouteForDay) {
+            const scheduledCustomer = {
+              ...customer,
+              scheduledDate: selectedDate.toISOString().split('T')[0],
+              scheduledTime: nextSlot ? nextSlot.time : '08:00',
+              status: 'scheduled',
+              routeConfirmed: true,
+              distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, customer.lat, customer.lng) : null
+            };
+            setSavedRoutes(prev => prev.map(r => {
+              if (r.id === savedRouteForDay.id) {
+                const alreadyInRoute = (r.customers || []).some(c => c.id === customer.id);
+                if (alreadyInRoute) return r;
+                return { ...r, customers: [...(r.customers || []), scheduledCustomer] };
+              }
+              return r;
+            }));
+          }
           
           const availableCustomers = filteredCustomers.filter(c => 
             c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
