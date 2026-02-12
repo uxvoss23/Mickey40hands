@@ -92,6 +92,10 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-12: Two-step customer creation: save customer first, then optional Add Job popup with 7 service types
 - 2026-02-12: Service types: Residential/Commercial Panel Cleaning, Critter Guard Install/Repair, General Repair, Pressure Washing, Site Visit
 - 2026-02-12: Jobs save to database via POST /api/jobs with customer_id, job_description, status, notes
+- 2026-02-12: Click-to-edit jobs from customer profile: Edit button on job history cards opens pre-filled form
+- 2026-02-12: Edit mode preserves existing job status; only new jobs set status to 'unscheduled'
+- 2026-02-12: Job history cards show preferred days, time, technician, and recurring badges
+- 2026-02-12: After new job creation, auto-navigates to map view zoomed to customer location
 - 2026-02-12: Redesigned Add Job form with customer contact info auto-populated at top
 - 2026-02-12: Service-specific inputs: Residential Cleaning shows panels, price per panel ($9/$8/$7/$6), auto-calculated total price
 - 2026-02-12: Total price auto-calculates (panels x price per panel) with manual override option and "Reset to auto" link

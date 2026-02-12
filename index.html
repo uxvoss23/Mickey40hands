@@ -672,11 +672,42 @@
           serviceType: '', notes: '', panels: panels,
           pricePerPanel: '9', totalPrice: String((parseInt(panels) || 0) * 9),
           priceOverridden: false, preferredDays: [], preferredTime: '', technician: 'Chance T',
-          isRecurring: false, recurrenceInterval: '', nextServiceDate: ''
+          isRecurring: false, recurrenceInterval: '', nextServiceDate: '',
+          editingJobId: null
         });
         setQuickAddJobPopup({
           customerId: customer.id,
           customerName: customer.name || 'Customer',
+          customerPhone: customer.phone || customer.phoneNumber || '',
+          customerEmail: customer.email || '',
+          customerAddress: customer.address || '',
+          lat: customer.lat, lng: customer.lng
+        });
+      };
+
+      const editJobFromHistory = (job, customer) => {
+        const days = (job.preferredDays || '').split(',').filter(Boolean);
+        const panels = String(job.panelCount || customer.panelCount || customer.totalPanels || '0');
+        const ppp = String(job.pricePerPanel || 9);
+        const price = String(job.price || (parseInt(panels) || 0) * (parseFloat(ppp) || 9));
+        setQuickJobData({
+          serviceType: job.jobDescription || '',
+          notes: job.notes || '',
+          panels: panels,
+          pricePerPanel: ppp,
+          totalPrice: price,
+          priceOverridden: false,
+          preferredDays: days,
+          preferredTime: job.preferredTime || '',
+          technician: job.technician || 'Chance T',
+          isRecurring: job.isRecurring || false,
+          recurrenceInterval: job.recurrenceInterval || '',
+          nextServiceDate: job.nextServiceDate || '',
+          editingJobId: job.jobId || null
+        });
+        setQuickAddJobPopup({
+          customerId: customer.id,
+          customerName: customer.name || customer.full_name || 'Customer',
           customerPhone: customer.phone || customer.phoneNumber || '',
           customerEmail: customer.email || '',
           customerAddress: customer.address || '',
@@ -1085,14 +1116,23 @@
             const data = await apiFetch('/jobs?customer_id=' + profileCustomer.id);
             if (data && data.jobs && data.jobs.length > 0) {
               const dbJobs = data.jobs.map(j => ({
+                jobId: j.id,
                 jobDescription: j.job_description || '',
                 status: j.status || '',
-                date: j.completed_date || '',
+                date: j.completed_date || j.created_at || '',
                 amount: parseFloat(j.amount) || 0,
                 tip: parseFloat(j.tip) || 0,
                 panelCount: j.panel_count || 0,
                 isRecurring: j.is_recurring || false,
-                notes: j.notes || ''
+                notes: j.notes || '',
+                price: parseFloat(j.price) || 0,
+                pricePerPanel: parseFloat(j.price_per_panel) || 0,
+                preferredDays: j.preferred_days || '',
+                preferredTime: j.preferred_time || '',
+                technician: j.technician || '',
+                recurrenceInterval: j.recurrence_interval || '',
+                nextServiceDate: j.next_service_date || '',
+                scheduledDate: j.scheduled_date || ''
               }));
               const existingHistory = profileCustomer.serviceHistory || [];
               const combined = [...dbJobs];
@@ -9170,19 +9210,55 @@ const createJob = async () => {
                                     📅 {job.date ? new Date(job.date).toLocaleDateString() : 'Unknown date'}
                                   </div>
                                 </div>
-                                <div style={{ textAlign: 'right' }}>
-                                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#22c55e' }}>
-                                    ${job.amount || 0}
-                                  </div>
-                                  {job.tip > 0 && (
-                                    <div style={{ fontSize: '12px', color: '#fbbf24' }}>
-                                      + ${job.tip} tip
+                                <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
+                                  <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#22c55e' }}>
+                                      ${job.price || job.amount || 0}
                                     </div>
+                                    {job.tip > 0 && (
+                                      <div style={{ fontSize: '12px', color: '#fbbf24' }}>
+                                        + ${job.tip} tip
+                                      </div>
+                                    )}
+                                  </div>
+                                  {job.jobId && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); editJobFromHistory(job, profileCustomer); }}
+                                      style={{
+                                        padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
+                                        background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)',
+                                        color: '#a78bfa', cursor: 'pointer'
+                                      }}
+                                    >Edit</button>
                                   )}
                                 </div>
                               </div>
+                              {(job.preferredDays || job.preferredTime || job.technician || job.isRecurring) && (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '8px' }}>
+                                  {job.preferredDays && (
+                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(34,197,94,0.15)', color: '#4ade80', fontWeight: 600 }}>
+                                      {job.preferredDays}
+                                    </span>
+                                  )}
+                                  {job.preferredTime && (
+                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(59,130,246,0.15)', color: '#60a5fa', fontWeight: 600 }}>
+                                      {job.preferredTime}
+                                    </span>
+                                  )}
+                                  {job.technician && (
+                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(148,163,184,0.15)', color: '#94a3b8', fontWeight: 600 }}>
+                                      {job.technician}
+                                    </span>
+                                  )}
+                                  {job.isRecurring && (
+                                    <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(251,191,36,0.15)', color: '#fbbf24', fontWeight: 600 }}>
+                                      {job.recurrenceInterval === '6months' ? 'Every 6 Mo' : 'Yearly'}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                               {job.notes && (
-                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
                                   📝 {job.notes}
                                 </div>
                               )}
@@ -10790,7 +10866,7 @@ const createJob = async () => {
                   }} onClick={(e) => e.stopPropagation()}>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
-                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>Add Job</h3>
+                      <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>{quickJobData.editingJobId ? 'Edit Job' : 'Add Job'}</h3>
                       <button onClick={() => setQuickAddJobPopup(null)} style={{
                         background: 'none', border: 'none', color: '#64748b', fontSize: '20px', cursor: 'pointer', padding: '4px'
                       }}>&times;</button>
@@ -11050,54 +11126,84 @@ const createJob = async () => {
                             if (isResidential) {
                               if (quickJobData.preferredDays.length > 0) noteParts.push('Preferred days: ' + quickJobData.preferredDays.join(', '));
                               if (quickJobData.preferredTime) noteParts.push('Preferred time: ' + quickJobData.preferredTime);
-                              if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
-                            } else {
-                              if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
                             }
+                            if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
                             if (quickJobData.notes) noteParts.push(quickJobData.notes);
                             const combinedNotes = noteParts.join(' | ');
 
-                            await apiFetch('/jobs', {
-                              method: 'POST',
-                              body: JSON.stringify({
-                                customer_id: quickAddJobPopup.customerId,
-                                job_description: quickJobData.serviceType,
-                                status: 'unscheduled',
-                                notes: combinedNotes,
-                                panel_count: parseInt(quickJobData.panels) || 0,
-                                price: parseFloat(quickJobData.totalPrice) || 0,
-                                price_per_panel: parseFloat(quickJobData.pricePerPanel) || 0,
-                                preferred_days: quickJobData.preferredDays.join(','),
-                                preferred_time: quickJobData.preferredTime,
-                                technician: quickJobData.technician,
-                                is_recurring: quickJobData.isRecurring,
-                                recurrence_interval: quickJobData.recurrenceInterval,
-                                next_service_date: quickJobData.nextServiceDate
-                              })
-                            });
-                            const customerPatch = {
-                              status: 'unscheduled',
+                            const isEditing = !!quickJobData.editingJobId;
+
+                            const jobPayload = {
+                              customer_id: quickAddJobPopup.customerId,
                               job_description: quickJobData.serviceType,
-                              is_recurring: quickJobData.isRecurring
+                              notes: combinedNotes,
+                              panel_count: parseInt(quickJobData.panels) || 0,
+                              price: parseFloat(quickJobData.totalPrice) || 0,
+                              price_per_panel: parseFloat(quickJobData.pricePerPanel) || 0,
+                              preferred_days: quickJobData.preferredDays.join(','),
+                              preferred_time: quickJobData.preferredTime,
+                              technician: quickJobData.technician,
+                              is_recurring: quickJobData.isRecurring,
+                              recurrence_interval: quickJobData.recurrenceInterval,
+                              next_service_date: quickJobData.nextServiceDate
                             };
-                            if (quickJobData.nextServiceDate) {
-                              customerPatch.next_service_date = quickJobData.nextServiceDate;
+
+                            if (!isEditing) {
+                              jobPayload.status = 'unscheduled';
                             }
-                            await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
-                              method: 'PATCH',
-                              body: JSON.stringify(customerPatch)
-                            });
+
+                            if (isEditing) {
+                              await apiFetch(`/jobs/${quickJobData.editingJobId}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify(jobPayload)
+                              });
+                            } else {
+                              await apiFetch('/jobs', {
+                                method: 'POST',
+                                body: JSON.stringify(jobPayload)
+                              });
+                              const customerPatch = {
+                                status: 'unscheduled',
+                                job_description: quickJobData.serviceType,
+                                is_recurring: quickJobData.isRecurring
+                              };
+                              if (quickJobData.nextServiceDate) {
+                                customerPatch.next_service_date = quickJobData.nextServiceDate;
+                              }
+                              await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
+                                method: 'PATCH',
+                                body: JSON.stringify(customerPatch)
+                              });
+                            }
+
+                            const custLat = quickAddJobPopup.lat;
+                            const custLng = quickAddJobPopup.lng;
+                            const prefDays = quickJobData.preferredDays;
+                            const prefTime = quickJobData.preferredTime;
+
                             await loadFromDatabase();
                             setQuickAddJobPopup(null);
                             setQuickJobData({
                               serviceType: '', notes: '', panels: '0',
                               pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
                               preferredDays: [], preferredTime: '', technician: 'Chance T',
-                              isRecurring: false, recurrenceInterval: '', nextServiceDate: ''
+                              isRecurring: false, recurrenceInterval: '', nextServiceDate: '',
+                              editingJobId: null
                             });
+
+                            if (!isEditing && custLat && custLng) {
+                              setCurrentView('map');
+                              setStatusFilter('all');
+                              setProfileCustomer(null);
+                              setTimeout(() => {
+                                if (mapInstanceRef.current) {
+                                  mapInstanceRef.current.setView([custLat, custLng], 14);
+                                }
+                              }, 300);
+                            }
                           } catch (err) {
-                            console.error('Failed to create job:', err);
-                            alert('Failed to create job: ' + err.message);
+                            console.error('Failed to save job:', err);
+                            alert('Failed to save job: ' + err.message);
                           }
                         }}
                         style={{
@@ -11111,7 +11217,7 @@ const createJob = async () => {
                           cursor: quickJobData.serviceType ? 'pointer' : 'not-allowed'
                         }}
                       >
-                        Submit Job
+                        {quickJobData.editingJobId ? 'Save Changes' : 'Submit Job'}
                       </button>
                     </div>
                   </div>
