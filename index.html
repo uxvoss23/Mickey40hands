@@ -532,12 +532,9 @@
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
       const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
-      const [showRouteOverlay, setShowRouteOverlay] = useState(false);
-      const [routeOverlayView, setRouteOverlayView] = useState('week'); // 'week' or 'month'
-      const [routeOverlayWeekStart, setRouteOverlayWeekStart] = useState(() => {
-        const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
-      });
-      const [addToRouteCustomer, setAddToRouteCustomer] = useState(null); // Customer being assigned to a route
+      const [addToRouteCustomer, setAddToRouteCustomer] = useState(null); // Legacy - kept for compatibility
+      const [insertIntoRouteCustomer, setInsertIntoRouteCustomer] = useState(null); // Customer being inserted into a route at a position
+      const [insertPosition, setInsertPosition] = useState(''); // Position number for route insertion
       const routeOverlayLinesRef = useRef([]);
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
@@ -2138,80 +2135,85 @@
         }
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter]);
 
-      // Route Overlay - draw saved route lines when in unscheduled view with overlay on
+      // Route Overlay - show selected day's saved route when in unscheduled view
       useEffect(() => {
-        // Clear old overlay lines
         routeOverlayLinesRef.current.forEach(line => {
           if (line._map) line.remove();
         });
         routeOverlayLinesRef.current = [];
 
-        if (!showRouteOverlay || !mapInstanceRef.current || statusFilter !== 'unscheduled') return;
+        if (!mapInstanceRef.current || statusFilter !== 'unscheduled') return;
 
-        // Compute date range
-        let rangeStart, rangeEnd;
-        if (routeOverlayView === 'week') {
-          rangeStart = new Date(routeOverlayWeekStart);
-          rangeStart.setHours(0,0,0,0);
-          rangeEnd = new Date(rangeStart);
-          rangeEnd.setDate(rangeEnd.getDate() + 6);
-          rangeEnd.setHours(23,59,59,999);
-        } else {
-          rangeStart = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth(), 1);
-          rangeEnd = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth() + 1, 0, 23,59,59,999);
+        const dateKey = selectedDate.toDateString();
+        const routeForDay = savedRoutes.find(sr => {
+          const rDate = new Date(sr.scheduledDate);
+          return rDate.toDateString() === dateKey && !sr.sentToTech;
+        });
+
+        if (!routeForDay || !routeForDay.customers || routeForDay.customers.length === 0) return;
+
+        const dayColor = DAY_COLORS[new Date(routeForDay.scheduledDate).getDay()];
+        const jobsWithCoords = routeForDay.customers
+          .filter(c => c.lat && c.lng)
+          .sort((a, b) => {
+            if (!a.scheduledTime || !b.scheduledTime) return 0;
+            const [aH, aM] = a.scheduledTime.split(':').map(Number);
+            const [bH, bM] = b.scheduledTime.split(':').map(Number);
+            return (aH * 60 + aM) - (bH * 60 + bM);
+          });
+
+        if (jobsWithCoords.length < 1) return;
+
+        if (homeBase && jobsWithCoords.length > 0) {
+          const homeLine = L.polyline(
+            [[homeBase.lat, homeBase.lng], [jobsWithCoords[0].lat, jobsWithCoords[0].lng]],
+            { color: dayColor.color, weight: 2, opacity: 0.5, dashArray: '5, 8' }
+          ).addTo(mapInstanceRef.current);
+          routeOverlayLinesRef.current.push(homeLine);
         }
 
-        // Draw lines for each saved route in the range
-        savedRoutes.forEach(sr => {
-          if (sr.sentToTech) return;
-          if (editingSavedRouteId && sr.id === editingSavedRouteId) return;
-          const routeDate = new Date(sr.scheduledDate);
-          if (routeDate < rangeStart || routeDate > rangeEnd) return;
-          const dayColor = DAY_COLORS[routeDate.getDay()];
+        for (let i = 0; i < jobsWithCoords.length - 1; i++) {
+          const line = L.polyline(
+            [[jobsWithCoords[i].lat, jobsWithCoords[i].lng], [jobsWithCoords[i + 1].lat, jobsWithCoords[i + 1].lng]],
+            { color: dayColor.color, weight: 3, opacity: 0.7 }
+          ).addTo(mapInstanceRef.current);
+          routeOverlayLinesRef.current.push(line);
+        }
 
-          const jobsWithCoords = sr.customers
-            .filter(c => c.lat && c.lng)
-            .sort((a, b) => {
-              if (!a.scheduledTime || !b.scheduledTime) return 0;
-              const [aH, aM] = a.scheduledTime.split(':').map(Number);
-              const [bH, bM] = b.scheduledTime.split(':').map(Number);
-              return (aH * 60 + aM) - (bH * 60 + bM);
-            });
-
-          if (jobsWithCoords.length < 1) return;
-
-          // Draw route line
-          if (homeBase && jobsWithCoords.length > 0) {
-            const homeLine = L.polyline(
-              [[homeBase.lat, homeBase.lng], [jobsWithCoords[0].lat, jobsWithCoords[0].lng]],
-              { color: dayColor.color, weight: 2, opacity: 0.5, dashArray: '5, 8' }
-            ).addTo(mapInstanceRef.current);
-            routeOverlayLinesRef.current.push(homeLine);
-          }
-
-          for (let i = 0; i < jobsWithCoords.length - 1; i++) {
-            const line = L.polyline(
-              [[jobsWithCoords[i].lat, jobsWithCoords[i].lng], [jobsWithCoords[i + 1].lat, jobsWithCoords[i + 1].lng]],
-              { color: dayColor.color, weight: 3, opacity: 0.7 }
-            ).addTo(mapInstanceRef.current);
-            routeOverlayLinesRef.current.push(line);
-          }
-
-          // Add route label marker at midpoint
-          if (jobsWithCoords.length > 0) {
-            const midJob = jobsWithCoords[Math.floor(jobsWithCoords.length / 2)];
-            const label = L.marker([midJob.lat, midJob.lng], {
-              icon: L.divIcon({
-                className: '',
-                html: `<div style="background:${dayColor.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${sr.name} (${jobsWithCoords.length})</div>`,
-                iconSize: [0, 0],
-                iconAnchor: [0, -15]
-              })
-            }).addTo(mapInstanceRef.current);
-            routeOverlayLinesRef.current.push(label);
-          }
+        // Add numbered markers for each stop
+        jobsWithCoords.forEach((job, idx) => {
+          const num = idx + 1;
+          const numMarker = L.marker([job.lat, job.lng], {
+            icon: L.divIcon({
+              className: '',
+              html: `<div style="background:${dayColor.color};color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.8);pointer-events:none;">${num}</div>`,
+              iconSize: [22, 22],
+              iconAnchor: [11, 11]
+            }),
+            interactive: false
+          }).addTo(mapInstanceRef.current);
+          routeOverlayLinesRef.current.push(numMarker);
         });
-      }, [showRouteOverlay, routeOverlayView, routeOverlayWeekStart, savedRoutes, statusFilter, homeBase, editingSavedRouteId]);
+
+        // Route name label
+        const midJob = jobsWithCoords[Math.floor(jobsWithCoords.length / 2)];
+        const label = L.marker([midJob.lat, midJob.lng], {
+          icon: L.divIcon({
+            className: '',
+            html: `<div style="background:${dayColor.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${routeForDay.name} (${jobsWithCoords.length} stops)</div>`,
+            iconSize: [0, 0],
+            iconAnchor: [0, -20]
+          }),
+          interactive: false
+        }).addTo(mapInstanceRef.current);
+        routeOverlayLinesRef.current.push(label);
+      }, [selectedDate, savedRoutes, statusFilter, homeBase]);
+
+      // Clear insert-into-route modal when day or filter changes
+      useEffect(() => {
+        setInsertIntoRouteCustomer(null);
+        setInsertPosition('');
+      }, [selectedDate, statusFilter]);
 
             // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
@@ -2441,31 +2443,22 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
-        // If in unscheduled view and NOT editing a route, open profile instead of scheduling
+        // If in unscheduled view and NOT editing a route:
+        // Check if selected day has a saved route - if so, show position input to insert into route
+        // Otherwise open profile
         if (statusFilter === 'unscheduled' && !editingSavedRouteId) {
-          setSelectedCustomer(customer);
-          return;
-        }
-
-        // If route overlay is active (but NOT editing a specific route) and customer is unscheduled, show route picker
-        if (showRouteOverlay && !editingSavedRouteId && (!customer.status || customer.status === 'unscheduled' || customer.status === '')) {
-          let rangeStart, rangeEnd;
-          if (routeOverlayView === 'week') {
-            rangeStart = new Date(routeOverlayWeekStart); rangeStart.setHours(0,0,0,0);
-            rangeEnd = new Date(rangeStart); rangeEnd.setDate(rangeEnd.getDate() + 6); rangeEnd.setHours(23,59,59,999);
-          } else {
-            rangeStart = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth(), 1);
-            rangeEnd = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth() + 1, 0, 23,59,59,999);
-          }
-          const availableRoutes = savedRoutes.filter(sr => {
-            if (sr.sentToTech) return false;
-            const d = new Date(sr.scheduledDate);
-            return d >= rangeStart && d <= rangeEnd;
+          const dateKey = selectedDate.toDateString();
+          const routeForDay = savedRoutes.find(sr => {
+            const rDate = new Date(sr.scheduledDate);
+            return rDate.toDateString() === dateKey && !sr.sentToTech;
           });
-          if (availableRoutes.length > 0) {
-            setAddToRouteCustomer(customer);
-            return;
+          if (routeForDay) {
+            setInsertIntoRouteCustomer(customer);
+            setInsertPosition('');
+          } else {
+            setSelectedCustomer(customer);
           }
+          return;
         }
 
         const dateKey = selectedDate.toDateString();
@@ -5901,7 +5894,6 @@ const createJob = async () => {
                                   }
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                   setStatusFilter('unscheduled');
-                                  setShowRouteOverlay(false);
                                 }}
                                 className="button-secondary"
                                 style={{
@@ -6853,29 +6845,7 @@ const createJob = async () => {
                         </>
                       )}
 
-                      {/* View Routes overlay toggle - only when unscheduled */}
-                      {statusFilter === 'unscheduled' && (
-                        <>
-                          <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
-                          <button
-                            onClick={() => setShowRouteOverlay(!showRouteOverlay)}
-                            style={{
-                              padding: '3px 10px',
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              border: 'none',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              background: showRouteOverlay ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-                              color: showRouteOverlay ? '#a78bfa' : '#94a3b8',
-                              boxShadow: showRouteOverlay ? '0 0 0 1px rgba(139, 92, 246, 0.5)' : 'none',
-                              transition: 'all 0.15s ease'
-                            }}
-                          >
-                            {showRouteOverlay ? '🗺️ Hide Routes' : '🗺️ View Routes'}
-                          </button>
-                        </>
-                      )}
+
 
                       {/* Preferred time chips - only when unscheduled */}
                       {statusFilter === 'unscheduled' && (
@@ -10643,92 +10613,6 @@ const createJob = async () => {
             )}
           </div>
 
-          {/* Route Overlay Controls - shown when View Routes is active */}
-          {showRouteOverlay && statusFilter === 'unscheduled' && currentView === 'map' && (
-            <div style={{
-              position: 'absolute',
-              bottom: '20px',
-              left: '20px',
-              zIndex: 1000,
-              background: 'rgba(10, 14, 39, 0.95)',
-              backdropFilter: 'blur(12px)',
-              border: '1px solid rgba(139, 92, 246, 0.4)',
-              borderRadius: '12px',
-              padding: '10px 14px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px',
-              maxWidth: '320px'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: '11px', fontWeight: 700, color: '#a78bfa' }}>Upcoming Routes</span>
-                <div style={{ display: 'flex', gap: '4px' }}>
-                  {['week', 'month'].map(v => (
-                    <button key={v} onClick={() => setRouteOverlayView(v)} style={{
-                      padding: '2px 8px', fontSize: '10px', fontWeight: 600, border: 'none', borderRadius: '4px', cursor: 'pointer',
-                      background: routeOverlayView === v ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.4)',
-                      color: routeOverlayView === v ? '#a78bfa' : '#64748b'
-                    }}>{v === 'week' ? 'Week' : 'Month'}</button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button onClick={() => {
-                  const d = new Date(routeOverlayWeekStart);
-                  if (routeOverlayView === 'week') d.setDate(d.getDate() - 7); else d.setMonth(d.getMonth() - 1);
-                  setRouteOverlayWeekStart(d);
-                }} style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer' }}>◀</button>
-                <span style={{ fontSize: '12px', color: '#e2e8f0', fontWeight: 600, flex: 1, textAlign: 'center' }}>
-                  {routeOverlayView === 'week'
-                    ? `${routeOverlayWeekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(new Date(routeOverlayWeekStart).setDate(routeOverlayWeekStart.getDate() + 6)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                    : routeOverlayWeekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                </span>
-                <button onClick={() => {
-                  const d = new Date(routeOverlayWeekStart);
-                  if (routeOverlayView === 'week') d.setDate(d.getDate() + 7); else d.setMonth(d.getMonth() + 1);
-                  setRouteOverlayWeekStart(d);
-                }} style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer' }}>▶</button>
-                <button onClick={() => {
-                  const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0);
-                  setRouteOverlayWeekStart(d);
-                }} style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer', fontWeight: 600 }}>Today</button>
-              </div>
-              {/* Route legend */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
-                {(() => {
-                  let rs, re;
-                  if (routeOverlayView === 'week') {
-                    rs = new Date(routeOverlayWeekStart); rs.setHours(0,0,0,0);
-                    re = new Date(rs); re.setDate(re.getDate() + 6); re.setHours(23,59,59,999);
-                  } else {
-                    rs = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth(), 1);
-                    re = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth() + 1, 0, 23,59,59,999);
-                  }
-                  const visRoutes = savedRoutes.filter(sr => {
-                    if (sr.sentToTech) return false;
-                    if (editingSavedRouteId && sr.id === editingSavedRouteId) return false;
-                    const d = new Date(sr.scheduledDate);
-                    return d >= rs && d <= re;
-                  });
-                  if (visRoutes.length === 0) return <span style={{ fontSize: '10px', color: '#64748b' }}>No routes in this period</span>;
-                  return visRoutes.map(sr => {
-                    const d = new Date(sr.scheduledDate);
-                    const dayInfo = DAY_COLORS[d.getDay()];
-                    return (
-                      <div key={sr.id} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '10px' }}>
-                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: dayInfo.color, flexShrink: 0 }} />
-                        <span style={{ color: dayInfo.color, fontWeight: 700 }}>{dayInfo.label}</span>
-                        <span style={{ color: '#cbd5e1', fontWeight: 600, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sr.name}</span>
-                        <span style={{ color: '#64748b' }}>{sr.customers.length} jobs</span>
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-              <div style={{ fontSize: '9px', color: '#64748b', fontStyle: 'italic' }}>Click a pin to add it to a route</div>
-            </div>
-          )}
-
                     {/* Radius Search Floating Control Panel */}
           {radiusMode && (
             <div style={{
@@ -11146,129 +11030,156 @@ onClick={exitRadiusMode}
             </div>
           )}
 
-          {/* Add to Route Picker */}
-          {addToRouteCustomer && (
+          {/* Insert Into Route - position input */}
+          {insertIntoRouteCustomer && (() => {
+            const dateKey = selectedDate.toDateString();
+            const routeForDay = savedRoutes.find(sr => {
+              const rDate = new Date(sr.scheduledDate);
+              return rDate.toDateString() === dateKey && !sr.sentToTech;
+            });
+            if (!routeForDay) return null;
+            const dayColor = DAY_COLORS[new Date(routeForDay.scheduledDate).getDay()];
+            const sortedStops = [...routeForDay.customers].sort((a, b) => {
+              if (!a.scheduledTime || !b.scheduledTime) return 0;
+              const [aH, aM] = a.scheduledTime.split(':').map(Number);
+              const [bH, bM] = b.scheduledTime.split(':').map(Number);
+              return (aH * 60 + aM) - (bH * 60 + bM);
+            });
+            const maxPos = sortedStops.length + 1;
+
+            const handleInsert = () => {
+              const pos = parseInt(insertPosition);
+              if (isNaN(pos) || pos < 1 || pos > maxPos) return;
+
+              const idx = pos - 1;
+              const BASE_START = 8 * 60;
+              const SPACING = 75;
+
+              const newCustomers = [...sortedStops];
+              const newTime = String(Math.floor((BASE_START + idx * SPACING) / 60)).padStart(2, '0') + ':' + String((BASE_START + idx * SPACING) % 60).padStart(2, '0');
+
+              const updatedCustomer = {
+                ...insertIntoRouteCustomer,
+                scheduledDate: routeForDay.scheduledDate,
+                scheduledTime: newTime,
+                status: 'scheduled',
+                routeConfirmed: true,
+                confirmedRouteName: routeForDay.name
+              };
+
+              newCustomers.splice(idx, 0, updatedCustomer);
+
+              const retimedCustomers = newCustomers.map((c, i) => {
+                const mins = BASE_START + i * SPACING;
+                const t = String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
+                return { ...c, scheduledTime: t };
+              });
+
+              setSavedRoutes(prev => prev.map(r => {
+                if (r.id === routeForDay.id) {
+                  return { ...r, customers: retimedCustomers };
+                }
+                return r;
+              }));
+
+              const scheduleUpdates = {
+                scheduledDate: routeForDay.scheduledDate,
+                scheduledTime: newTime,
+                status: 'scheduled',
+                routeConfirmed: true,
+                confirmedRouteName: routeForDay.name
+              };
+              setCustomers(prev => prev.map(c => c.id === insertIntoRouteCustomer.id ? { ...c, ...scheduleUpdates } : c));
+              propagateCustomerUpdate(insertIntoRouteCustomer.id, scheduleUpdates);
+
+              retimedCustomers.forEach(rc => {
+                if (rc.id !== insertIntoRouteCustomer.id) {
+                  const timeUpdate = { scheduledTime: rc.scheduledTime };
+                  setCustomers(prev => prev.map(c => c.id === rc.id ? { ...c, ...timeUpdate } : c));
+                  propagateCustomerUpdate(rc.id, timeUpdate);
+                }
+              });
+
+              setInsertIntoRouteCustomer(null);
+              setInsertPosition('');
+            };
+
+            return (
             <div style={{
               position: 'fixed',
               top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(0,0,0,0.6)',
+              background: 'rgba(0,0,0,0.5)',
               zIndex: 10000,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
-            }} onClick={() => setAddToRouteCustomer(null)}>
+            }} onClick={() => { setInsertIntoRouteCustomer(null); setInsertPosition(''); }}>
               <div style={{
                 background: '#0f172a',
-                border: '1px solid rgba(139, 92, 246, 0.4)',
+                border: '1px solid ' + dayColor.color + '66',
                 borderRadius: '16px',
                 padding: '20px',
-                width: '360px',
-                maxHeight: '500px',
-                overflowY: 'auto'
+                width: '340px'
               }} onClick={e => e.stopPropagation()}>
-                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px 0' }}>Add to Route</h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 16px 0' }}>
-                  {addToRouteCustomer.name} — {addToRouteCustomer.address}
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {(() => {
-                    let rs, re;
-                    if (routeOverlayView === 'week') {
-                      rs = new Date(routeOverlayWeekStart); rs.setHours(0,0,0,0);
-                      re = new Date(rs); re.setDate(re.getDate() + 6); re.setHours(23,59,59,999);
-                    } else {
-                      rs = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth(), 1);
-                      re = new Date(routeOverlayWeekStart.getFullYear(), routeOverlayWeekStart.getMonth() + 1, 0, 23,59,59,999);
-                    }
-                    const visRoutes = savedRoutes.filter(sr => {
-                      if (sr.sentToTech) return false;
-                      const d = new Date(sr.scheduledDate);
-                      return d >= rs && d <= re;
-                    });
-                    return visRoutes.map(sr => {
-                      const d = new Date(sr.scheduledDate);
-                      const dayInfo = DAY_COLORS[d.getDay()];
-                      return (
-                        <button key={sr.id} onClick={() => {
-                          // Find the next time slot for this route
-                          const existingTimes = sr.customers
-                            .filter(c => c.scheduledTime)
-                            .map(c => {
-                              const [h, m] = c.scheduledTime.split(':').map(Number);
-                              return h * 60 + m;
-                            })
-                            .sort((a, b) => a - b);
-                          const lastMin = existingTimes.length > 0 ? existingTimes[existingTimes.length - 1] : 7 * 60 + 45;
-                          const nextMin = lastMin + 75;
-                          const nextH = Math.floor(nextMin / 60);
-                          const nextM = nextMin % 60;
-                          const newTime = nextH < 20 ? String(nextH).padStart(2, '0') + ':' + String(nextM).padStart(2, '0') : '19:00';
-
-                          // Add customer to saved route
-                          const updatedCustomer = {
-                            ...addToRouteCustomer,
-                            scheduledDate: sr.scheduledDate,
-                            scheduledTime: newTime,
-                            status: 'scheduled',
-                            routeConfirmed: true,
-                            confirmedRouteName: sr.name
-                          };
-
-                          setSavedRoutes(prev => prev.map(r => {
-                            if (r.id === sr.id) {
-                              return { ...r, customers: [...r.customers, updatedCustomer] };
-                            }
-                            return r;
-                          }));
-
-                          // Update customer state
-                          const scheduleUpdates = {
-                            scheduledDate: sr.scheduledDate,
-                            scheduledTime: newTime,
-                            status: 'scheduled',
-                            routeConfirmed: true,
-                            confirmedRouteName: sr.name
-                          };
-                          setCustomers(prev => prev.map(c => c.id === addToRouteCustomer.id ? { ...c, ...scheduleUpdates } : c));
-                          propagateCustomerUpdate(addToRouteCustomer.id, scheduleUpdates);
-
-                          setAddToRouteCustomer(null);
-                        }} style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                          padding: '12px',
-                          background: 'rgba(30, 41, 59, 0.5)',
-                          border: '1px solid rgba(100, 116, 139, 0.2)',
-                          borderRadius: '10px',
-                          cursor: 'pointer',
-                          textAlign: 'left',
-                          transition: 'all 0.15s ease'
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = dayInfo.bg; e.currentTarget.style.borderColor = dayInfo.color + '55'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(30, 41, 59, 0.5)'; e.currentTarget.style.borderColor = 'rgba(100, 116, 139, 0.2)'; }}
-                        >
-                          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dayInfo.color, flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontSize: '13px', fontWeight: 700, color: '#f1f5f9' }}>{sr.name}</div>
-                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                              {dayInfo.label} {d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} — {sr.customers.length} jobs
-                            </div>
-                          </div>
-                          <span style={{ fontSize: '18px' }}>+</span>
-                        </button>
-                      );
-                    });
-                  })()}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dayColor.color }} />
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>{routeForDay.name}</span>
+                  <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: 'auto' }}>{sortedStops.length} stops</span>
                 </div>
-                <button onClick={() => setAddToRouteCustomer(null)} style={{
-                  marginTop: '12px', width: '100%', padding: '8px', fontSize: '12px', fontWeight: 600,
-                  background: 'rgba(100, 116, 139, 0.2)', border: '1px solid rgba(100, 116, 139, 0.3)',
-                  borderRadius: '8px', color: '#94a3b8', cursor: 'pointer'
-                }}>Cancel</button>
+
+                <div style={{ fontSize: '12px', color: '#e2e8f0', marginBottom: '12px', fontWeight: 600 }}>
+                  {insertIntoRouteCustomer.name}
+                </div>
+                <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '16px' }}>
+                  {insertIntoRouteCustomer.address}
+                </div>
+
+                <div style={{ marginBottom: '16px', maxHeight: '180px', overflowY: 'auto' }}>
+                  {sortedStops.map((stop, i) => (
+                    <div key={stop.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '8px',
+                      padding: '4px 8px', fontSize: '11px', color: '#cbd5e1',
+                      borderLeft: '2px solid ' + dayColor.color + '44'
+                    }}>
+                      <span style={{ width: '18px', height: '18px', borderRadius: '50%', background: dayColor.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 700, flexShrink: 0 }}>{i + 1}</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</span>
+                      <span style={{ fontSize: '10px', color: '#64748b' }}>{stop.scheduledTime}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <label style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>Insert at #</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={maxPos}
+                    value={insertPosition}
+                    onChange={e => setInsertPosition(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleInsert(); }}
+                    autoFocus
+                    placeholder={"1-" + maxPos}
+                    style={{
+                      width: '60px', padding: '6px 8px', fontSize: '14px', fontWeight: 700, textAlign: 'center',
+                      background: 'rgba(30, 41, 59, 0.8)', border: '1px solid ' + dayColor.color + '55',
+                      borderRadius: '8px', color: '#f1f5f9', outline: 'none'
+                    }}
+                  />
+                  <button onClick={handleInsert} style={{
+                    flex: 1, padding: '6px 12px', fontSize: '12px', fontWeight: 700,
+                    background: dayColor.color, border: 'none', borderRadius: '8px',
+                    color: '#fff', cursor: 'pointer'
+                  }}>Insert</button>
+                  <button onClick={() => { setInsertIntoRouteCustomer(null); setInsertPosition(''); }} style={{
+                    padding: '6px 12px', fontSize: '12px', fontWeight: 600,
+                    background: 'rgba(100, 116, 139, 0.2)', border: '1px solid rgba(100, 116, 139, 0.3)',
+                    borderRadius: '8px', color: '#94a3b8', cursor: 'pointer'
+                  }}>Cancel</button>
+                </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
                     {/* Save Route Modal */}
           {showSaveModal && (
