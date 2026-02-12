@@ -663,6 +663,15 @@
         notes: ''
       });
       const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+
+      const customerHasOpenJobs = (customer) => {
+        if (!customer || !customer.serviceHistory || customer.serviceHistory.length === 0) return false;
+        return customer.serviceHistory.some(j => {
+          const s = (j.status || '').toLowerCase();
+          return s !== 'completed' && s !== 'cancelled' && (j.jobDescription || j.date);
+        });
+      };
+      const getStatusAfterUnschedule = (customer) => customerHasOpenJobs(customer) ? 'unscheduled' : '';
       const [customerSearchResults, setCustomerSearchResults] = useState([]);
       const [geocoding, setGeocoding] = useState(false);
       const [addressSuggestions, setAddressSuggestions] = useState([]);
@@ -1170,7 +1179,7 @@
                 ...c,
                 scheduledDate: null,
                 scheduledTime: null,
-                status: 'unscheduled',
+                status: getStatusAfterUnschedule(c),
                 routeConfirmed: false
               };
             }
@@ -1178,7 +1187,9 @@
           }));
 
           orphanedIds.forEach(cid => {
-            propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+            const orphanCustomer = customers.find(c => c.id === cid);
+            const orphanStatus = getStatusAfterUnschedule(orphanCustomer);
+            propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: orphanStatus, routeConfirmed: false });
           });
 
           // Clear routesByDay for previous date
@@ -2577,7 +2588,7 @@
             [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
           }));
 
-          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
+          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(customer), routeConfirmed: false };
           setCustomers(prev => prev.map(c => {
             if (c.id === customer.id) {
               return { ...c, ...unscheduleUpdates };
@@ -6195,7 +6206,7 @@ const createJob = async () => {
                                         ...c,
                                         scheduledDate: null,
                                         scheduledTime: null,
-                                        status: 'unscheduled',
+                                        status: getStatusAfterUnschedule(c),
                                         routeConfirmed: false
                                       };
                                     }
@@ -6203,7 +6214,8 @@ const createJob = async () => {
                                   }));
 
                                   affectedIds.forEach(cid => {
-                                    propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+                                    const affectedCustomer = customers.find(c => c.id === cid);
+                                    propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(affectedCustomer), routeConfirmed: false });
                                   });
                                   
                                   // Clear THIS DAY'S route
@@ -6515,13 +6527,14 @@ const createJob = async () => {
                                                   ...c,
                                                   scheduledDate: null,
                                                   scheduledTime: null,
-                                                  status: 'unscheduled',
+                                                  status: getStatusAfterUnschedule(c),
                                                   routeConfirmed: false
                                                 };
                                               }
                                               return c;
                                             }));
-                                            propagateCustomerUpdate(job.id, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+                                            const jobCustomer = customers.find(c => c.id === job.id);
+                                            propagateCustomerUpdate(job.id, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(jobCustomer), routeConfirmed: false });
                                           }}
                                           style={{
                                             background: 'rgba(239, 68, 68, 0.1)',
@@ -8089,9 +8102,13 @@ const createJob = async () => {
                                 STATUS
                               </div>
                               <select
-                                value={selectedCustomer.status || 'unscheduled'}
+                                value={selectedCustomer.status || ''}
                                 onChange={(e) => {
                                   const newStatus = e.target.value;
+                                  if (newStatus === 'unscheduled' && !customerHasOpenJobs(selectedCustomer)) {
+                                    alert('Cannot set to Unscheduled — this customer has no open jobs. Add a job first.');
+                                    return;
+                                  }
                                   setCustomers(prev => prev.map(c =>
                                     c.id === selectedCustomer.id ? { ...c, status: newStatus } : c
                                   ));
@@ -8110,8 +8127,10 @@ const createJob = async () => {
                                   cursor: 'pointer'
                                 }}
                               >
+                                <option value="">⚪ No Status</option>
                                 <option value="unscheduled">🔴 Unscheduled</option>
                                 <option value="scheduled">🟡 Scheduled</option>
+                                <option value="completed">🟢 Completed</option>
                               </select>
 
                               {selectedCustomer.status === 'unscheduled' && (
@@ -8996,10 +9015,15 @@ const createJob = async () => {
                           <span style={{ fontSize: '10px', color: '#4ade80' }}>click to edit</span>
                         </div>
                         <select
-                          value={profileCustomer.status || 'unscheduled'}
+                          value={profileCustomer.status || ''}
                           onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, status: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { status: e.target.value });
+                            const newStatus = e.target.value;
+                            if (newStatus === 'unscheduled' && !customerHasOpenJobs(profileCustomer)) {
+                              alert('Cannot set to Unscheduled — this customer has no open jobs. Add a job first.');
+                              return;
+                            }
+                            const updatedCustomer = { ...profileCustomer, status: newStatus };
+                            propagateCustomerUpdate(profileCustomer.id, { status: newStatus });
                             setProfileCustomer(updatedCustomer);
                           }}
                           style={{
@@ -9013,8 +9037,10 @@ const createJob = async () => {
                             cursor: 'pointer'
                           }}
                         >
+                          <option value="">⚪ No Status</option>
                           <option value="unscheduled">🔴 Unscheduled</option>
                           <option value="scheduled">🟡 Scheduled</option>
+                          <option value="completed">🟢 Completed</option>
                         </select>
                         {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') && (
                           <div style={{ fontSize: '12px', color: '#22c55e', marginTop: '4px' }}>🦖 Recurring Customer</div>
@@ -9672,9 +9698,11 @@ const createJob = async () => {
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
-                                  const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null };
-                                  savedRoute.customers.forEach(c => propagateCustomerUpdate(c.id, unscheduleUpdates));
-                                  setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...unscheduleUpdates } : c));
+                                  savedRoute.customers.forEach(rc => {
+                                    const fullCustomer = customers.find(c => c.id === rc.id);
+                                    propagateCustomerUpdate(rc.id, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(fullCustomer), routeConfirmed: false, confirmedRouteName: null });
+                                  });
+                                  setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(c), routeConfirmed: false, confirmedRouteName: null } : c));
                                   const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                   setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                   setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
@@ -10241,6 +10269,11 @@ const createJob = async () => {
                                   updateVal = (editingCellValue === 'Yes' || editingCellValue === 'true' || editingCellValue === 'TRUE');
                                 } else if (col.key === 'panelCount' || col.key === 'amountPaid') {
                                   updateVal = editingCellValue ? parseFloat(editingCellValue) || 0 : '';
+                                }
+                                if (fieldKey === 'status' && updateVal === 'unscheduled' && !customerHasOpenJobs(customer)) {
+                                  alert('Cannot set to Unscheduled — this customer has no open jobs. Add a job first.');
+                                  setEditingCell(null);
+                                  return;
                                 }
                                 const updates = {};
                                 updates[fieldKey] = updateVal;
