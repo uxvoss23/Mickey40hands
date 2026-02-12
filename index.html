@@ -1849,15 +1849,15 @@
               const custRouteDate = customer._routeDate ? new Date(customer._routeDate).toDateString() : null;
               const selectedDateStr = selectedDate.toDateString();
               isOtherDayRoute = focusedDay !== null && custRouteDate && custRouteDate !== selectedDateStr;
+              const dayInfo = DAY_COLORS[customer._dayOfWeek] || { label: '' };
+              const dayAbbr = dayInfo.label;
+              dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: rgba(22, 163, 74, ${isOtherDayRoute ? '0.5' : '0.85'}); color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${dayAbbr}</span>`;
               if (focusedDay === null) {
                 gradient = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
-                dayLabelBadge = '';
               } else {
                 gradient = isOtherDayRoute
                   ? 'linear-gradient(135deg, #22c55e55 0%, #16a34a44 100%)'
                   : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
-                const dayInfo = DAY_COLORS[customer._dayOfWeek] || { label: '' };
-                dayLabelBadge = !isOtherDayRoute ? '' : `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: rgba(22, 163, 74, 0.6); color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${dayInfo.label}</span>`;
               }
             }
             if (statusFilter === 'scheduled' && (customer._needsScheduling || customer._dayOfWeek === undefined)) {
