@@ -83,16 +83,6 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
-- 2026-02-12: Click-to-add: while editing a route, click an unscheduled pin → confirmation popup → adds to end of route
-- 2026-02-12: Clicking pins opens customer profile when not editing; shows "Add to Route?" popup when editing a route
-- 2026-02-12: Reworked route scheduling: removed unscheduled tab, scheduled view is default with "Needs Scheduling" ON
-- 2026-02-12: Added left sidebar route edit panel that auto-displays when selecting a day with a saved route
-- 2026-02-12: Implemented HTML5 drag-and-drop: drag grey map pins into left panel drop zones to add to routes
-- 2026-02-12: Route times auto-recalculate on drop (8am start, 75min spacing)
-- 2026-02-12: Clicking map pins opens customer profile (drag-and-drop is primary add-to-route method)
-- 2026-02-12: Numbered stop markers show route sequence on map; route lines drawn automatically
-- 2026-02-12: Removed old floating route edit UI, insert popup, and related unused state
-- 2026-02-12: Removed old "View Routes" overlay system, route picker popup, and related state/controls
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

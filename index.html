@@ -499,7 +499,7 @@
       const [showCalendar, setShowCalendar] = useState(true);
       const [showTip, setShowTip] = useState(true);
       const [calendarViewMode, setCalendarViewMode] = useState('week'); // 'week' or 'month'
-      const [statusFilter, setStatusFilter] = useState('scheduled');
+      const [statusFilter, setStatusFilter] = useState('unscheduled'); // Default to unscheduled - highest priority
       const [preferredDateFilter, setPreferredDateFilter] = useState([]); // Array of dates
       const [preferredTimeFilter, setPreferredTimeFilter] = useState([]); // Array of time windows
       const [showDayView, setShowDayView] = useState(false);
@@ -509,9 +509,8 @@
       const [scheduledViewWeekStart, setScheduledViewWeekStart] = useState(() => {
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
-      const [showNeedScheduling, setShowNeedScheduling] = useState(true);
-      const [addToRoutePopup, setAddToRoutePopup] = useState(null);
-            const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
+      const [showNeedScheduling, setShowNeedScheduling] = useState(false); // Toggle unscheduled overlay
+      const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
         const today = new Date();
@@ -533,11 +532,6 @@
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
       const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
-      const [addToRouteCustomer, setAddToRouteCustomer] = useState(null);
-      const savedRoutesRef = useRef([]);
-      const selectedDateRef = useRef(new Date());
-      const handleCustomerClickRef = useRef(null);
-      const routeOverlayLinesRef = useRef([]);
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
       const [editedNotes, setEditedNotes] = useState('');
@@ -1498,7 +1492,7 @@
           const customerId = e.detail;
           const customer = customers.find(c => c.id === customerId);
           if (customer) {
-            if (handleCustomerClickRef.current) handleCustomerClickRef.current(customer);
+            handleCustomerClick(customer);
             // Close any open popups
             if (mapInstanceRef.current) {
               mapInstanceRef.current.closePopup();
@@ -2021,8 +2015,8 @@
             // Click = add to route instantly
             marker.on('click', (e) => {
               L.DomEvent.stopPropagation(e);
-              marker.closePopup();
-              if (handleCustomerClickRef.current) handleCustomerClickRef.current(customer);
+              marker.closePopup(); // Close popup if open
+              handleCustomerClick(customer);
             });
             
             // Hover = show popup with delay
@@ -2099,26 +2093,9 @@
 
             markerClusterRef.current.addLayer(marker);
             markersMapRef.current.set(customer.id, marker);
-
-            // Make marker draggable for route drop
-            marker.on('add', () => {
-              const el = marker.getElement();
-              if (el) {
-                el.setAttribute('draggable', 'true');
-                el.addEventListener('dragstart', (e) => {
-                  e.dataTransfer.setData('text/customer-id', String(customer.id));
-                  e.dataTransfer.effectAllowed = 'move';
-                  el.style.opacity = '0.5';
-                });
-                el.addEventListener('dragend', (e) => {
-                  el.style.opacity = '1';
-                });
-              }
-            });
           });
 
-          // Draw route lines - ONLY FOR SELECTED DAY and only in scheduled view
-          if (statusFilter === 'scheduled') {
+          // Draw route lines - ONLY FOR SELECTED DAY
           const dateKey = selectedDate.toDateString();
           const todaysJobs = customers
             .filter(c => {
@@ -2149,102 +2126,10 @@
               routeLinesRef.current.push(line);
             }
           }
-          }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers]);
 
-      // Route Overlay - show selected day's saved route when in unscheduled view
-      useEffect(() => {
-        routeOverlayLinesRef.current.forEach(line => {
-          if (line._map) line.remove();
-        });
-        routeOverlayLinesRef.current = [];
-
-        if (!mapInstanceRef.current) return;
-        if (statusFilter !== 'scheduled') return;
-
-        const dateKey = selectedDate.toDateString();
-        const routeForDay = savedRoutes.find(sr => {
-          const rDate = new Date(sr.scheduledDate);
-          return rDate.toDateString() === dateKey && !sr.sentToTech;
-        });
-
-        if (!routeForDay || !routeForDay.customers || routeForDay.customers.length === 0) return;
-
-        const dayColor = DAY_COLORS[new Date(routeForDay.scheduledDate).getDay()];
-        const jobsWithCoords = routeForDay.customers
-          .filter(c => c.lat && c.lng)
-          .sort((a, b) => {
-            if (!a.scheduledTime || !b.scheduledTime) return 0;
-            const [aH, aM] = a.scheduledTime.split(':').map(Number);
-            const [bH, bM] = b.scheduledTime.split(':').map(Number);
-            return (aH * 60 + aM) - (bH * 60 + bM);
-          });
-
-        if (jobsWithCoords.length < 1) return;
-
-        if (homeBase && jobsWithCoords.length > 0) {
-          const homeLine = L.polyline(
-            [[homeBase.lat, homeBase.lng], [jobsWithCoords[0].lat, jobsWithCoords[0].lng]],
-            { color: dayColor.color, weight: 2, opacity: 0.5, dashArray: '5, 8' }
-          ).addTo(mapInstanceRef.current);
-          routeOverlayLinesRef.current.push(homeLine);
-        }
-
-        for (let i = 0; i < jobsWithCoords.length - 1; i++) {
-          const line = L.polyline(
-            [[jobsWithCoords[i].lat, jobsWithCoords[i].lng], [jobsWithCoords[i + 1].lat, jobsWithCoords[i + 1].lng]],
-            { color: dayColor.color, weight: 3, opacity: 0.7 }
-          ).addTo(mapInstanceRef.current);
-          routeOverlayLinesRef.current.push(line);
-        }
-
-        // Add numbered markers for each stop
-        jobsWithCoords.forEach((job, idx) => {
-          const num = idx + 1;
-          const numMarker = L.marker([job.lat, job.lng], {
-            icon: L.divIcon({
-              className: '',
-              html: `<div style="background:${dayColor.color};color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid rgba(255,255,255,0.8);cursor:pointer;">${num}</div>`,
-              iconSize: [22, 22],
-              iconAnchor: [11, 11]
-            }),
-            interactive: true
-          }).addTo(mapInstanceRef.current);
-          numMarker.on('click', () => {
-            const fullCustomer = customers.find(cc => cc.id === job.id) || job;
-            handleCustomerClickRef.current(fullCustomer);
-          });
-          routeOverlayLinesRef.current.push(numMarker);
-        });
-
-        // Route name label
-        const midJob = jobsWithCoords[Math.floor(jobsWithCoords.length / 2)];
-        const label = L.marker([midJob.lat, midJob.lng], {
-          icon: L.divIcon({
-            className: '',
-            html: `<div style="background:${dayColor.color};color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.3);">${routeForDay.name} (${jobsWithCoords.length} stops)</div>`,
-            iconSize: [0, 0],
-            iconAnchor: [0, -20]
-          }),
-          interactive: false
-        }).addTo(mapInstanceRef.current);
-        routeOverlayLinesRef.current.push(label);
-      }, [selectedDate, savedRoutes, statusFilter, homeBase]);
-
-      useEffect(() => {
-        savedRoutesRef.current = savedRoutes;
-      }, [savedRoutes]);
-
-      useEffect(() => {
-        selectedDateRef.current = selectedDate;
-      }, [selectedDate]);
-
-      useEffect(() => {
-        handleCustomerClickRef.current = handleCustomerClick;
-      });
-
-            // UNIFIED FILTER - Single useEffect that applies ALL filters together
+      // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
       // active filters (solar, existing, recurring, panels), radius/drawn area, and text search
       useEffect(() => {
@@ -2472,61 +2357,101 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
-        if (editingSavedRouteId) {
-          const editingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
-          if (!editingRoute) { setSelectedCustomer(customer); return; }
-          const alreadyInRoute = editingRoute.customers.some(c => String(c.id) === String(customer.id));
-          if (alreadyInRoute) {
-            setSelectedCustomer(customer);
-            return;
-          }
-          const isUnscheduled = !customer.status || customer.status === 'unscheduled' || customer.status === 'new';
-          if (isUnscheduled) {
-            setAddToRoutePopup({ customer, route: editingRoute });
-            return;
-          }
-          setSelectedCustomer(customer);
-          return;
-        }
-        setSelectedCustomer(customer);
-      };
+        const dateKey = selectedDate.toDateString();
+        const currentDayRoute = routesByDay[dateKey] || [];
 
-      const confirmAddToRoute = () => {
-        if (!addToRoutePopup) return;
-        const { customer, route } = addToRoutePopup;
-        const SPACING = 75;
-        const currentStops = route.customers || [];
-        let newTime = '08:00';
-        if (currentStops.length > 0) {
-          const lastStop = currentStops[currentStops.length - 1];
-          if (lastStop.scheduledTime) {
-            const [lH, lM] = lastStop.scheduledTime.split(':').map(Number);
-            const nextMins = (lH * 60 + lM) + SPACING;
-            newTime = String(Math.floor(nextMins / 60)).padStart(2, '0') + ':' + String(nextMins % 60).padStart(2, '0');
-          }
-        }
-        const scheduleUpdates = {
-          scheduledDate: route.scheduledDate,
-          scheduledTime: newTime,
-          status: 'scheduled',
-          routeConfirmed: true,
-          confirmedRouteName: route.name
-        };
-        const newCustomer = { ...customer, ...scheduleUpdates };
-        const updatedStops = [...currentStops, newCustomer];
-        setSavedRoutes(prev => prev.map(r => {
-          if (r.id === route.id) return { ...r, customers: updatedStops };
-          return r;
-        }));
-        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, ...scheduleUpdates } : c));
-        propagateCustomerUpdate(customer.id, scheduleUpdates);
-        const dateKey = new Date(route.scheduledDate).toDateString();
-        setRoutesByDay(prev => {
-          const existing = prev[dateKey] || [];
-          if (existing.some(r => r.id === customer.id)) return prev;
-          return { ...prev, [dateKey]: [...existing, newCustomer] };
+        // Check BOTH routesByDay AND customers state for existing scheduling
+        const isInRoutesByDay = currentDayRoute.some(r => r.id === customer.id);
+        const isScheduledForDay = customers.some(c => {
+          if (c.id !== customer.id) return false;
+          if (!c.scheduledDate) return false;
+          return new Date(c.scheduledDate).toDateString() === dateKey;
         });
-        setAddToRoutePopup(null);
+        const isInRoute = isInRoutesByDay || isScheduledForDay;
+
+        if (isInRoute) {
+          // Remove from THIS DAY'S route AND clear scheduling
+          setRoutesByDay(prev => ({
+            ...prev,
+            [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
+          }));
+
+          const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
+          setCustomers(prev => prev.map(c => {
+            if (c.id === customer.id) {
+              return { ...c, ...unscheduleUpdates };
+            }
+            return c;
+          }));
+          propagateCustomerUpdate(customer.id, unscheduleUpdates);
+          setSuggestedCustomers([]);
+        } else {
+          // Auto-schedule with 1 hour 15 minute spacing
+          const allSlots = generateTimeSlots();
+
+          // Get all jobs for THIS SPECIFIC DAY sorted by time
+          const jobsForDay = customers
+            .filter(c => {
+              if (!c.scheduledDate || !c.scheduledTime) return false;
+              const custDate = new Date(c.scheduledDate);
+              return custDate.toDateString() === selectedDate.toDateString();
+            })
+            .sort((a, b) => {
+              const [aH, aM] = a.scheduledTime.split(':').map(Number);
+              const [bH, bM] = b.scheduledTime.split(':').map(Number);
+              return (aH * 60 + aM) - (bH * 60 + bM);
+            });
+
+          let nextSlot = null;
+
+          if (jobsForDay.length === 0) {
+            // First job for THIS DAY - start at 8:00 AM
+            nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
+          } else {
+            // Find last scheduled job for THIS DAY and add 1 hour 15 minutes (75 minutes)
+            const lastJob = jobsForDay[jobsForDay.length - 1];
+            const [lastH, lastM] = lastJob.scheduledTime.split(':').map(Number);
+            const lastMinutes = lastH * 60 + lastM;
+            const nextMinutes = lastMinutes + 75; // 1 hour 15 minutes
+            const nextH = Math.floor(nextMinutes / 60);
+            const nextM = nextMinutes % 60;
+
+            // Make sure it's not past 8pm
+            if (nextH < 20) {
+              nextSlot = {
+                time: `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`,
+                hour: nextH,
+                minute: nextM
+              };
+            }
+          }
+
+          // Schedule customer to the next slot
+          if (nextSlot) {
+            scheduleCustomerToTimeSlot(customer, selectedDate, nextSlot.time);
+          }
+
+          // Add to THIS DAY'S route (prevent duplicates)
+          setRoutesByDay(prev => {
+            const existing = prev[dateKey] || [];
+            if (existing.some(r => r.id === customer.id)) return prev;
+            return { ...prev, [dateKey]: [...existing, customer] };
+          });
+          
+          const availableCustomers = filteredCustomers.filter(c => 
+            c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
+          );
+
+          const closest = availableCustomers
+            .map(c => ({
+              ...c,
+              distance: calculateDistance(customer.lat, customer.lng, c.lat, c.lng)
+            }))
+            .sort((a, b) => a.distance - b.distance)
+            .slice(0, 3);
+
+          setSuggestedCustomers(closest);
+        }
       };
 
       // Sync route state with current day's route when switching days
@@ -5661,47 +5586,6 @@ const createJob = async () => {
                           {getRoutesForDate(selectedDate).length} route{getRoutesForDate(selectedDate).length > 1 ? 's' : ''} scheduled
                         </div>
                       )}
-                      {getRoutesForDate(selectedDate).length > 0 && !editingSavedRouteId && (
-                        <button
-                          onClick={() => {
-                            const dayRoutes = getRoutesForDate(selectedDate);
-                            if (dayRoutes.length === 0) return;
-                            const routeToEdit = dayRoutes[0];
-                            if (routeToEdit.sentToTech) {
-                              alert('This route has already been sent to the technician.');
-                              return;
-                            }
-                            const routeDateKey = new Date(routeToEdit.scheduledDate).toDateString();
-                            setRoutesByDay(prev => ({ ...prev, [routeDateKey]: routeToEdit.customers }));
-                            setEditingSavedRouteId(routeToEdit.id);
-                            setSelectedDate(new Date(routeToEdit.scheduledDate));
-                            setCustomers(prev => {
-                              const rcMap = new Map();
-                              routeToEdit.customers.forEach(rc => rcMap.set(rc.id, rc));
-                              return prev.map(cust => {
-                                const rc = rcMap.get(cust.id);
-                                if (rc) return { ...cust, scheduledTime: rc.scheduledTime || cust.scheduledTime, scheduledDate: routeToEdit.scheduledDate || cust.scheduledDate, status: 'scheduled', routeConfirmed: true };
-                                return cust;
-                              });
-                            });
-                            setStatusFilter('scheduled');
-                            setShowNeedScheduling(true);
-                          }}
-                          style={{
-                            marginTop: '6px', width: '100%', padding: '6px 10px',
-                            background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)',
-                            borderRadius: '6px', color: '#60a5fa', cursor: 'pointer',
-                            fontSize: '10px', fontWeight: 600
-                          }}
-                        >
-                          ✏️ Edit Route
-                        </button>
-                      )}
-                      {editingSavedRouteId && (
-                        <div style={{ marginTop: '4px', fontSize: '9px', color: '#f59e0b', fontWeight: 600 }}>
-                          Editing route — click grey pins to add
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
@@ -5725,8 +5609,766 @@ const createJob = async () => {
                 )}
 
                 {/* Content Area */}
-                <div className="scrollbar-custom" style={{ flex: 1, overflow: "auto", padding: "12px" }}>
+                <div className="scrollbar-custom" style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
+                  {/* Day Schedule View */}
+                  <div style={{ marginBottom: '12px' }}>
+                    {/* Tip at top */}
+                    {customers.length > 0 && showTip && (
+                      <div style={{
+                        marginBottom: '12px',
+                        padding: '12px',
+                        background: 'rgba(139, 92, 246, 0.1)',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        borderRadius: '8px',
+                        fontSize: '11px',
+                        color: '#c4b5fd',
+                        lineHeight: '1.6',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px'
+                      }}>
+                        <span>
+                          <strong>💡 Tip:</strong> Click customers on map to build route. Drag stops to reorder!
+                        </span>
+                        <button
+                          onClick={() => setShowTip(false)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#94a3b8',
+                            cursor: 'pointer',
+                            fontSize: '16px',
+                            padding: '0 4px',
+                            flexShrink: 0
+                          }}
+                          title="Dismiss tip"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    )}
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <h3 style={{
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        color: '#8b5cf6'
+                      }}>
+                        📅 {selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </h3>
+                      <div style={{ fontSize: '9px', color: '#94a3b8' }}>
+                        {(() => {
+                          const jobsForDay = customers.filter(c => {
+                            if (!c.scheduledDate) return false;
+                            const custDate = new Date(c.scheduledDate);
+                            return custDate.toDateString() === selectedDate.toDateString();
+                          });
+                          return `${jobsForDay.length} job${jobsForDay.length !== 1 ? 's' : ''}`;
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {(() => {
+                      const dateKey = selectedDate.toDateString();
+                      const inSavedView = savedViewDays[dateKey] === true;
 
+                      // Find ALL saved routes for this day (multiple technicians)
+                      const savedRoutesForDay = savedRoutes.filter(r => {
+                        const rDate = new Date(r.scheduledDate);
+                        return rDate.toDateString() === dateKey;
+                      });
+
+                      // Get the currently selected route index for this day (default to 0)
+                      const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+                      const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+
+                      // Get jobs from saved route OR from customers state (fallback)
+                      let jobsForDay = [];
+                      if (inSavedView && savedRouteForDay && savedRouteForDay.customers) {
+                        // Use customers from saved route (source of truth for saved view)
+                        jobsForDay = [...savedRouteForDay.customers].sort((a, b) => {
+                          if (!a.scheduledTime || !b.scheduledTime) return 0;
+                          const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                          const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                          return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                        });
+                      } else {
+                        // Use customers state (for edit view)
+                        jobsForDay = customers
+                          .filter(c => {
+                            if (!c.scheduledDate) return false;
+                            const custDate = new Date(c.scheduledDate);
+                            return custDate.toDateString() === dateKey;
+                          })
+                          .sort((a, b) => {
+                            if (!a.scheduledTime || !b.scheduledTime) return 0;
+                            const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                            const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                            return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                          });
+                      }
+
+                      // SAVED VIEW - Show compact list (only if in saved mode and has routes)
+                      if (inSavedView && savedRoutesForDay.length > 0) {
+                        return (
+                          <div>
+                            {/* Route Tabs - only show if multiple routes for this day */}
+                            {savedRoutesForDay.length > 1 && (
+                              <div style={{
+                                display: 'flex',
+                                gap: '4px',
+                                marginBottom: '12px',
+                                background: 'rgba(15, 23, 42, 0.5)',
+                                padding: '4px',
+                                borderRadius: '8px'
+                              }}>
+                                {savedRoutesForDay.map((route, idx) => (
+                                  <button
+                                    key={route.id}
+                                    onClick={() => setSelectedRouteIndexByDay(prev => ({ ...prev, [dateKey]: idx }))}
+                                    style={{
+                                      flex: 1,
+                                      padding: '8px 12px',
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      background: idx === selectedIdx ? 'rgba(139, 92, 246, 0.3)' : 'transparent',
+                                      border: idx === selectedIdx ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                                      borderRadius: '6px',
+                                      color: idx === selectedIdx ? '#a78bfa' : '#94a3b8',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.2s',
+                                      whiteSpace: 'nowrap',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis'
+                                    }}
+                                  >
+                                    {route.name || `Route ${idx + 1}`}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                              <button
+                                onClick={() => {
+                                  if (savedRouteForDay && savedRouteForDay.sentToTech) {
+                                    alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
+                                    return;
+                                  }
+                                  if (savedRouteForDay) {
+                                    // Load into routesByDay
+                                    setRoutesByDay(prev => ({
+                                      ...prev,
+                                      [dateKey]: savedRouteForDay.customers
+                                    }));
+                                    setEditingSavedRouteId(savedRouteForDay.id);
+
+                                    // Restore scheduledTime/scheduledDate into customers state
+                                    // so the time slots in edit view show the jobs
+                                    setCustomers(prev => {
+                                      const routeCustomerMap = new Map();
+                                      savedRouteForDay.customers.forEach(rc => {
+                                        routeCustomerMap.set(rc.id, rc);
+                                      });
+                                      return prev.map(c => {
+                                        const rc = routeCustomerMap.get(c.id);
+                                        if (rc) {
+                                          return {
+                                            ...c,
+                                            scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                            scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                            status: 'scheduled',
+                                            routeConfirmed: true
+                                          };
+                                        }
+                                        return c;
+                                      });
+                                    });
+                                  }
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-secondary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                ✏️ Edit Route
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Start a fresh new route - DON'T clear other routes' customers
+                                  setRoutesByDay(prev => ({
+                                    ...prev,
+                                    [dateKey]: []
+                                  }));
+                                  setEditingSavedRouteId(null);
+                                  setSuggestedCustomers([]);
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                }}
+                                className="button-primary"
+                                style={{
+                                  flex: 1,
+                                  padding: '8px 10px',
+                                  fontSize: '11px',
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                + New Route
+                              </button>
+                            </div>
+                            
+                            <div style={{ 
+                              padding: '12px',
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              border: '1px solid rgba(139, 92, 246, 0.3)',
+                              borderRadius: '8px'
+                            }}>
+                              <h4 style={{ 
+                                fontSize: '11px', 
+                                fontWeight: 700, 
+                                color: '#8b5cf6', 
+                                marginBottom: '10px',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                              }}>
+                                📋 Scheduled Jobs ({jobsForDay.length})
+                              </h4>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {jobsForDay.map((job, idx) => (
+                                  <div key={job.id}
+                                    onClick={() => {
+                                      const fullCustomer = customers.find(c => c.id === job.id) || job;
+                                      setProfileCustomer(fullCustomer);
+                                      setShowCustomerProfile(true);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '10px',
+                                      padding: '8px',
+                                      background: 'rgba(15, 23, 42, 0.6)',
+                                      borderRadius: '6px',
+                                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                                      cursor: 'pointer',
+                                      transition: 'all 0.15s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)'}
+                                  >
+                                    <div style={{
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      color: '#8b5cf6',
+                                      minWidth: '25px'
+                                    }}>
+                                      #{idx + 1}
+                                    </div>
+                                    <div style={{
+                                      fontSize: '11px',
+                                      fontWeight: 600,
+                                      color: '#22c55e',
+                                      minWidth: '65px'
+                                    }}>
+                                      {job.scheduledTime ?
+                                        new Date(`2000-01-01T${job.scheduledTime}`).toLocaleTimeString('en-US', {
+                                          hour: 'numeric',
+                                          minute: '2-digit',
+                                          hour12: true
+                                        }) : 'N/A'}
+                                    </div>
+                                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                                      <div style={{
+                                        fontSize: '12px',
+                                        fontWeight: 600,
+                                        color: '#f1f5f9',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        {job.name}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '10px',
+                                        color: '#64748b',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}>
+                                        {job.address}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+                      
+                      // EDIT VIEW - Show action buttons (if jobs exist) and timeslots
+                      return (
+                        <div>
+                          {/* Action Buttons - Only show if there are jobs */}
+                          {jobsForDay.length > 0 && (
+                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                              <button
+                                onClick={() => {
+                                  // Pre-fill name if editing existing route
+                                  if (editingSavedRouteId) {
+                                    const existingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    if (existingRoute) setRouteName(existingRoute.name);
+                                  }
+                                  setShowSaveModal(true);
+                                }}
+                                className="button-primary"
+                                style={{
+                                  padding: '6px 10px',
+                                  fontSize: '10px',
+                                  flex: 1,
+                                  justifyContent: 'center'
+                                }}
+                              >
+                                💾 Save Route
+                              </button>
+                              <button
+                                onClick={() => {
+                                  // Clear all jobs for selected day
+                                  const affectedIds = customers.filter(c => {
+                                    if (!c.scheduledDate) return false;
+                                    return new Date(c.scheduledDate).toDateString() === dateKey;
+                                  }).map(c => c.id);
+
+                                  setCustomers(prev => prev.map(c => {
+                                    if (!c.scheduledDate) return c;
+                                    const custDate = new Date(c.scheduledDate);
+                                    if (custDate.toDateString() === dateKey) {
+                                      return {
+                                        ...c,
+                                        scheduledDate: null,
+                                        scheduledTime: null,
+                                        status: 'unscheduled',
+                                        routeConfirmed: false
+                                      };
+                                    }
+                                    return c;
+                                  }));
+
+                                  affectedIds.forEach(cid => {
+                                    propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+                                  });
+                                  
+                                  // Clear THIS DAY'S route
+                                  setRoutesByDay(prev => ({
+                                    ...prev,
+                                    [dateKey]: []
+                                  }));
+                                  
+                                  // Clear old route state (backward compatibility)
+                                  setRoute([]);
+                                  setSuggestedCustomers([]);
+                                }}
+                                style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                borderRadius: '6px',
+                                padding: '6px 10px',
+                                color: '#fca5a5',
+                                cursor: 'pointer',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '4px'
+                              }}
+                            >
+                              🗑️ Clear Day
+                            </button>
+                          </div>
+                          )}
+                          
+                          {/* Time Slots */}
+                          <div>
+                          {/* Up Arrow - Show Earlier Times */}
+                          {visibleStartHour > 6 && (
+                            <button
+                              onClick={() => setVisibleStartHour(prev => Math.max(6, prev - 1))}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                marginBottom: '8px',
+                                background: 'rgba(139, 92, 246, 0.1)',
+                            border: '1px solid rgba(139, 92, 246, 0.3)',
+                            borderRadius: '6px',
+                            color: '#8b5cf6',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '6px'
+                          }}
+                        >
+                          ↑ Show Earlier Times
+                        </button>
+                          )}
+                          
+                          <div style={{ display: 'grid', gap: '6px' }}>
+                        {generateTimeSlots()
+                          .filter(slot => slot.hour >= visibleStartHour && slot.hour < visibleEndHour)
+                          .map((slot, index) => {
+                            const jobsInSlot = getJobsForTimeSlot(selectedDate, slot.time);
+                            const isBlocked = jobsInSlot.length > 0;
+                            
+                            // Calculate job number based on scheduled time
+                            const allJobsForDay = customers
+                              .filter(c => {
+                                if (!c.scheduledDate || !c.scheduledTime) return false;
+                                const custDate = new Date(c.scheduledDate);
+                                return custDate.toDateString() === selectedDate.toDateString();
+                              })
+                              .sort((a, b) => {
+                                const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                                const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                                return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                              });
+                            
+                            return (
+                              <div
+                                key={slot.time}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)';
+                                }}
+                                onDragLeave={(e) => {
+                                  e.currentTarget.style.background = isBlocked ? 'rgba(239, 68, 68, 0.05)' : 'rgba(30, 41, 59, 0.3)';
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.currentTarget.style.background = isBlocked ? 'rgba(239, 68, 68, 0.05)' : 'rgba(30, 41, 59, 0.3)';
+                                  
+                                  const customerData = e.dataTransfer.getData('customer');
+                                  if (customerData) {
+                                    const customer = JSON.parse(customerData);
+                                    scheduleCustomerToTimeSlot(customer, selectedDate, slot.time);
+                                  }
+                                }}
+                                style={{
+                                  padding: '8px 12px',
+                                  background: isBlocked ? 'rgba(239, 68, 68, 0.05)' : 'rgba(30, 41, 59, 0.3)',
+                                  border: `2px solid ${isBlocked ? 'rgba(239, 68, 68, 0.3)' : 'rgba(100, 116, 139, 0.2)'}`,
+                                  borderRadius: '6px',
+                                  transition: 'all 0.2s',
+                                  minHeight: jobsInSlot.length > 0 ? 'auto' : '40px'
+                                }}
+                              >
+                            {/* Time Label */}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: jobsInSlot.length > 0 ? '6px' : 0 }}>
+                              <div style={{
+                                fontSize: '11px',
+                                fontWeight: 700,
+                                color: isBlocked ? '#fca5a5' : '#8b5cf6',
+                                minWidth: '65px'
+                              }}>
+                                {slot.display}
+                              </div>
+                              
+                              {jobsInSlot.length === 0 && (
+                                <div style={{ fontSize: '9px', color: '#64748b', fontStyle: 'italic' }}>
+                                  Available
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Jobs in this slot */}
+                            {jobsInSlot.length > 0 && (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                {jobsInSlot.map((job, jobIndex) => {
+                                  // Find job number based on time order
+                                  const jobNumber = allJobsForDay.findIndex(j => j.id === job.id) + 1;
+                                  
+                                  // Calculate distance and drive time to next job
+                                  const nextJob = allJobsForDay[jobNumber]; // jobNumber is 1-indexed, so this gets the next
+                                  let distanceToNext = null;
+                                  let driveTimeToNext = null;
+                                  
+                                  if (nextJob && job.lat && job.lng && nextJob.lat && nextJob.lng) {
+                                    distanceToNext = calculateDistance(job.lat, job.lng, nextJob.lat, nextJob.lng);
+                                    // Assume 25 mph average speed
+                                    driveTimeToNext = Math.round((distanceToNext / 25) * 60); // minutes
+                                  }
+                                  
+                                  return (
+                                    <React.Fragment key={job.id}>
+                                      <div
+                                        draggable
+                                        onDragStart={(e) => {
+                                          e.dataTransfer.setData('customer', JSON.stringify(job));
+                                        }}
+                                        style={{
+                                          padding: '8px 10px',
+                                          background: 'rgba(15, 23, 42, 0.8)',
+                                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                                          borderRadius: '6px',
+                                          cursor: 'grab',
+                                          display: 'flex',
+                                          gap: '10px',
+                                          alignItems: 'flex-start',
+                                          position: 'relative'
+                                        }}
+                                        onMouseDown={(e) => {
+                                          e.currentTarget.style.cursor = 'grabbing';
+                                        }}
+                                        onMouseUp={(e) => {
+                                          e.currentTarget.style.cursor = 'grab';
+                                        }}
+                                      >
+                                        {/* Job Number Badge */}
+                                        <div style={{
+                                          width: '24px',
+                                          height: '24px',
+                                          borderRadius: '50%',
+                                          background: 'rgba(139, 92, 246, 0.3)',
+                                          border: '2px solid rgba(139, 92, 246, 0.6)',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          fontSize: '11px',
+                                          fontWeight: 700,
+                                          color: '#c4b5fd',
+                                          flexShrink: 0
+                                        }}>
+                                          {jobNumber}
+                                        </div>
+                                        
+                                        {/* Job Details */}
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#f1f5f9', marginBottom: '3px' }}>
+                                            {job.name}
+                                          </div>
+                                          <div style={{ fontSize: '9px', color: '#94a3b8' }}>
+                                            📍 {job.address}
+                                          </div>
+                                          {job.phone && (
+                                            <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
+                                              📱 {job.phone}
+                                            </div>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Action Buttons */}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
+                                          {/* Up Arrow - Move job earlier */}
+                                          {jobNumber > 1 && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const currentIndex = jobNumber - 1; // Convert to 0-indexed
+                                                const prevJob = allJobsForDay[currentIndex - 1];
+                                                
+                                                // Swap scheduled times
+                                                setCustomers(prev => prev.map(c => {
+                                                  if (c.id === job.id) {
+                                                    return { ...c, scheduledTime: prevJob.scheduledTime };
+                                                  }
+                                                  if (c.id === prevJob.id) {
+                                                    return { ...c, scheduledTime: job.scheduledTime };
+                                                  }
+                                                  return c;
+                                                }));
+                                                propagateCustomerUpdate(job.id, { scheduledTime: prevJob.scheduledTime });
+                                                propagateCustomerUpdate(prevJob.id, { scheduledTime: job.scheduledTime });
+                                              }}
+                                              style={{
+                                                background: 'rgba(139, 92, 246, 0.1)',
+                                                border: '1px solid rgba(139, 92, 246, 0.3)',
+                                                borderRadius: '4px',
+                                                width: '20px',
+                                                height: '20px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#8b5cf6',
+                                                cursor: 'pointer',
+                                                fontSize: '10px',
+                                                flexShrink: 0,
+                                                padding: 0
+                                              }}
+                                              title="Move up"
+                                            >
+                                              ▲
+                                            </button>
+                                          )}
+                                          
+                                          {/* Down Arrow - Move job later */}
+                                          {jobNumber < allJobsForDay.length && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                const currentIndex = jobNumber - 1; // Convert to 0-indexed
+                                                const nextJob = allJobsForDay[currentIndex + 1];
+                                                
+                                                // Swap scheduled times
+                                                setCustomers(prev => prev.map(c => {
+                                                  if (c.id === job.id) {
+                                                    return { ...c, scheduledTime: nextJob.scheduledTime };
+                                                  }
+                                                  if (c.id === nextJob.id) {
+                                                    return { ...c, scheduledTime: job.scheduledTime };
+                                                  }
+                                                  return c;
+                                                }));
+                                                propagateCustomerUpdate(job.id, { scheduledTime: nextJob.scheduledTime });
+                                                propagateCustomerUpdate(nextJob.id, { scheduledTime: job.scheduledTime });
+                                              }}
+                                              style={{
+                                                background: 'rgba(139, 92, 246, 0.1)',
+                                                border: '1px solid rgba(139, 92, 246, 0.3)',
+                                                borderRadius: '4px',
+                                                width: '20px',
+                                                height: '20px',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#8b5cf6',
+                                                cursor: 'pointer',
+                                                fontSize: '10px',
+                                                flexShrink: 0,
+                                                padding: 0
+                                              }}
+                                              title="Move down"
+                                            >
+                                              ▼
+                                            </button>
+                                          )}
+                                          
+                                          {/* Remove Button */}
+                                          <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const dateKey = selectedDate.toDateString();
+                                            
+                                            // Remove from day-specific route
+                                            setRoutesByDay(prev => ({
+                                              ...prev,
+                                              [dateKey]: (prev[dateKey] || []).filter(r => r.id !== job.id)
+                                            }));
+                                            
+                                            // Remove from old route state
+                                            setRoute(prev => prev.filter(r => r.id !== job.id));
+                                            
+                                            // Unschedule customer
+                                            setCustomers(prev => prev.map(c => {
+                                              if (c.id === job.id) {
+                                                return {
+                                                  ...c,
+                                                  scheduledDate: null,
+                                                  scheduledTime: null,
+                                                  status: 'unscheduled',
+                                                  routeConfirmed: false
+                                                };
+                                              }
+                                              return c;
+                                            }));
+                                            propagateCustomerUpdate(job.id, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
+                                          }}
+                                          style={{
+                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            borderRadius: '4px',
+                                            width: '20px',
+                                            height: '20px',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            color: '#fca5a5',
+                                            cursor: 'pointer',
+                                            fontSize: '12px',
+                                            flexShrink: 0,
+                                            padding: 0
+                                          }}
+                                          title="Remove from route"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div> {/* Close action buttons container */}
+                                    </div> {/* Close job card */}
+                                      
+                                      {/* Distance and Drive Time to Next Job */}
+                                      {distanceToNext !== null && (
+                                        <div style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          gap: '6px',
+                                          padding: '6px',
+                                          fontSize: '9px',
+                                          color: '#64748b',
+                                          background: 'rgba(100, 116, 139, 0.1)',
+                                          borderRadius: '4px',
+                                          margin: '4px 0'
+                                        }}>
+                                          <span>↓</span>
+                                          <span style={{ fontWeight: 600, color: '#94a3b8' }}>
+                                            {(distanceToNext || 0).toFixed(1)} mi
+                                          </span>
+                                          <span>•</span>
+                                          <span style={{ fontWeight: 600, color: '#94a3b8' }}>
+                                            {driveTimeToNext < 60 
+                                              ? `${driveTimeToNext} min` 
+                                              : `${Math.floor(driveTimeToNext / 60)}h ${driveTimeToNext % 60}min`
+                                            } drive
+                                          </span>
+                                        </div>
+                                      )}
+                                    </React.Fragment>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                          {/* Down Arrow - Show Later Times */}
+                          {visibleEndHour < 20 && (
+                            <button
+                              onClick={() => setVisibleEndHour(prev => Math.min(20, prev + 1))}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                marginTop: '8px',
+                                background: 'rgba(139, 92, 246, 0.1)',
+                                border: '1px solid rgba(139, 92, 246, 0.3)',
+                                borderRadius: '6px',
+                                color: '#8b5cf6',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              ↓ Show Later Times
+                            </button>
+                          )}
+                      </div>
+                          </div>
+                        );
+                    })()}
+                  </div>
+                  
                   {/* Hidden file input (shared by both upload methods) */}
                   <input
                     ref={fileInputRef}
@@ -5867,6 +6509,7 @@ const createJob = async () => {
                       {/* Status pills */}
                       {[
                         { value: 'all', label: 'All' },
+                        { value: 'unscheduled', label: 'Unscheduled', color: '#ef4444' },
                         { value: 'scheduled', label: 'Scheduled', color: '#eab308' }
                       ].map(s => (
                         <button
@@ -6096,8 +6739,6 @@ const createJob = async () => {
                           </button>
                         </>
                       )}
-
-
 
                       {/* Preferred time chips - only when unscheduled */}
                       {statusFilter === 'unscheduled' && (
@@ -6340,212 +6981,6 @@ const createJob = async () => {
                     background: '#0a0e27'
                   }}
                 />
-
-                {/* Left Route Edit Panel - shows when day has a saved route */}
-                {statusFilter === 'scheduled' && currentView === 'map' && (() => {
-                  const dateKey = selectedDate.toDateString();
-                  const routeForDay = savedRoutes.find(sr => {
-                    const rDate = new Date(sr.scheduledDate);
-                    return rDate.toDateString() === dateKey && !sr.sentToTech;
-                  });
-                  if (!routeForDay) return null;
-                  const dayColor = DAY_COLORS[new Date(routeForDay.scheduledDate).getDay()];
-                  const sortedStops = [...routeForDay.customers].sort((a, b) => {
-                    if (!a.scheduledTime || !b.scheduledTime) return 0;
-                    const [aH, aM] = a.scheduledTime.split(':').map(Number);
-                    const [bH, bM] = b.scheduledTime.split(':').map(Number);
-                    return (aH * 60 + aM) - (bH * 60 + bM);
-                  });
-                  const maxPos = sortedStops.length + 1;
-
-                  const handleDrop = (e, targetIdx) => {
-                    e.preventDefault();
-                    e.currentTarget.style.background = '';
-                    const custIdStr = e.dataTransfer.getData('text/customer-id');
-                    if (!custIdStr) return;
-                    const customer = customers.find(c => String(c.id) === custIdStr);
-                    if (!customer) return;
-                    if (sortedStops.some(s => String(s.id) === custIdStr)) return;
-
-                    const BASE_START = 8 * 60;
-                    const SPACING = 75;
-                    const newTime = String(Math.floor((BASE_START + targetIdx * SPACING) / 60)).padStart(2, '0') + ':' + String((BASE_START + targetIdx * SPACING) % 60).padStart(2, '0');
-
-                    const updatedCustomer = {
-                      ...customer,
-                      scheduledDate: routeForDay.scheduledDate,
-                      scheduledTime: newTime,
-                      status: 'scheduled',
-                      routeConfirmed: true,
-                      confirmedRouteName: routeForDay.name
-                    };
-
-                    const newCustomers = [...sortedStops];
-                    newCustomers.splice(targetIdx, 0, updatedCustomer);
-
-                    const retimedCustomers = newCustomers.map((c, i) => {
-                      const mins = BASE_START + i * SPACING;
-                      const t = String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
-                      return { ...c, scheduledTime: t };
-                    });
-
-                    setSavedRoutes(prev => prev.map(r => {
-                      if (r.id === routeForDay.id) {
-                        return { ...r, customers: retimedCustomers };
-                      }
-                      return r;
-                    }));
-
-                    const scheduleUpdates = {
-                      scheduledDate: routeForDay.scheduledDate,
-                      scheduledTime: newTime,
-                      status: 'scheduled',
-                      routeConfirmed: true,
-                      confirmedRouteName: routeForDay.name
-                    };
-                    setCustomers(prev => prev.map(c => c.id === custId ? { ...c, ...scheduleUpdates } : c));
-                    propagateCustomerUpdate(custId, scheduleUpdates);
-
-                    retimedCustomers.forEach(rc => {
-                      if (rc.id !== custId) {
-                        const timeUpdate = { scheduledTime: rc.scheduledTime };
-                        setCustomers(prev => prev.map(c => c.id === rc.id ? { ...c, ...timeUpdate } : c));
-                        propagateCustomerUpdate(rc.id, timeUpdate);
-                      }
-                    });
-                  };
-
-                  const handleRemoveStop = (stopId) => {
-                    const BASE_START = 8 * 60;
-                    const SPACING = 75;
-                    const remaining = sortedStops.filter(s => s.id !== stopId);
-                    const retimedCustomers = remaining.map((c, i) => {
-                      const mins = BASE_START + i * SPACING;
-                      const t = String(Math.floor(mins / 60)).padStart(2, '0') + ':' + String(mins % 60).padStart(2, '0');
-                      return { ...c, scheduledTime: t };
-                    });
-                    setSavedRoutes(prev => prev.map(r => {
-                      if (r.id === routeForDay.id) return { ...r, customers: retimedCustomers };
-                      return r;
-                    }));
-                    setCustomers(prev => prev.map(c => {
-                      if (c.id === stopId) return { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false };
-                      return c;
-                    }));
-                    propagateCustomerUpdate(stopId, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false });
-                    retimedCustomers.forEach(rc => {
-                      const timeUpdate = { scheduledTime: rc.scheduledTime };
-                      setCustomers(prev => prev.map(c => c.id === rc.id ? { ...c, ...timeUpdate } : c));
-                      propagateCustomerUpdate(rc.id, timeUpdate);
-                    });
-                  };
-
-                  return (
-                    <div style={{
-                      position: 'absolute',
-                      top: 0, left: '320px', bottom: 0,
-                      width: '280px',
-                      background: 'rgba(15, 23, 42, 0.95)',
-                      backdropFilter: 'blur(20px)',
-                      borderRight: '2px solid ' + dayColor.color + '44',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      overflow: 'hidden',
-                      boxShadow: '10px 0 30px rgba(0, 0, 0, 0.3)',
-                      zIndex: 1000
-                    }}>
-                      <div style={{
-                        padding: '12px',
-                        borderBottom: '1px solid ' + dayColor.color + '33',
-                        background: 'rgba(15, 23, 42, 0.8)'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dayColor.color }} />
-                          <span style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9', flex: 1 }}>{routeForDay.name}</span>
-                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>{sortedStops.length} stops</span>
-                        </div>
-                        <div style={{ fontSize: '10px', color: dayColor.color }}>
-                          {selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-                        </div>
-                      </div>
-
-                      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-                        {/* Drop zone at top */}
-                        <div
-                          onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = dayColor.color + '22'; }}
-                          onDragLeave={e => { e.currentTarget.style.background = ''; }}
-                          onDrop={e => handleDrop(e, 0)}
-                          style={{ height: '8px', margin: '0 8px', borderRadius: '4px', transition: 'background 0.15s' }}
-                        />
-
-                        {sortedStops.map((stop, i) => (
-                          <React.Fragment key={stop.id}>
-                            <div style={{
-                              display: 'flex', alignItems: 'center', gap: '6px',
-                              padding: '6px 10px', margin: '0 4px',
-                              borderRadius: '6px', cursor: 'pointer',
-                              transition: 'background 0.15s'
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(100,116,139,0.15)'}
-                            onMouseLeave={e => e.currentTarget.style.background = ''}
-                            >
-                              <span style={{
-                                width: '22px', height: '22px', borderRadius: '50%',
-                                background: dayColor.color, color: '#fff',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '11px', fontWeight: 800, flexShrink: 0
-                              }}>{i + 1}</span>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: '11px', fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {stop.name}
-                                </div>
-                                <div style={{ fontSize: '9px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {stop.address}
-                                </div>
-                              </div>
-                              <span style={{ fontSize: '10px', color: '#94a3b8', whiteSpace: 'nowrap' }}>{stop.scheduledTime}</span>
-                              <button
-                                onClick={() => handleRemoveStop(stop.id)}
-                                style={{
-                                  background: 'none', border: 'none', color: '#64748b',
-                                  cursor: 'pointer', fontSize: '12px', padding: '2px',
-                                  flexShrink: 0, opacity: 0.5
-                                }}
-                                onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                                onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
-                                title="Remove from route"
-                              >✕</button>
-                            </div>
-                            {/* Drop zone between stops */}
-                            <div
-                              onDragOver={e => { e.preventDefault(); e.currentTarget.style.background = dayColor.color + '22'; e.currentTarget.style.height = '24px'; }}
-                              onDragLeave={e => { e.currentTarget.style.background = ''; e.currentTarget.style.height = '8px'; }}
-                              onDrop={e => { e.currentTarget.style.height = '8px'; handleDrop(e, i + 1); }}
-                              style={{ height: '8px', margin: '0 8px', borderRadius: '4px', transition: 'all 0.15s' }}
-                            />
-                          </React.Fragment>
-                        ))}
-
-                        {sortedStops.length === 0 && (
-                          <div
-                            onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = dayColor.color; }}
-                            onDragLeave={e => { e.currentTarget.style.borderColor = dayColor.color + '44'; }}
-                            onDrop={e => handleDrop(e, 0)}
-                            style={{
-                              margin: '16px 12px', padding: '24px 16px',
-                              border: '2px dashed ' + dayColor.color + '44',
-                              borderRadius: '10px', textAlign: 'center',
-                              transition: 'border-color 0.15s'
-                            }}
-                          >
-                            <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px' }}>Drag pins here</div>
-                            <div style={{ fontSize: '9px', color: '#64748b' }}>or click a pin to add</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })()}
 
                 {/* Scheduled View - Day Color Legend */}
                 {statusFilter === 'scheduled' && currentView === 'map' && (
@@ -8980,8 +9415,6 @@ const createJob = async () => {
                                   ...prev,
                                   [routeDateKey]: false
                                 }));
-                                setStatusFilter('scheduled');
-                                setShowNeedScheduling(true);
                                 setCurrentView('map');
                               }}
                               className="button-secondary"
@@ -10072,7 +10505,7 @@ const createJob = async () => {
             )}
           </div>
 
-                    {/* Radius Search Floating Control Panel */}
+          {/* Radius Search Floating Control Panel */}
           {radiusMode && (
             <div style={{
               position: 'absolute',
@@ -10489,39 +10922,7 @@ onClick={exitRadiusMode}
             </div>
           )}
 
-
-                    {/* Add to Route Confirmation Popup */}
-          {addToRoutePopup && (
-            <div style={{
-              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-              background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', zIndex: 10000
-            }} onClick={() => setAddToRoutePopup(null)}>
-              <div style={{
-                background: '#1e293b', borderRadius: '12px', padding: '24px',
-                maxWidth: '380px', width: '90%', border: '1px solid rgba(255,255,255,0.1)',
-                boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
-              }} onClick={e => e.stopPropagation()}>
-                <h3 style={{ margin: '0 0 16px 0', color: '#f1f5f9', fontSize: '18px' }}>Add to Route</h3>
-                <p style={{ color: '#94a3b8', margin: '0 0 20px 0', fontSize: '14px', lineHeight: '1.5' }}>
-                  Add <strong style={{ color: '#60a5fa' }}>{addToRoutePopup.customer.name || addToRoutePopup.customer.firstName + ' ' + addToRoutePopup.customer.lastName}</strong> to <strong style={{ color: '#60a5fa' }}>{addToRoutePopup.route.name}</strong>?
-                </p>
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                  <button onClick={() => setAddToRoutePopup(null)} style={{
-                    padding: '8px 20px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)',
-                    background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '14px'
-                  }}>Cancel</button>
-                  <button onClick={confirmAddToRoute} style={{
-                    padding: '8px 20px', borderRadius: '8px', border: 'none',
-                    background: '#3b82f6', color: 'white', cursor: 'pointer', fontSize: '14px',
-                    fontWeight: 600
-                  }}>Add to Route</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-                    {/* Save Route Modal */}
+          {/* Save Route Modal */}
           {showSaveModal && (
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
