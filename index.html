@@ -1849,18 +1849,15 @@
               const custRouteDate = customer._routeDate ? new Date(customer._routeDate).toDateString() : null;
               const selectedDateStr = selectedDate.toDateString();
               isOtherDayRoute = focusedDay !== null && custRouteDate && custRouteDate !== selectedDateStr;
-              const dayNum = customer._dayOfWeek;
-              const dayInfo = DAY_COLORS[dayNum] || { color: '#22c55e', label: 'N/A' };
               if (focusedDay === null) {
-                gradient = `linear-gradient(135deg, ${dayInfo.color} 0%, ${dayInfo.color}cc 100%)`;
-                const shortDay = dayInfo.label;
-                dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: ${dayInfo.color}dd; color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${shortDay}</span>`;
+                gradient = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+                dayLabelBadge = '';
               } else {
                 gradient = isOtherDayRoute
-                  ? `linear-gradient(135deg, ${dayInfo.color}88 0%, ${dayInfo.color}55 100%)`
-                  : `linear-gradient(135deg, ${dayInfo.color} 0%, ${dayInfo.color}cc 100%)`;
-                const shortDay = dayInfo.label;
-                dayLabelBadge = `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: ${dayInfo.color}${isOtherDayRoute ? '66' : 'dd'}; color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${shortDay}</span>`;
+                  ? 'linear-gradient(135deg, #22c55e55 0%, #16a34a44 100%)'
+                  : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+                const dayInfo = DAY_COLORS[customer._dayOfWeek] || { label: '' };
+                dayLabelBadge = !isOtherDayRoute ? '' : `<span style="position: absolute; bottom: -12px; left: 50%; transform: translateX(-50%); font-size: 9px; background: rgba(22, 163, 74, 0.6); color: white; padding: 1px 4px; border-radius: 3px; font-weight: 700; white-space: nowrap; text-shadow: 0 1px 2px rgba(0,0,0,0.5);">${dayInfo.label}</span>`;
               }
             }
             if (statusFilter === 'scheduled' && (customer._needsScheduling || customer._dayOfWeek === undefined)) {
@@ -2002,6 +1999,7 @@
                   <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">${customer.name}</div>
                   <div style="font-size: 9px; color: #94a3b8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📍 ${customer.address}</div>
                   ${customer.panelCount ? `<div style="font-size: 9px; color: #fbbf24;">${customer.panelCount} panels</div>` : ''}
+                  ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + customer.scheduledTime : ''}</div>` : ''}
                 </div>
                 
                 ${customer.existingJob ? `
@@ -2128,53 +2126,34 @@
             markersMapRef.current.set(customer.id, marker);
           });
 
-          // Draw route lines
-          if (statusFilter === 'scheduled' && homeBase) {
-            const drawRouteLinesForDate = (dateKey, lineColor, lineOpacity) => {
-              const dayJobs = customers
-                .filter(c => {
-                  if (!c.scheduledDate || !c.scheduledTime) return false;
-                  const custDate = new Date(c.scheduledDate);
-                  return custDate.toDateString() === dateKey;
-                })
-                .sort((a, b) => {
-                  const [aH, aM] = a.scheduledTime.split(':').map(Number);
-                  const [bH, bM] = b.scheduledTime.split(':').map(Number);
-                  return (aH * 60 + aM) - (bH * 60 + bM);
-                });
-              if (dayJobs.length === 0) return;
+          // Draw route lines - ONLY when a specific day is focused
+          if (statusFilter === 'scheduled' && homeBase && focusedDay !== null) {
+            const dateKey = selectedDate.toDateString();
+            const todaysJobs = customers
+              .filter(c => {
+                if (!c.scheduledDate || !c.scheduledTime) return false;
+                const custDate = new Date(c.scheduledDate);
+                return custDate.toDateString() === dateKey;
+              })
+              .sort((a, b) => {
+                const [aH, aM] = a.scheduledTime.split(':').map(Number);
+                const [bH, bM] = b.scheduledTime.split(':').map(Number);
+                return (aH * 60 + aM) - (bH * 60 + bM);
+              });
+
+            if (todaysJobs.length > 0) {
               const line1 = L.polyline(
-                [[homeBase.lat, homeBase.lng], [dayJobs[0].lat, dayJobs[0].lng]],
-                { color: lineColor, weight: 3, opacity: lineOpacity * 0.7, dashArray: '5, 10' }
+                [[homeBase.lat, homeBase.lng], [todaysJobs[0].lat, todaysJobs[0].lng]],
+                { color: '#22c55e', weight: 3, opacity: 0.7, dashArray: '5, 10' }
               ).addTo(mapInstanceRef.current);
               routeLinesRef.current.push(line1);
-              for (let i = 0; i < dayJobs.length - 1; i++) {
+              for (let i = 0; i < todaysJobs.length - 1; i++) {
                 const line = L.polyline(
-                  [[dayJobs[i].lat, dayJobs[i].lng], [dayJobs[i + 1].lat, dayJobs[i + 1].lng]],
-                  { color: lineColor, weight: 3, opacity: lineOpacity }
+                  [[todaysJobs[i].lat, todaysJobs[i].lng], [todaysJobs[i + 1].lat, todaysJobs[i + 1].lng]],
+                  { color: '#22c55e', weight: 3, opacity: 0.8 }
                 ).addTo(mapInstanceRef.current);
                 routeLinesRef.current.push(line);
               }
-            };
-
-            if (focusedDay === null) {
-              const datesSeen = new Set();
-              customers.forEach(c => {
-                if (c.scheduledDate && c.scheduledTime) {
-                  const dk = new Date(c.scheduledDate).toDateString();
-                  datesSeen.add(dk);
-                }
-              });
-              datesSeen.forEach(dk => {
-                const dayOfWeek = new Date(dk).getDay();
-                const dayInfo = DAY_COLORS[dayOfWeek] || { color: '#22c55e' };
-                drawRouteLinesForDate(dk, dayInfo.color, 0.8);
-              });
-            } else {
-              const dateKey = selectedDate.toDateString();
-              const dayOfWeek = selectedDate.getDay();
-              const dayInfo = DAY_COLORS[dayOfWeek] || { color: '#22c55e' };
-              drawRouteLinesForDate(dateKey, dayInfo.color, 0.8);
             }
           }
         }
