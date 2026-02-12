@@ -17,6 +17,38 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Inter', sans-serif; overflow-y: auto; overflow-x: hidden; background: #0a0e27; max-width: 100vw; }
+
+    .pac-container {
+      background: #1e293b !important;
+      border: 1px solid rgba(139, 92, 246, 0.4) !important;
+      border-radius: 0 0 8px 8px !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+      z-index: 100000 !important;
+      font-family: 'Inter', sans-serif !important;
+    }
+    .pac-item {
+      padding: 8px 14px !important;
+      border-top: 1px solid rgba(148,163,184,0.1) !important;
+      color: #e2e8f0 !important;
+      cursor: pointer !important;
+      font-size: 13px !important;
+      line-height: 1.5 !important;
+      background: transparent !important;
+    }
+    .pac-item:hover, .pac-item-selected {
+      background: rgba(139,92,246,0.15) !important;
+    }
+    .pac-item-query {
+      color: #f1f5f9 !important;
+      font-weight: 600 !important;
+      font-size: 13px !important;
+    }
+    .pac-matched {
+      color: #a78bfa !important;
+      font-weight: 700 !important;
+    }
+    .pac-icon { display: none !important; }
+    .pac-item span { color: #94a3b8 !important; }
     
     .custom-marker { background: transparent; border: none; }
     .marker-pin {
@@ -816,6 +848,79 @@
         };
         geocodeHomeBase();
       }, []);
+
+      const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+      const quickAddInputRef = useRef(null);
+      const quickAddAutocompleteRef = useRef(null);
+
+      useEffect(() => {
+        const loadGoogleMaps = async () => {
+          if (window.google && window.google.maps && window.google.maps.places) {
+            setGoogleMapsLoaded(true);
+            return;
+          }
+          try {
+            const resp = await fetch('/api/config/maps-key');
+            const { key } = await resp.json();
+            if (!key) return;
+            window._googleMapsApiKey = key;
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+            script.async = true;
+            script.onload = () => setGoogleMapsLoaded(true);
+            document.head.appendChild(script);
+          } catch (e) {
+            console.error('Failed to load Google Maps:', e);
+          }
+        };
+        loadGoogleMaps();
+      }, []);
+
+      useEffect(() => {
+        if (!googleMapsLoaded || !showNewCustomerForm || !quickAddInputRef.current) return;
+        if (quickAddAutocompleteRef.current) return;
+
+        const autocomplete = new window.google.maps.places.Autocomplete(quickAddInputRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: 'us' },
+          fields: ['address_components', 'geometry', 'formatted_address']
+        });
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (!place.geometry) return;
+
+          let street_number = '', route = '', city = '', state = '', zip = '';
+          for (const comp of (place.address_components || [])) {
+            const types = comp.types;
+            if (types.includes('street_number')) street_number = comp.long_name;
+            else if (types.includes('route')) route = comp.long_name;
+            else if (types.includes('locality')) city = comp.long_name;
+            else if (types.includes('sublocality_level_1') && !city) city = comp.long_name;
+            else if (types.includes('administrative_area_level_1')) state = comp.short_name;
+            else if (types.includes('postal_code')) zip = comp.long_name;
+          }
+
+          const streetAddr = [street_number, route].filter(Boolean).join(' ');
+          setNewCustomerData(prev => ({
+            ...prev,
+            address: streetAddr || prev.address,
+            city: city || prev.city,
+            state: state || prev.state,
+            zip: zip || prev.zip,
+            _lat: place.geometry.location.lat(),
+            _lng: place.geometry.location.lng(),
+            _geocodeStatus: 'found',
+            _suggestions: [], _showSuggestions: false
+          }));
+        });
+
+        quickAddAutocompleteRef.current = autocomplete;
+
+        return () => {
+          quickAddAutocompleteRef.current = null;
+        };
+      }, [googleMapsLoaded, showNewCustomerForm]);
 
       // Load verification data from localStorage and merge with customers
       useEffect(() => {
@@ -10205,49 +10310,19 @@ const createJob = async () => {
               };
               const labelStyle = { fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' };
 
-              const selectSuggestion = (s) => {
-                setNewCustomerData(prev => ({
-                  ...prev,
-                  address: s.street || prev.address,
-                  city: s.city, state: s.state, zip: s.zip,
-                  _lat: s.lat, _lng: s.lng,
-                  _geocodeStatus: 'found',
-                  _suggestions: [], _showSuggestions: false
-                }));
-              };
-
-              let _acTimer = null;
               const handleAddressChange = (val) => {
                 setNewCustomerData(prev => ({
                   ...prev, address: val,
-                  _geocodeStatus: null, _lat: null, _lng: null,
-                  _showSuggestions: true
+                  _geocodeStatus: null, _lat: null, _lng: null
                 }));
-                if (_acTimer) clearTimeout(_acTimer);
-                _acTimer = setTimeout(async () => {
-                  if (val.length < 5) {
-                    setNewCustomerData(prev => ({ ...prev, _suggestions: [] }));
-                    return;
-                  }
-                  try {
-                    const resp = await fetch(`/api/customers/autocomplete?q=${encodeURIComponent(val)}`);
-                    const data = await resp.json();
-                    setNewCustomerData(prev => ({ ...prev, _suggestions: data || [] }));
-                  } catch (e) {
-                    setNewCustomerData(prev => ({ ...prev, _suggestions: [] }));
-                  }
-                }, 350);
               };
 
               const handleAddressBlur = () => {
-                setTimeout(() => {
-                  setNewCustomerData(prev => ({ ...prev, _showSuggestions: false }));
-                }, 200);
                 const d = newCustomerData;
                 if (d._lat && d._lng) return;
                 if (!d.address || d.address.length < 5) return;
-                const hasCommas = (d.address.match(/,/g) || []).length >= 2;
-                const full = hasCommas ? d.address : [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
+                if (googleMapsLoaded) return;
+                const full = [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
                 setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'looking up...' }));
                 apiFetch('/customers/geocode', {
                   method: 'POST',
@@ -10305,18 +10380,13 @@ const createJob = async () => {
                     <label style={{ ...labelStyle, color: '#a78bfa', fontSize: '13px' }}>Start typing address...</label>
                     <div style={{ position: 'relative' }}>
                       <input
+                        ref={quickAddInputRef}
                         type="text"
                         value={newCustomerData.address}
                         onChange={(e) => handleAddressChange(e.target.value)}
                         onBlur={handleAddressBlur}
-                        onFocus={() => {
-                          if (newCustomerData._suggestions?.length > 0) {
-                            setNewCustomerData(prev => ({ ...prev, _showSuggestions: true }));
-                          }
-                        }}
                         placeholder="800 Henslee Dr, Euless, TX"
                         autoFocus
-                        autoComplete="off"
                         style={{
                           ...inputStyle,
                           fontSize: '15px', padding: '12px',
@@ -10330,7 +10400,7 @@ const createJob = async () => {
                             : '1px solid rgba(139, 92, 246, 0.3)'
                         }}
                       />
-                      {newCustomerData._showSuggestions && newCustomerData._suggestions?.length > 0 && (
+                      {!googleMapsLoaded && newCustomerData._showSuggestions && newCustomerData._suggestions?.length > 0 && (
                         <div style={{
                           position: 'absolute', top: '100%', left: 0, right: 0,
                           background: '#1e293b', border: '1px solid rgba(139, 92, 246, 0.4)',
@@ -10339,7 +10409,7 @@ const createJob = async () => {
                         }}>
                           {newCustomerData._suggestions.map((s, i) => (
                             <div key={i}
-                              onMouseDown={(e) => { e.preventDefault(); selectSuggestion(s); }}
+                              onMouseDown={(e) => { e.preventDefault(); }}
                               style={{
                                 padding: '10px 14px', cursor: 'pointer', fontSize: '13px',
                                 color: '#e2e8f0', borderBottom: '1px solid rgba(148,163,184,0.1)',

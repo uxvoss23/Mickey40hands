@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Intake Form</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%);
+      min-height: 100vh;
+      color: #f1f5f9;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+    .form-container {
+      width: 100%;
+      max-width: 520px;
+    }
+    .form-card {
+      background: rgba(30, 41, 59, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 16px;
+      padding: 32px;
+      backdrop-filter: blur(20px);
+    }
+    .form-title {
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      background: linear-gradient(135deg, #c4b5fd, #8b5cf6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .form-subtitle {
+      font-size: 14px;
+      color: #64748b;
+      margin-bottom: 28px;
+    }
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: #94a3b8;
+      font-weight: 600;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input, textarea, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 10px;
+      color: #f1f5f9;
+      font-size: 15px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input:focus, textarea:focus, select:focus {
+      border-color: rgba(139, 92, 246, 0.5);
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+    }
+    input::placeholder, textarea::placeholder {
+      color: #475569;
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    select option { background: #1e293b; color: #f1f5f9; }
+
+    .address-section {
+      padding: 16px;
+      background: rgba(139, 92, 246, 0.06);
+      border: 1px solid rgba(139, 92, 246, 0.15);
+      border-radius: 12px;
+      margin-bottom: 16px;
+    }
+    .address-section label { color: #a78bfa; }
+    .address-input {
+      font-size: 16px !important;
+      padding: 14px !important;
+    }
+    .address-input.found {
+      border: 2px solid rgba(34, 197, 94, 0.5) !important;
+    }
+
+    .location-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 6px;
+      margin-left: 8px;
+    }
+    .location-badge.found {
+      color: #22c55e;
+      background: rgba(34, 197, 94, 0.15);
+    }
+
+    .divider {
+      height: 1px;
+      background: rgba(148, 163, 184, 0.1);
+      margin: 24px 0;
+    }
+
+    .job-toggle {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .job-toggle.off {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      background: rgba(15, 23, 42, 0.8);
+      color: #94a3b8;
+    }
+    .job-toggle.on {
+      border: 2px solid rgba(139, 92, 246, 0.6);
+      background: rgba(139, 92, 246, 0.15);
+      color: #a78bfa;
+    }
+
+    .service-type-btn {
+      display: block;
+      width: 100%;
+      padding: 11px 14px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+      font-family: 'Inter', sans-serif;
+      margin-bottom: 6px;
+    }
+    .service-type-btn.off {
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      background: rgba(15, 23, 42, 0.5);
+      color: #cbd5e1;
+    }
+    .service-type-btn.on {
+      border: 2px solid rgba(139, 92, 246, 0.6);
+      background: rgba(139, 92, 246, 0.15);
+      color: #c4b5fd;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: transform 0.15s, box-shadow 0.15s;
+      margin-top: 8px;
+    }
+    .submit-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 24px rgba(139, 92, 246, 0.3);
+    }
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .success-card {
+      text-align: center;
+      padding: 48px 32px;
+    }
+    .success-icon {
+      font-size: 64px;
+      margin-bottom: 16px;
+    }
+    .success-title {
+      font-size: 24px;
+      font-weight: 700;
+      color: #22c55e;
+      margin-bottom: 8px;
+    }
+    .success-message {
+      font-size: 15px;
+      color: #94a3b8;
+      margin-bottom: 24px;
+    }
+    .reset-btn {
+      padding: 12px 32px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      border-radius: 10px;
+      color: #a78bfa;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .pac-container {
+      background: #1e293b !important;
+      border: 1px solid rgba(139, 92, 246, 0.4) !important;
+      border-radius: 0 0 8px 8px !important;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
+      z-index: 100000 !important;
+      font-family: 'Inter', sans-serif !important;
+    }
+    .pac-item {
+      padding: 10px 14px !important;
+      border-top: 1px solid rgba(148,163,184,0.1) !important;
+      color: #e2e8f0 !important;
+      cursor: pointer !important;
+      font-size: 14px !important;
+      line-height: 1.5 !important;
+      background: transparent !important;
+    }
+    .pac-item:hover, .pac-item-selected {
+      background: rgba(139,92,246,0.15) !important;
+    }
+    .pac-item-query {
+      color: #f1f5f9 !important;
+      font-weight: 600 !important;
+      font-size: 14px !important;
+    }
+    .pac-matched {
+      color: #a78bfa !important;
+      font-weight: 700 !important;
+    }
+    .pac-icon { display: none !important; }
+    .pac-item span { color: #94a3b8 !important; }
+
+    @media (max-width: 600px) {
+      body { padding: 16px 10px; }
+      .form-card { padding: 20px; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container" id="app"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const SERVICE_TYPES = [
+      'Residential Panel Cleaning',
+      'Commercial Panel Cleaning',
+      'Critter Guard Installation',
+      'Critter Guard Repair',
+      'General Repair',
+      'Pressure Washing',
+      'Site Visit'
+    ];
+
+    const IntakeForm = () => {
+      const [submitted, setSubmitted] = useState(false);
+      const [submitting, setSubmitting] = useState(false);
+      const [googleLoaded, setGoogleLoaded] = useState(false);
+      const [locationFound, setLocationFound] = useState(false);
+      const [addJob, setAddJob] = useState(false);
+      const addressInputRef = useRef(null);
+      const autocompleteRef = useRef(null);
+
+      const [form, setForm] = useState({
+        firstName: '', lastName: '', phone: '', email: '',
+        address: '', city: '', state: '', zip: '',
+        panels: '', notes: '',
+        lat: null, lng: null
+      });
+      const [jobData, setJobData] = useState({
+        serviceType: 'Residential Panel Cleaning',
+        notes: ''
+      });
+
+      useEffect(() => {
+        const loadGoogleMaps = async () => {
+          try {
+            const resp = await fetch('/api/config/maps-key');
+            const { key } = await resp.json();
+            if (!key) return;
+            const script = document.createElement('script');
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+            script.async = true;
+            script.onload = () => setGoogleLoaded(true);
+            document.head.appendChild(script);
+          } catch (e) {
+            console.error('Failed to load Google Maps:', e);
+          }
+        };
+        loadGoogleMaps();
+      }, []);
+
+      useEffect(() => {
+        if (!googleLoaded || !addressInputRef.current || autocompleteRef.current) return;
+
+        const autocomplete = new window.google.maps.places.Autocomplete(addressInputRef.current, {
+          types: ['address'],
+          componentRestrictions: { country: 'us' },
+          fields: ['address_components', 'geometry', 'formatted_address']
+        });
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          if (!place.geometry) return;
+
+          let street_number = '', route = '', city = '', state = '', zip = '';
+          for (const comp of (place.address_components || [])) {
+            const types = comp.types;
+            if (types.includes('street_number')) street_number = comp.long_name;
+            else if (types.includes('route')) route = comp.long_name;
+            else if (types.includes('locality')) city = comp.long_name;
+            else if (types.includes('sublocality_level_1') && !city) city = comp.long_name;
+            else if (types.includes('administrative_area_level_1')) state = comp.short_name;
+            else if (types.includes('postal_code')) zip = comp.long_name;
+          }
+
+          const streetAddr = [street_number, route].filter(Boolean).join(' ');
+          setForm(prev => ({
+            ...prev,
+            address: streetAddr || prev.address,
+            city, state, zip,
+            lat: place.geometry.location.lat(),
+            lng: place.geometry.location.lng()
+          }));
+          setLocationFound(true);
+        });
+
+        autocompleteRef.current = autocomplete;
+      }, [googleLoaded]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        const fullName = `${form.firstName} ${form.lastName}`.trim();
+        if (!fullName) { alert('Please enter a name'); return; }
+        if (!form.address) { alert('Please enter an address'); return; }
+
+        setSubmitting(true);
+        try {
+          const fullAddr = [form.address, form.city, form.state, form.zip].filter(Boolean).join(', ');
+          const customerPayload = {
+            first_name: form.firstName,
+            last_name: form.lastName,
+            full_name: fullName,
+            address: fullAddr,
+            street: form.address,
+            city: form.city,
+            state: form.state,
+            zip: form.zip,
+            lat: form.lat, lng: form.lng,
+            phone: form.phone,
+            email: form.email,
+            status: addJob ? 'unscheduled' : '',
+            panel_count: parseInt(form.panels) || 0,
+            notes: form.notes,
+            source: 'intake-form'
+          };
+
+          const resp = await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(customerPayload)
+          });
+          const savedCustomer = await resp.json();
+
+          if (addJob && savedCustomer && savedCustomer.id) {
+            await fetch('/api/jobs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                customer_id: savedCustomer.id,
+                job_description: jobData.serviceType,
+                status: 'unscheduled',
+                notes: jobData.notes,
+                panel_count: parseInt(form.panels) || 0
+              })
+            });
+          }
+
+          setSubmitted(true);
+        } catch (err) {
+          console.error('Submission error:', err);
+          alert('Something went wrong. Please try again.');
+        } finally {
+          setSubmitting(false);
+        }
+      };
+
+      const resetForm = () => {
+        setForm({
+          firstName: '', lastName: '', phone: '', email: '',
+          address: '', city: '', state: '', zip: '',
+          panels: '', notes: '',
+          lat: null, lng: null
+        });
+        setJobData({ serviceType: 'Residential Panel Cleaning', notes: '' });
+        setAddJob(false);
+        setLocationFound(false);
+        setSubmitted(false);
+        if (autocompleteRef.current) {
+          autocompleteRef.current = null;
+        }
+      };
+
+      if (submitted) {
+        return (
+          <div className="form-card success-card">
+            <div className="success-icon">&#10003;</div>
+            <div className="success-title">Submitted Successfully!</div>
+            <div className="success-message">
+              Customer information has been received and saved. Thank you!
+            </div>
+            <button className="reset-btn" onClick={resetForm}>Submit Another</button>
+          </div>
+        );
+      }
+
+      return (
+        <form className="form-card" onSubmit={handleSubmit}>
+          <h1 className="form-title">Customer Intake</h1>
+          <p className="form-subtitle">Submit new customer information</p>
+
+          <div className="form-row form-group">
+            <div>
+              <label>First Name *</label>
+              <input
+                type="text"
+                value={form.firstName}
+                onChange={(e) => setForm(prev => ({...prev, firstName: e.target.value}))}
+                placeholder="John"
+                required
+              />
+            </div>
+            <div>
+              <label>Last Name</label>
+              <input
+                type="text"
+                value={form.lastName}
+                onChange={(e) => setForm(prev => ({...prev, lastName: e.target.value}))}
+                placeholder="Smith"
+              />
+            </div>
+          </div>
+
+          <div className="form-row form-group">
+            <div>
+              <label>Phone</label>
+              <input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm(prev => ({...prev, phone: e.target.value}))}
+                placeholder="(817) 555-1234"
+              />
+            </div>
+            <div>
+              <label>Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm(prev => ({...prev, email: e.target.value}))}
+                placeholder="john@example.com"
+              />
+            </div>
+          </div>
+
+          <div className="address-section">
+            <label>
+              Address *
+              {locationFound && (
+                <span className="location-badge found">&#10003; Location Found</span>
+              )}
+            </label>
+            <input
+              ref={addressInputRef}
+              type="text"
+              className={`address-input ${locationFound ? 'found' : ''}`}
+              value={form.address}
+              onChange={(e) => {
+                setForm(prev => ({...prev, address: e.target.value, lat: null, lng: null}));
+                setLocationFound(false);
+              }}
+              placeholder="Start typing an address..."
+              required
+            />
+
+            <div className="form-row" style={{ marginTop: '12px' }}>
+              <div>
+                <label>City</label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setForm(prev => ({...prev, city: e.target.value}))}
+                  placeholder="Fort Worth"
+                />
+              </div>
+              <div>
+                <label>State</label>
+                <input
+                  type="text"
+                  value={form.state}
+                  onChange={(e) => setForm(prev => ({...prev, state: e.target.value}))}
+                  placeholder="TX"
+                />
+              </div>
+            </div>
+            <div className="form-row" style={{ marginTop: '8px' }}>
+              <div>
+                <label>Zip</label>
+                <input
+                  type="text"
+                  value={form.zip}
+                  onChange={(e) => setForm(prev => ({...prev, zip: e.target.value}))}
+                  placeholder="76131"
+                />
+              </div>
+              <div>
+                <label>Panel Count</label>
+                <input
+                  type="number"
+                  value={form.panels}
+                  onChange={(e) => setForm(prev => ({...prev, panels: e.target.value}))}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Notes</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm(prev => ({...prev, notes: e.target.value}))}
+              placeholder="Gate code, special instructions, referral source..."
+              rows={2}
+            />
+          </div>
+
+          <div className="divider"></div>
+
+          <div className="form-group">
+            <button
+              type="button"
+              className={`job-toggle ${addJob ? 'on' : 'off'}`}
+              onClick={() => setAddJob(!addJob)}
+            >
+              {addJob ? '+ Job request will be included' : '+ Request a service?'}
+            </button>
+          </div>
+
+          {addJob && (
+            <div style={{
+              padding: '16px', marginBottom: '16px',
+              background: 'rgba(139,92,246,0.06)',
+              border: '1px solid rgba(139,92,246,0.15)',
+              borderRadius: '12px'
+            }}>
+              <label>Service Type</label>
+              {SERVICE_TYPES.map(type => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`service-type-btn ${jobData.serviceType === type ? 'on' : 'off'}`}
+                  onClick={() => setJobData(prev => ({...prev, serviceType: type}))}
+                >
+                  {jobData.serviceType === type && '\u2713  '}{type}
+                </button>
+              ))}
+
+              <div style={{ marginTop: '12px' }}>
+                <label>Job Notes (optional)</label>
+                <textarea
+                  value={jobData.notes}
+                  onChange={(e) => setJobData(prev => ({...prev, notes: e.target.value}))}
+                  placeholder="Describe any special requirements..."
+                  rows={2}
+                />
+              </div>
+            </div>
+          )}
+
+          <button type="submit" className="submit-btn" disabled={submitting}>
+            {submitting ? 'Submitting...' : (addJob ? 'Submit Customer & Job Request' : 'Submit Customer')}
+          </button>
+        </form>
+      );
+    };
+
+    ReactDOM.render(<IntakeForm />, document.getElementById('app'));
+  </script>
+</body>
+</html>

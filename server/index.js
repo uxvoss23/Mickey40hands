@@ -24,6 +24,11 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get('/api/config/maps-key', (req, res) => {
+  const key = process.env.GOOGLE_MAPS_API_KEY || '';
+  res.json({ key });
+});
+
 app.use('/api/customers', customersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/routes', routesRouter);
@@ -37,6 +42,10 @@ app.use(express.static(path.join(__dirname, '..'), {
     }
   }
 }));
+
+app.get('/intake', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'intake.html'));
+});
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) {

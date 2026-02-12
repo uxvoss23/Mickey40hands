@@ -93,6 +93,14 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-12: Service types: Residential/Commercial Panel Cleaning, Critter Guard Install/Repair, General Repair, Pressure Washing, Site Visit
 - 2026-02-12: Jobs save to database via POST /api/jobs with customer_id, job_description, status, notes
 - 2026-02-12: Customer status defaults to blank (no job) or "unscheduled" (job added)
+- 2026-02-12: Integrated Google Places Autocomplete for address fields (replaces Nominatim for autocomplete)
+- 2026-02-12: Google Maps SDK loaded dynamically via /api/config/maps-key endpoint (secure key delivery)
+- 2026-02-12: Google Places auto-fills street, city, state, zip, and precise lat/lng coordinates
+- 2026-02-12: Dark-themed Google Places dropdown via .pac-container CSS overrides
+- 2026-02-12: Built shareable public intake form at /intake — standalone page, no login required
+- 2026-02-12: Intake form has Google Places autocomplete, name/phone/email/address fields, optional job request
+- 2026-02-12: Intake form submissions save to database with source='intake-form' tag
+- 2026-02-12: intake.html served via dedicated route, separate from main SPA
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header
