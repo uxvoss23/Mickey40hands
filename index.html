@@ -2441,6 +2441,12 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
+        // If in unscheduled view and NOT editing a route, open profile instead of scheduling
+        if (statusFilter === 'unscheduled' && !editingSavedRouteId) {
+          setSelectedCustomer(customer);
+          return;
+        }
+
         // If route overlay is active (but NOT editing a specific route) and customer is unscheduled, show route picker
         if (showRouteOverlay && !editingSavedRouteId && (!customer.status || customer.status === 'unscheduled' || customer.status === '')) {
           let rangeStart, rangeEnd;
