@@ -344,7 +344,7 @@ router.post('/bulk', async (req, res) => {
         `, [
           customerId,
           job.jobDescription || job.job_description || '',
-          (job.status || '').toLowerCase(),
+          (job.status || 'completed').toLowerCase(),
           job.date || job.completed_date || '',
           parseFloat(job.amount) || 0,
           parseFloat(job.tip) || 0,

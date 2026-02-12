@@ -4655,7 +4655,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               email: c.email,
               secondaryPhones: c.secondary_phones || [],
               secondaryEmails: c.secondary_emails || [],
-              status: c.active_job_count > 0 ? (c.status || 'unscheduled') : '',
+              status: (c.status || '').toLowerCase(),
               activeJobCount: c.active_job_count || 0,
               totalJobCount: c.total_job_count || 0,
               notes: c.notes || '',
@@ -9241,16 +9241,12 @@ const createJob = async () => {
                                               try {
                                                 await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
                                                 const updatedHistory = (profileCustomer.serviceHistory || []).filter(j => j.jobId !== job.jobId);
-                                                const activeJobs = updatedHistory.filter(j => {
-                                                  const s = (j.status || '').toLowerCase();
-                                                  return s !== 'completed' && s !== 'cancelled' && (j.jobDescription || j.date);
-                                                });
-                                                const prevJob = updatedHistory.length > 0 ? [...updatedHistory].sort((a,b) => new Date(b.date) - new Date(a.date))[0] : null;
-                                                const newStatus = activeJobs.length > 0 ? (prevJob ? prevJob.status || 'unscheduled' : 'unscheduled') : '';
+                                                const deletedJobStatus = (job.status || '').toLowerCase();
+                                                const wasActiveJob = deletedJobStatus !== 'completed' && deletedJobStatus !== 'cancelled';
+                                                const newActiveCount = Math.max(0, (profileCustomer.activeJobCount || 0) - (wasActiveJob ? 1 : 0));
+                                                const newStatus = newActiveCount > 0 ? 'unscheduled' : '';
                                                 const customerPatch = {
-                                                  job_description: prevJob ? (prevJob.jobDescription || '') : '',
-                                                  status: newStatus,
-                                                  is_recurring: prevJob ? (prevJob.isRecurring || false) : false
+                                                  status: newStatus
                                                 };
                                                 await apiFetch(`/customers/${profileCustomer.id}`, {
                                                   method: 'PATCH',
@@ -9260,12 +9256,11 @@ const createJob = async () => {
                                                   ...profileCustomer,
                                                   serviceHistory: updatedHistory,
                                                   status: newStatus,
-                                                  jobDescription: customerPatch.job_description,
-                                                  isRecurring: customerPatch.is_recurring
+                                                  activeJobCount: newActiveCount
                                                 };
                                                 setProfileCustomer(updatedCustomer);
+                                                setCustomers(prev => prev.map(c => c.id === profileCustomer.id ? {...c, status: newStatus, activeJobCount: newActiveCount, serviceHistory: updatedHistory} : c));
                                                 setSavedLists(prev => prev.map(c => c.id === profileCustomer.id ? updatedCustomer : c));
-                                                await loadFromDatabase();
                                                 setConfirmDeleteJobId(null);
                                               } catch (err) {
                                                 console.error('Failed to delete job:', err);
@@ -10448,8 +10443,9 @@ const createJob = async () => {
                                           style={{ flex: 1, padding: '4px 6px', background: 'rgba(30, 41, 59, 0.9)', border: '1px solid rgba(139, 92, 246, 0.5)', borderRadius: '4px', color: '#f1f5f9', fontSize: '12px', outline: 'none' }}
                                         >
                                           <option value="">None</option>
-                                          <option value="scheduled">Scheduled</option>
                                           <option value="unscheduled">Unscheduled</option>
+                                          <option value="scheduled">Scheduled</option>
+                                          <option value="completed">Completed</option>
                                         </select>
                                       ) : col.key === 'isRecurring' ? (
                                         <select
