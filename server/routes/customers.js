@@ -419,4 +419,39 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.post('/geocode', async (req, res) => {
+  try {
+    const { address } = req.body;
+    if (!address) {
+      return res.status(400).json({ error: 'Address is required' });
+    }
+
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1&countrycodes=us&addressdetails=1`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'SolarCRM/1.0' }
+    });
+    const data = await response.json();
+
+    if (data.length === 0) {
+      return res.json({ success: false, error: 'Address not found' });
+    }
+
+    const result = data[0];
+    const addr = result.address || {};
+    res.json({
+      success: true,
+      lat: parseFloat(result.lat),
+      lng: parseFloat(result.lon),
+      display_name: result.display_name,
+      city: addr.city || addr.town || addr.village || addr.hamlet || '',
+      state: addr.state || '',
+      zip: addr.postcode || '',
+      street: [addr.house_number, addr.road].filter(Boolean).join(' ')
+    });
+  } catch (err) {
+    console.error('Geocoding error:', err);
+    res.status(500).json({ error: 'Geocoding failed' });
+  }
+});
+
 module.exports = router;

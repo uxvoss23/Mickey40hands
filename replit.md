@@ -83,6 +83,11 @@ A single-page web application for customer relationship management with map-base
 - Database: PostgreSQL (auto-migrates on startup)
 
 ## Recent Changes
+- 2026-02-12: Added automatic geocoding via Nominatim API - server endpoint at /api/customers/geocode
+- 2026-02-12: Rebuilt Quick Add Customer form with auto-geocode: type address, click out, coordinates auto-found
+- 2026-02-12: Auto-fills city/state/zip from geocode results; green "Location Found" badge confirms success
+- 2026-02-12: Save & Show on Map button pans map to new customer after creation
+- 2026-02-12: Debounced geocode calls to prevent rate-limiting from Nominatim
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

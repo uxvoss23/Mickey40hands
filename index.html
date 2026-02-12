@@ -10190,250 +10190,227 @@ const createJob = async () => {
             )}
 
 
-            {showNewCustomerForm && (
+            {showNewCustomerForm && (() => {
+              const inputStyle = {
+                width: '100%', padding: '10px',
+                background: 'rgba(15, 23, 42, 0.8)',
+                border: '1px solid rgba(148, 163, 184, 0.2)',
+                borderRadius: '8px', color: '#f1f5f9',
+                fontSize: '14px', outline: 'none', fontFamily: 'inherit'
+              };
+              const labelStyle = { fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' };
+
+              const geocodeAddress = async (fullAddress) => {
+                if (!fullAddress || fullAddress.length < 8) return;
+                setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'looking up...' }));
+                try {
+                  const res = await apiFetch('/customers/geocode', {
+                    method: 'POST',
+                    body: JSON.stringify({ address: fullAddress })
+                  });
+                  if (res.success) {
+                    setNewCustomerData(prev => ({
+                      ...prev,
+                      _lat: res.lat, _lng: res.lng,
+                      city: prev.city || res.city,
+                      state: prev.state || res.state,
+                      zip: prev.zip || res.zip,
+                      _geocodeStatus: 'found'
+                    }));
+                  } else {
+                    setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'not found', _lat: null, _lng: null }));
+                  }
+                } catch (err) {
+                  setNewCustomerData(prev => ({ ...prev, _geocodeStatus: 'error', _lat: null, _lng: null }));
+                }
+              };
+
+              let _geocodeTimer = null;
+              const handleAddressBlur = () => {
+                if (_geocodeTimer) clearTimeout(_geocodeTimer);
+                _geocodeTimer = setTimeout(() => {
+                  const d = newCustomerData;
+                  const full = [d.address, d.city, d.state, d.zip].filter(Boolean).join(', ');
+                  if (d.address && d.address.length >= 5) geocodeAddress(full);
+                }, 400);
+              };
+
+              return (
               <div style={{
-                position: 'fixed',
-                top: 0, left: 0, right: 0, bottom: 0,
+                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
                 background: 'rgba(0,0,0,0.7)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 zIndex: 10000
               }} onClick={() => setShowNewCustomerForm(false)}>
                 <div style={{
-                  background: '#1e293b',
-                  borderRadius: '16px',
-                  padding: '32px',
-                  width: '500px',
-                  maxHeight: '80vh',
-                  overflowY: 'auto',
+                  background: '#1e293b', borderRadius: '16px', padding: '28px',
+                  width: '480px', maxHeight: '85vh', overflowY: 'auto',
                   border: '1px solid rgba(148, 163, 184, 0.2)'
-                }} onClick={(e) => e.stopPropagation()}>
-                  <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '24px' }}>
-                    + New Customer
+                }} onClick={(e) => e.stopPropagation()} className="scrollbar-custom">
+                  <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    + Quick Add Customer
+                    {newCustomerData._geocodeStatus === 'found' && (
+                      <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 600, background: 'rgba(34,197,94,0.15)', padding: '3px 10px', borderRadius: '6px' }}>
+                        Location Found
+                      </span>
+                    )}
                   </h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                    {[
-                      { key: 'firstName', label: 'First Name', placeholder: 'John' },
-                      { key: 'lastName', label: 'Last Name', placeholder: 'Doe' },
-                      { key: 'phone', label: 'Phone', placeholder: '(555) 123-4567' },
-                      { key: 'email', label: 'Email', placeholder: 'john@example.com' },
-                    ].map(field => (
-                      <div key={field.key}>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>{field.label}</label>
-                        <input
-                          type="text"
-                          value={newCustomerData[field.key]}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, [field.key]: e.target.value}))}
-                          placeholder={field.placeholder}
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ marginTop: '12px', display: 'grid', gridTemplateColumns: '1fr', gap: '12px' }}>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Address</label>
-                      <input
-                        type="text"
-                        value={newCustomerData.address}
-                        onChange={(e) => setNewCustomerData(prev => ({...prev, address: e.target.value}))}
-                        placeholder="123 Main St"
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          background: 'rgba(15, 23, 42, 0.8)',
-                          border: '1px solid rgba(148, 163, 184, 0.2)',
-                          borderRadius: '8px',
-                          color: '#f1f5f9',
-                          fontSize: '14px',
-                          outline: 'none'
-                        }}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>City</label>
-                        <input
-                          type="text"
-                          value={newCustomerData.city}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, city: e.target.value}))}
-                          placeholder="Fort Worth"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>State</label>
-                        <input
-                          type="text"
-                          value={newCustomerData.state}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, state: e.target.value}))}
-                          placeholder="TX"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>ZIP</label>
-                        <input
-                          type="text"
-                          value={newCustomerData.zip}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, zip: e.target.value}))}
-                          placeholder="76131"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Status</label>
-                        <select
-                          value={newCustomerData.status}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, status: e.target.value}))}
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        >
-                          <option value="">None</option>
-                          <option value="unscheduled">Unscheduled</option>
-                          <option value="scheduled">Scheduled</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Panels</label>
-                        <input
-                          type="number"
-                          value={newCustomerData.panels}
-                          onChange={(e) => setNewCustomerData(prev => ({...prev, panels: e.target.value}))}
-                          placeholder="0"
-                          style={{
-                            width: '100%',
-                            padding: '10px',
-                            background: 'rgba(15, 23, 42, 0.8)',
-                            border: '1px solid rgba(148, 163, 184, 0.2)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '14px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Notes</label>
-                      <textarea
-                        value={newCustomerData.notes}
-                        onChange={(e) => setNewCustomerData(prev => ({...prev, notes: e.target.value}))}
-                        placeholder="Any notes about this customer..."
-                        rows={3}
-                        style={{
-                          width: '100%',
-                          padding: '10px',
-                          background: 'rgba(15, 23, 42, 0.8)',
-                          border: '1px solid rgba(148, 163, 184, 0.2)',
-                          borderRadius: '8px',
-                          color: '#f1f5f9',
-                          fontSize: '14px',
-                          outline: 'none',
-                          resize: 'vertical'
-                        }}
-                      />
+
+                  <div style={{ 
+                    padding: '14px', marginBottom: '16px',
+                    background: 'rgba(139, 92, 246, 0.08)', border: '1px solid rgba(139, 92, 246, 0.2)',
+                    borderRadius: '10px'
+                  }}>
+                    <label style={{ ...labelStyle, color: '#a78bfa', fontSize: '13px' }}>Full Address (auto-locates on map)</label>
+                    <input
+                      type="text"
+                      value={newCustomerData.address}
+                      onChange={(e) => setNewCustomerData(prev => ({ ...prev, address: e.target.value, _geocodeStatus: null, _lat: null, _lng: null }))}
+                      onBlur={handleAddressBlur}
+                      placeholder="1234 Main St, Fort Worth, TX 76131"
+                      autoFocus
+                      style={{
+                        ...inputStyle,
+                        fontSize: '15px', padding: '12px',
+                        background: 'rgba(15, 23, 42, 0.6)',
+                        border: newCustomerData._geocodeStatus === 'found'
+                          ? '2px solid rgba(34, 197, 94, 0.5)'
+                          : newCustomerData._geocodeStatus === 'not found'
+                          ? '2px solid rgba(239, 68, 68, 0.5)'
+                          : '1px solid rgba(139, 92, 246, 0.3)'
+                      }}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                      {newCustomerData._geocodeStatus === 'looking up...' && (
+                        <span style={{ fontSize: '11px', color: '#fbbf24' }}>Looking up location...</span>
+                      )}
+                      {newCustomerData._geocodeStatus === 'found' && (
+                        <span style={{ fontSize: '11px', color: '#22c55e' }}>
+                          Coordinates: {newCustomerData._lat?.toFixed(5)}, {newCustomerData._lng?.toFixed(5)}
+                        </span>
+                      )}
+                      {newCustomerData._geocodeStatus === 'not found' && (
+                        <span style={{ fontSize: '11px', color: '#ef4444' }}>Could not find location. Try a more complete address.</span>
+                      )}
+                      {newCustomerData._geocodeStatus === 'error' && (
+                        <span style={{ fontSize: '11px', color: '#ef4444' }}>Lookup failed. Try again.</span>
+                      )}
+                      {!newCustomerData._geocodeStatus && (
+                        <span style={{ fontSize: '11px', color: '#64748b' }}>Type full address and click out to auto-locate</span>
+                      )}
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '12px', marginTop: '24px', justifyContent: 'flex-end' }}>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>First Name</label>
+                      <input type="text" value={newCustomerData.firstName} onChange={(e) => setNewCustomerData(prev => ({...prev, firstName: e.target.value}))} placeholder="John" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Last Name</label>
+                      <input type="text" value={newCustomerData.lastName} onChange={(e) => setNewCustomerData(prev => ({...prev, lastName: e.target.value}))} placeholder="Doe" style={inputStyle} />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Phone</label>
+                      <input type="text" value={newCustomerData.phone} onChange={(e) => setNewCustomerData(prev => ({...prev, phone: e.target.value}))} placeholder="(555) 123-4567" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Email</label>
+                      <input type="text" value={newCustomerData.email} onChange={(e) => setNewCustomerData(prev => ({...prev, email: e.target.value}))} placeholder="john@example.com" style={inputStyle} />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>City</label>
+                      <input type="text" value={newCustomerData.city} onChange={(e) => setNewCustomerData(prev => ({...prev, city: e.target.value}))} onBlur={handleAddressBlur} placeholder="Fort Worth" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>State</label>
+                      <input type="text" value={newCustomerData.state} onChange={(e) => setNewCustomerData(prev => ({...prev, state: e.target.value}))} onBlur={handleAddressBlur} placeholder="TX" style={inputStyle} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>ZIP</label>
+                      <input type="text" value={newCustomerData.zip} onChange={(e) => setNewCustomerData(prev => ({...prev, zip: e.target.value}))} onBlur={handleAddressBlur} placeholder="76131" style={inputStyle} />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                    <div>
+                      <label style={labelStyle}>Status</label>
+                      <select value={newCustomerData.status} onChange={(e) => setNewCustomerData(prev => ({...prev, status: e.target.value}))} style={inputStyle}>
+                        <option value="unscheduled">Unscheduled</option>
+                        <option value="scheduled">Scheduled</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Panels</label>
+                      <input type="number" value={newCustomerData.panels} onChange={(e) => setNewCustomerData(prev => ({...prev, panels: e.target.value}))} placeholder="0" style={inputStyle} />
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={labelStyle}>Notes</label>
+                    <textarea value={newCustomerData.notes} onChange={(e) => setNewCustomerData(prev => ({...prev, notes: e.target.value}))} placeholder="Gate code, special instructions..." rows={2} style={{ ...inputStyle, resize: 'vertical' }} />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                     <button
                       onClick={() => setShowNewCustomerForm(false)}
                       style={{
-                        padding: '10px 20px',
-                        background: 'rgba(100, 116, 139, 0.2)',
-                        border: '1px solid rgba(100, 116, 139, 0.3)',
-                        borderRadius: '8px',
-                        color: '#94a3b8',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
+                        padding: '10px 20px', background: 'rgba(100, 116, 139, 0.2)',
+                        border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '8px',
+                        color: '#94a3b8', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
                       }}
-                    >
-                      Cancel
-                    </button>
+                    >Cancel</button>
                     <button
                       onClick={async () => {
                         try {
                           const fullName = `${newCustomerData.firstName} ${newCustomerData.lastName}`.trim();
-                          if (!fullName || fullName === '') {
-                            alert('Please enter a customer name');
-                            return;
+                          if (!fullName) { alert('Please enter a name'); return; }
+
+                          let lat = newCustomerData._lat;
+                          let lng = newCustomerData._lng;
+
+                          if (!lat && newCustomerData.address) {
+                            const full = [newCustomerData.address, newCustomerData.city, newCustomerData.state, newCustomerData.zip].filter(Boolean).join(', ');
+                            const geoRes = await apiFetch('/customers/geocode', { method: 'POST', body: JSON.stringify({ address: full }) });
+                            if (geoRes.success) { lat = geoRes.lat; lng = geoRes.lng; }
                           }
+
+                          const fullAddr = [newCustomerData.address, newCustomerData.city, newCustomerData.state, newCustomerData.zip].filter(Boolean).join(', ');
                           const customerPayload = {
                             first_name: newCustomerData.firstName,
                             last_name: newCustomerData.lastName,
                             full_name: fullName,
-                            address: newCustomerData.address ? `${newCustomerData.address}, ${newCustomerData.city}, ${newCustomerData.state} ${newCustomerData.zip}`.trim() : '',
+                            address: fullAddr,
                             street: newCustomerData.address,
                             city: newCustomerData.city,
                             state: newCustomerData.state,
                             zip: newCustomerData.zip,
+                            lat: lat, lng: lng,
                             phone: newCustomerData.phone,
                             email: newCustomerData.email,
-                            status: newCustomerData.status,
+                            status: newCustomerData.status || 'unscheduled',
                             panel_count: parseInt(newCustomerData.panels) || 0,
                             notes: newCustomerData.notes,
-                            source: 'manual'
+                            source: 'quick-add'
                           };
-                          const saved = await apiFetch('/customers', {
-                            method: 'POST',
-                            body: JSON.stringify(customerPayload)
-                          });
+                          await apiFetch('/customers', { method: 'POST', body: JSON.stringify(customerPayload) });
                           await loadFromDatabase();
                           setShowNewCustomerForm(false);
                           setNewCustomerData({
                             firstName: '', lastName: '', phone: '', email: '',
                             address: '', city: '', state: '', zip: '',
-                            status: 'unscheduled', panels: '0', notes: ''
+                            status: 'unscheduled', panels: '0', notes: '',
+                            _lat: null, _lng: null, _geocodeStatus: null
                           });
-                          alert(`Customer "${fullName}" created successfully!`);
+                          if (lat && lng && mapInstanceRef.current) {
+                            mapInstanceRef.current.setView([lat, lng], 14);
+                          }
                         } catch (err) {
                           console.error('Failed to create customer:', err);
                           alert('Failed to create customer: ' + err.message);
@@ -10441,21 +10418,20 @@ const createJob = async () => {
                       }}
                       style={{
                         padding: '10px 24px',
-                        background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-                        border: 'none',
-                        borderRadius: '8px',
-                        color: '#fff',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
+                        background: newCustomerData._geocodeStatus === 'found'
+                          ? 'linear-gradient(135deg, #22c55e, #16a34a)'
+                          : 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                        border: 'none', borderRadius: '8px',
+                        color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
                       }}
                     >
-                      Save Customer
+                      {newCustomerData._geocodeStatus === 'found' ? 'Save & Show on Map' : 'Save Customer'}
                     </button>
                   </div>
                 </div>
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Radius Search Floating Control Panel */}
