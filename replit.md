@@ -92,6 +92,12 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-12: Two-step customer creation: save customer first, then optional Add Job popup with 7 service types
 - 2026-02-12: Service types: Residential/Commercial Panel Cleaning, Critter Guard Install/Repair, General Repair, Pressure Washing, Site Visit
 - 2026-02-12: Jobs save to database via POST /api/jobs with customer_id, job_description, status, notes
+- 2026-02-12: Redesigned Add Job form with customer contact info auto-populated at top
+- 2026-02-12: Service-specific inputs: Residential Cleaning shows panels, price per panel ($9/$8/$7/$6), auto-calculated total price
+- 2026-02-12: Total price auto-calculates (panels x price per panel) with manual override option and "Reset to auto" link
+- 2026-02-12: Preferred days multi-select (Mon-Sat), preferred time (AM/PM), and technician assignment (Chance T)
+- 2026-02-12: Jobs table extended with price, price_per_panel, preferred_days, preferred_time, technician columns
+- 2026-02-12: Centralized openJobPopupForCustomer() helper passes full customer data (phone, email, address)
 - 2026-02-12: Customer status defaults to blank (no job) or "unscheduled" (job added)
 - 2026-02-12: Integrated Google Places Autocomplete for address fields (replaces Nominatim for autocomplete)
 - 2026-02-12: Google Maps SDK loaded dynamically via /api/config/maps-key endpoint (secure key delivery)

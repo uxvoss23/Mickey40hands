@@ -39,14 +39,17 @@ router.post('/', async (req, res) => {
     const j = req.body;
     const result = await pool.query(`
       INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
-                        completed_date, amount, tip, notes, is_recurring, employee, panel_count)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                        completed_date, amount, tip, notes, is_recurring, employee, panel_count,
+                        price, price_per_panel, preferred_days, preferred_time, technician)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `, [
       j.customer_id, j.job_description || '', (j.status || '').toLowerCase(),
       j.scheduled_date || '', j.scheduled_time || '', j.completed_date || '',
       parseFloat(j.amount) || 0, parseFloat(j.tip) || 0, j.notes || '',
-      j.is_recurring || false, j.employee || '', parseInt(j.panel_count) || 0
+      j.is_recurring || false, j.employee || '', parseInt(j.panel_count) || 0,
+      parseFloat(j.price) || 0, parseFloat(j.price_per_panel) || 0,
+      j.preferred_days || '', j.preferred_time || '', j.technician || ''
     ]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -63,7 +66,8 @@ router.patch('/:id', async (req, res) => {
     let paramIndex = 1;
 
     const fields = ['job_description', 'status', 'scheduled_date', 'scheduled_time',
-                    'completed_date', 'amount', 'tip', 'notes', 'is_recurring', 'employee', 'panel_count'];
+                    'completed_date', 'amount', 'tip', 'notes', 'is_recurring', 'employee', 'panel_count',
+                    'price', 'price_per_panel', 'preferred_days', 'preferred_time', 'technician'];
 
     for (const field of fields) {
       if (updates[field] !== undefined) {

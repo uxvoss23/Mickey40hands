@@ -635,8 +635,9 @@
       });
       const [quickAddJobPopup, setQuickAddJobPopup] = useState(null);
       const [quickJobData, setQuickJobData] = useState({
-        serviceType: 'Residential Panel Cleaning',
-        notes: '', panels: '0'
+        serviceType: '', notes: '', panels: '0',
+        pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
+        preferredDays: [], preferredTime: '', technician: 'Chance T'
       });
       
       // Job Creation Modal State
@@ -663,6 +664,23 @@
         notes: ''
       });
       const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+
+      const openJobPopupForCustomer = (customer) => {
+        const panels = String(customer.panelCount || customer.totalPanels || '0');
+        setQuickJobData({
+          serviceType: '', notes: '', panels: panels,
+          pricePerPanel: '9', totalPrice: String((parseInt(panels) || 0) * 9),
+          priceOverridden: false, preferredDays: [], preferredTime: '', technician: 'Chance T'
+        });
+        setQuickAddJobPopup({
+          customerId: customer.id,
+          customerName: customer.name || 'Customer',
+          customerPhone: customer.phone || customer.phoneNumber || '',
+          customerEmail: customer.email || '',
+          customerAddress: customer.address || '',
+          lat: customer.lat, lng: customer.lng
+        });
+      };
 
       const customerHasOpenJobs = (customer) => {
         if (!customer || !customer.serviceHistory || customer.serviceHistory.length === 0) return false;
@@ -1750,12 +1768,7 @@
             console.error('Customer not found for add job:', customerId);
             return;
           }
-          setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: String(customer.panelCount || customer.totalPanels || '0') });
-          setQuickAddJobPopup({
-            customerId: customer.id,
-            customerName: customer.name || 'Customer',
-            lat: customer.lat, lng: customer.lng
-          });
+          openJobPopupForCustomer(customer);
         };
 
         window.addEventListener('addToRoute', handleAddToRoute);
@@ -7871,12 +7884,7 @@ const createJob = async () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: String(customer.panelCount || customer.totalPanels || '0') });
-                                    setQuickAddJobPopup({
-                                      customerId: customer.id,
-                                      customerName: customer.name || 'Customer',
-                                      lat: customer.lat, lng: customer.lng
-                                    });
+                                    openJobPopupForCustomer(customer);
                                   }}
                                   style={{
                                     padding: '4px 8px', borderRadius: '4px',
@@ -9116,12 +9124,7 @@ const createJob = async () => {
                         </h3>
                         <button
                           onClick={() => {
-                            setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: String(profileCustomer.panelCount || profileCustomer.totalPanels || '0') });
-                            setQuickAddJobPopup({
-                              customerId: profileCustomer.id,
-                              customerName: profileCustomer.name || 'Customer',
-                              lat: profileCustomer.lat, lng: profileCustomer.lng
-                            });
+                            openJobPopupForCustomer(profileCustomer);
                           }}
                           style={{
                             padding: '8px 16px', borderRadius: '8px',
@@ -10397,12 +10400,7 @@ const createJob = async () => {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: String(customer.panelCount || customer.totalPanels || '0') });
-                                  setQuickAddJobPopup({
-                                    customerId: customer.id,
-                                    customerName: customer.name || 'Customer',
-                                    lat: customer.lat, lng: customer.lng
-                                  });
+                                  openJobPopupForCustomer(customer);
                                 }}
                                 style={{
                                   padding: '4px 10px', borderRadius: '4px',
@@ -10708,10 +10706,11 @@ const createJob = async () => {
                           }
 
                           if (wantsJob && savedCustomer) {
-                            setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: panelCount });
-                            setQuickAddJobPopup({
-                              customerId: savedCustomer.id,
-                              customerName: fullName,
+                            openJobPopupForCustomer({
+                              ...savedCustomer, name: fullName,
+                              phone: quickAddData.phone, email: quickAddData.email,
+                              address: quickAddData.address,
+                              panelCount: parseInt(panelCount) || 0,
                               lat: lat, lng: lng
                             });
                           }
@@ -10747,7 +10746,8 @@ const createJob = async () => {
                 background: 'rgba(15, 23, 42, 0.8)',
                 border: '1px solid rgba(148, 163, 184, 0.2)',
                 borderRadius: '8px', color: '#f1f5f9',
-                fontSize: '14px', outline: 'none', fontFamily: 'inherit'
+                fontSize: '14px', outline: 'none', fontFamily: 'inherit',
+                boxSizing: 'border-box'
               };
               const jobLabelStyle = { fontSize: '12px', color: '#94a3b8', fontWeight: 600, marginBottom: '4px', display: 'block' };
 
@@ -10761,6 +10761,19 @@ const createJob = async () => {
                 'Site Visit'
               ];
 
+              const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+              const toggleDay = (day) => {
+                setQuickJobData(prev => {
+                  const days = prev.preferredDays.includes(day)
+                    ? prev.preferredDays.filter(d => d !== day)
+                    : [...prev.preferredDays, day];
+                  return { ...prev, preferredDays: days };
+                });
+              };
+
+              const isResidential = quickJobData.serviceType === 'Residential Panel Cleaning';
+
               return (
                 <div style={{
                   position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
@@ -10770,28 +10783,53 @@ const createJob = async () => {
                 }} onClick={() => setQuickAddJobPopup(null)}>
                   <div style={{
                     background: '#1e293b', borderRadius: '16px', padding: '28px',
-                    width: '440px', border: '1px solid rgba(148, 163, 184, 0.2)'
+                    width: '480px', maxHeight: '90vh', overflowY: 'auto',
+                    border: '1px solid rgba(148, 163, 184, 0.2)'
                   }} onClick={(e) => e.stopPropagation()}>
 
-                    <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '6px' }}>
+                    <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#f1f5f9', marginBottom: '16px' }}>
                       Add Job
                     </h3>
-                    <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
-                      for {quickAddJobPopup.customerName}
-                    </p>
 
-                    <div style={{ marginBottom: '14px' }}>
+                    <div style={{
+                      background: 'rgba(15, 23, 42, 0.5)', borderRadius: '10px',
+                      padding: '14px', marginBottom: '18px',
+                      border: '1px solid rgba(148, 163, 184, 0.1)'
+                    }}>
+                      <div style={{ fontSize: '15px', fontWeight: 600, color: '#f1f5f9', marginBottom: '6px' }}>
+                        {quickAddJobPopup.customerName}
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {quickAddJobPopup.customerPhone && (
+                          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                            {quickAddJobPopup.customerPhone}
+                          </span>
+                        )}
+                        {quickAddJobPopup.customerEmail && (
+                          <span style={{ fontSize: '13px', color: '#94a3b8' }}>
+                            {quickAddJobPopup.customerEmail}
+                          </span>
+                        )}
+                        {quickAddJobPopup.customerAddress && (
+                          <span style={{ fontSize: '13px', color: '#64748b' }}>
+                            {quickAddJobPopup.customerAddress}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '16px' }}>
                       <label style={jobLabelStyle}>Service Type</label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                         {serviceTypes.map(type => (
                           <button
                             key={type}
                             type="button"
                             onClick={() => setQuickJobData(prev => ({...prev, serviceType: type}))}
                             style={{
-                              padding: '10px 14px', borderRadius: '8px',
-                              fontSize: '14px', fontWeight: 500, cursor: 'pointer',
-                              textAlign: 'left', transition: 'all 0.15s',
+                              padding: '8px 14px', borderRadius: '8px',
+                              fontSize: '13px', fontWeight: 500, cursor: 'pointer',
+                              transition: 'all 0.15s',
                               border: quickJobData.serviceType === type
                                 ? '2px solid rgba(139,92,246,0.6)'
                                 : '1px solid rgba(148,163,184,0.15)',
@@ -10801,11 +10839,145 @@ const createJob = async () => {
                               color: quickJobData.serviceType === type ? '#c4b5fd' : '#cbd5e1'
                             }}
                           >
-                            {quickJobData.serviceType === type && '\u2713  '}{type}
+                            {quickJobData.serviceType === type && '\u2713 '}{type}
                           </button>
                         ))}
                       </div>
                     </div>
+
+                    {isResidential && (
+                      <div style={{
+                        background: 'rgba(139, 92, 246, 0.05)', borderRadius: '10px',
+                        padding: '16px', marginBottom: '16px',
+                        border: '1px solid rgba(139, 92, 246, 0.15)'
+                      }}>
+                        <div style={{ display: 'flex', gap: '12px', marginBottom: '14px' }}>
+                          <div style={{ flex: 1 }}>
+                            <label style={jobLabelStyle}>Number of Panels</label>
+                            <input
+                              type="number"
+                              value={quickJobData.panels}
+                              onChange={(e) => {
+                                const panels = e.target.value;
+                                const count = parseInt(panels) || 0;
+                                const ppp = parseFloat(quickJobData.pricePerPanel) || 9;
+                                setQuickJobData(prev => ({
+                                  ...prev, panels: panels,
+                                  totalPrice: prev.priceOverridden ? prev.totalPrice : String(count * ppp)
+                                }));
+                              }}
+                              placeholder="0"
+                              min="0"
+                              style={jobInputStyle}
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={jobLabelStyle}>Price Per Panel</label>
+                            <select
+                              value={quickJobData.pricePerPanel}
+                              onChange={(e) => {
+                                const ppp = parseFloat(e.target.value);
+                                const count = parseInt(quickJobData.panels) || 0;
+                                setQuickJobData(prev => ({
+                                  ...prev, pricePerPanel: e.target.value,
+                                  totalPrice: prev.priceOverridden ? prev.totalPrice : String(count * ppp)
+                                }));
+                              }}
+                              style={jobInputStyle}
+                            >
+                              <option value="9">$9</option>
+                              <option value="8">$8</option>
+                              <option value="7">$7</option>
+                              <option value="6">$6</option>
+                            </select>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <label style={jobLabelStyle}>Total Price</label>
+                            <div style={{ position: 'relative' }}>
+                              <span style={{
+                                position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)',
+                                color: '#94a3b8', fontSize: '14px', pointerEvents: 'none'
+                              }}>$</span>
+                              <input
+                                type="number"
+                                value={quickJobData.totalPrice}
+                                onChange={(e) => {
+                                  setQuickJobData(prev => ({
+                                    ...prev, totalPrice: e.target.value, priceOverridden: true
+                                  }));
+                                }}
+                                style={{ ...jobInputStyle, paddingLeft: '22px' }}
+                              />
+                            </div>
+                            {quickJobData.priceOverridden && (
+                              <button
+                                onClick={() => {
+                                  const count = parseInt(quickJobData.panels) || 0;
+                                  const ppp = parseFloat(quickJobData.pricePerPanel) || 9;
+                                  setQuickJobData(prev => ({
+                                    ...prev, totalPrice: String(count * ppp), priceOverridden: false
+                                  }));
+                                }}
+                                style={{
+                                  marginTop: '4px', fontSize: '11px', color: '#8b5cf6',
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: 0
+                                }}
+                              >Reset to auto</button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '14px' }}>
+                          <label style={jobLabelStyle}>Preferred Days</label>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            {daysOfWeek.map(day => (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => toggleDay(day)}
+                                style={{
+                                  flex: 1, padding: '8px 4px', borderRadius: '6px',
+                                  fontSize: '12px', fontWeight: 600, cursor: 'pointer',
+                                  transition: 'all 0.15s',
+                                  border: quickJobData.preferredDays.includes(day)
+                                    ? '2px solid rgba(34, 197, 94, 0.5)'
+                                    : '1px solid rgba(148,163,184,0.15)',
+                                  background: quickJobData.preferredDays.includes(day)
+                                    ? 'rgba(34, 197, 94, 0.15)'
+                                    : 'rgba(15,23,42,0.5)',
+                                  color: quickJobData.preferredDays.includes(day) ? '#4ade80' : '#94a3b8'
+                                }}
+                              >{day}</button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label style={jobLabelStyle}>Preferred Time</label>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {['AM', 'PM'].map(t => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setQuickJobData(prev => ({...prev, preferredTime: prev.preferredTime === t ? '' : t}))}
+                                style={{
+                                  flex: 1, padding: '8px', borderRadius: '6px',
+                                  fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                                  transition: 'all 0.15s',
+                                  border: quickJobData.preferredTime === t
+                                    ? '2px solid rgba(59, 130, 246, 0.5)'
+                                    : '1px solid rgba(148,163,184,0.15)',
+                                  background: quickJobData.preferredTime === t
+                                    ? 'rgba(59, 130, 246, 0.15)'
+                                    : 'rgba(15,23,42,0.5)',
+                                  color: quickJobData.preferredTime === t ? '#60a5fa' : '#94a3b8'
+                                }}
+                              >{t}</button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ marginBottom: '14px' }}>
                       <label style={jobLabelStyle}>Job Notes (optional)</label>
@@ -10818,6 +10990,17 @@ const createJob = async () => {
                       />
                     </div>
 
+                    <div style={{ marginBottom: '18px' }}>
+                      <label style={jobLabelStyle}>Assign Technician</label>
+                      <select
+                        value={quickJobData.technician}
+                        onChange={(e) => setQuickJobData(prev => ({...prev, technician: e.target.value}))}
+                        style={jobInputStyle}
+                      >
+                        <option value="Chance T">Chance T</option>
+                      </select>
+                    </div>
+
                     <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
                       <button
                         onClick={() => setQuickAddJobPopup(null)}
@@ -10826,18 +11009,35 @@ const createJob = async () => {
                           border: '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '8px',
                           color: '#94a3b8', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
                         }}
-                      >Skip</button>
+                      >Cancel</button>
                       <button
+                        disabled={!quickJobData.serviceType}
                         onClick={async () => {
                           try {
+                            const noteParts = [];
+                            if (isResidential) {
+                              if (quickJobData.preferredDays.length > 0) noteParts.push('Preferred days: ' + quickJobData.preferredDays.join(', '));
+                              if (quickJobData.preferredTime) noteParts.push('Preferred time: ' + quickJobData.preferredTime);
+                              if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
+                            } else {
+                              if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
+                            }
+                            if (quickJobData.notes) noteParts.push(quickJobData.notes);
+                            const combinedNotes = noteParts.join(' | ');
+
                             await apiFetch('/jobs', {
                               method: 'POST',
                               body: JSON.stringify({
                                 customer_id: quickAddJobPopup.customerId,
                                 job_description: quickJobData.serviceType,
                                 status: 'unscheduled',
-                                notes: quickJobData.notes,
-                                panel_count: parseInt(quickJobData.panels) || 0
+                                notes: combinedNotes,
+                                panel_count: parseInt(quickJobData.panels) || 0,
+                                price: parseFloat(quickJobData.totalPrice) || 0,
+                                price_per_panel: parseFloat(quickJobData.pricePerPanel) || 0,
+                                preferred_days: quickJobData.preferredDays.join(','),
+                                preferred_time: quickJobData.preferredTime,
+                                technician: quickJobData.technician
                               })
                             });
                             await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
@@ -10849,7 +11049,11 @@ const createJob = async () => {
                             });
                             await loadFromDatabase();
                             setQuickAddJobPopup(null);
-                            setQuickJobData({ serviceType: 'Residential Panel Cleaning', notes: '', panels: '0' });
+                            setQuickJobData({
+                              serviceType: '', notes: '', panels: '0',
+                              pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
+                              preferredDays: [], preferredTime: '', technician: 'Chance T'
+                            });
                           } catch (err) {
                             console.error('Failed to create job:', err);
                             alert('Failed to create job: ' + err.message);
@@ -10857,9 +11061,13 @@ const createJob = async () => {
                         }}
                         style={{
                           padding: '10px 24px',
-                          background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                          background: quickJobData.serviceType
+                            ? 'linear-gradient(135deg, #8b5cf6, #6d28d9)'
+                            : 'rgba(100, 116, 139, 0.3)',
                           border: 'none', borderRadius: '8px',
-                          color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer'
+                          color: quickJobData.serviceType ? '#fff' : '#64748b',
+                          fontSize: '14px', fontWeight: 600,
+                          cursor: quickJobData.serviceType ? 'pointer' : 'not-allowed'
                         }}
                       >
                         Submit Job

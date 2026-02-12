@@ -113,6 +113,12 @@ const migrate = async () => {
       CREATE INDEX IF NOT EXISTS idx_customers_panel_count ON customers(panel_count);
       CREATE INDEX IF NOT EXISTS idx_customers_is_recurring ON customers(is_recurring);
       CREATE INDEX IF NOT EXISTS idx_customers_solar_verified ON customers(solar_verified);
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS price NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS price_per_panel NUMERIC(10,2) DEFAULT 0;
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS preferred_days VARCHAR(255) DEFAULT '';
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS preferred_time VARCHAR(50) DEFAULT '';
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS technician VARCHAR(255) DEFAULT '';
+
       CREATE INDEX IF NOT EXISTS idx_jobs_customer_id ON jobs(customer_id);
       CREATE INDEX IF NOT EXISTS idx_route_stops_route_id ON route_stops(route_id);
       CREATE INDEX IF NOT EXISTS idx_route_stops_customer_id ON route_stops(customer_id);
