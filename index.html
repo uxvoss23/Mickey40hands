@@ -1174,24 +1174,14 @@
                 nextServiceDate: j.next_service_date || '',
                 scheduledDate: j.scheduled_date || ''
               }));
-              const existingHistory = profileCustomer.serviceHistory || [];
-              const combined = [...dbJobs];
-              existingHistory.forEach(eh => {
-                const isDup = combined.some(dj => dj.jobDescription === eh.jobDescription && dj.date === eh.date);
-                if (!isDup) combined.push(eh);
-              });
-              combined.sort((a, b) => {
+              dbJobs.sort((a, b) => {
                 const da = a.date ? new Date(a.date).getTime() : 0;
                 const db = b.date ? new Date(b.date).getTime() : 0;
                 return db - da;
               });
-              const mostRecent = combined.find(j => j.date) || combined[0];
               setProfileCustomer(prev => ({
                 ...prev,
-                serviceHistory: combined,
-                lastServiceDate: mostRecent ? mostRecent.date : prev.lastServiceDate,
-                status: mostRecent && mostRecent.status ? mostRecent.status : prev.status,
-                jobDescription: mostRecent && mostRecent.jobDescription ? mostRecent.jobDescription : prev.jobDescription
+                serviceHistory: dbJobs
               }));
             }
           } catch (err) {
