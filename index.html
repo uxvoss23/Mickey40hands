@@ -1123,9 +1123,9 @@
       }, [uploadedFiles, savedLists]);
 
       const typeFilteredCustomers = React.useMemo(() => {
-        if (activeCustomerType === 'all') return customers;
+        if (currentView !== 'pipeline' || activeCustomerType === 'all') return customers;
         return customers.filter(c => (c.customerType || 'residential') === activeCustomerType);
-      }, [customers, activeCustomerType]);
+      }, [customers, activeCustomerType, currentView]);
 
 
       useEffect(() => {
@@ -5505,70 +5505,6 @@ const createJob = async () => {
               </div>
             )}
 
-            {/* Customer Type Tabs */}
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', borderTop: '1px solid rgba(139, 92, 246, 0.1)', paddingTop: '8px', flexWrap: 'wrap' }}>
-              {allTypeTabs.map(tab => {
-                const count = tab.key === 'all' ? customers.length : customers.filter(c => (c.customerType || 'residential') === tab.key).length;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => setActiveCustomerType(tab.key)}
-                    style={{
-                      padding: '6px 14px',
-                      background: activeCustomerType === tab.key ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
-                      border: activeCustomerType === tab.key ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
-                      borderBottom: activeCustomerType === tab.key ? '2px solid #8b5cf6' : '2px solid transparent',
-                      borderRadius: '8px 8px 0 0',
-                      color: activeCustomerType === tab.key ? '#a78bfa' : '#94a3b8',
-                      fontSize: '13px',
-                      fontWeight: activeCustomerType === tab.key ? 700 : 500,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
-                  >
-                    {tab.label} <span style={{ fontSize: '11px', opacity: 0.7 }}>({count})</span>
-                  </button>
-                );
-              })}
-              {showAddTabInput ? (
-                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  <input
-                    type="text"
-                    value={newTabName}
-                    onChange={(e) => setNewTabName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newTabName.trim()) {
-                        const key = newTabName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-                        const newTab = { key, label: newTabName.trim() };
-                        const updated = [...customTypeTabs, newTab];
-                        setCustomTypeTabs(updated);
-                        localStorage.setItem('customTypeTabs', JSON.stringify(updated));
-                        setNewTabName('');
-                        setShowAddTabInput(false);
-                        setActiveCustomerType(key);
-                      }
-                      if (e.key === 'Escape') { setShowAddTabInput(false); setNewTabName(''); }
-                    }}
-                    placeholder="Tab name..."
-                    autoFocus
-                    style={{
-                      padding: '4px 8px', fontSize: '12px', background: 'rgba(30,41,59,0.8)',
-                      border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#f1f5f9', width: '100px'
-                    }}
-                  />
-                  <button onClick={() => { setShowAddTabInput(false); setNewTabName(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>✕</button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowAddTabInput(true)}
-                  style={{
-                    padding: '4px 8px', background: 'none', border: '1px dashed rgba(148,163,184,0.3)',
-                    borderRadius: '6px', color: '#64748b', fontSize: '12px', cursor: 'pointer'
-                  }}
-                  title="Add custom tab"
-                >+</button>
-              )}
-            </div>
 
             {/* View Tabs and Search */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '4px', flexWrap: 'wrap' }}>
@@ -10183,6 +10119,71 @@ const createJob = async () => {
                 overflow: 'auto',
                 padding: '32px'
               }} className="scrollbar-custom">
+                {/* Customer Type Tabs */}
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+                  {allTypeTabs.map(tab => {
+                    const count = tab.key === 'all' ? customers.length : customers.filter(c => (c.customerType || 'residential') === tab.key).length;
+                    return (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveCustomerType(tab.key)}
+                        style={{
+                          padding: '6px 14px',
+                          background: activeCustomerType === tab.key ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                          border: activeCustomerType === tab.key ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                          borderBottom: activeCustomerType === tab.key ? '2px solid #8b5cf6' : '2px solid transparent',
+                          borderRadius: '8px 8px 0 0',
+                          color: activeCustomerType === tab.key ? '#a78bfa' : '#94a3b8',
+                          fontSize: '13px',
+                          fontWeight: activeCustomerType === tab.key ? 700 : 500,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {tab.label} <span style={{ fontSize: '11px', opacity: 0.7 }}>({count})</span>
+                      </button>
+                    );
+                  })}
+                  {showAddTabInput ? (
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        value={newTabName}
+                        onChange={(e) => setNewTabName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newTabName.trim()) {
+                            const key = newTabName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+                            const newTab = { key, label: newTabName.trim() };
+                            const updated = [...customTypeTabs, newTab];
+                            setCustomTypeTabs(updated);
+                            localStorage.setItem('customTypeTabs', JSON.stringify(updated));
+                            setNewTabName('');
+                            setShowAddTabInput(false);
+                            setActiveCustomerType(key);
+                          }
+                          if (e.key === 'Escape') { setShowAddTabInput(false); setNewTabName(''); }
+                        }}
+                        placeholder="Tab name..."
+                        autoFocus
+                        style={{
+                          padding: '4px 8px', fontSize: '12px', background: 'rgba(30,41,59,0.8)',
+                          border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#f1f5f9', width: '100px'
+                        }}
+                      />
+                      <button onClick={() => { setShowAddTabInput(false); setNewTabName(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowAddTabInput(true)}
+                      style={{
+                        padding: '4px 8px', background: 'none', border: '1px dashed rgba(148,163,184,0.3)',
+                        borderRadius: '6px', color: '#64748b', fontSize: '12px', cursor: 'pointer'
+                      }}
+                      title="Add custom tab"
+                    >+</button>
+                  )}
+                </div>
+
                 {/* Pipeline Header */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
