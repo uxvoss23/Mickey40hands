@@ -841,7 +841,6 @@
           });
           setSavedViewDays(savedDays);
         }
-        // Auto-load from database on startup
         setTimeout(async () => {
           const count = await loadFromDatabase();
           if (count > 0) {
@@ -1224,16 +1223,17 @@
 
         if (scheduleMap.size === 0) return;
 
-        // Check if any customers are missing scheduling data
         const needsUpdate = customers.some(c => {
           const sched = scheduleMap.get(c.id);
-          return sched && !c.scheduledTime;
+          if (!sched || c.scheduledTime) return false;
+          if (c.status === 'unscheduled') return false;
+          return true;
         });
 
         if (needsUpdate) {
           setCustomers(prev => prev.map(c => {
             const sched = scheduleMap.get(c.id);
-            if (sched && !c.scheduledTime) {
+            if (sched && !c.scheduledTime && c.status !== 'unscheduled') {
               return { ...c, ...sched };
             }
             return c;
