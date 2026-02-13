@@ -535,7 +535,9 @@
       const [route, setRoute] = useState([]); // Keep for backward compatibility
       const [routesByDay, setRoutesByDay] = useState({}); // New: routes organized by day
       const [unsavedRouteChanges, setUnsavedRouteChanges] = useState(false);
+      const [unsavedRouteDays, setUnsavedRouteDays] = useState({}); // Track which days have unsaved edits: { 'dateString': true }
       const [pendingViewChange, setPendingViewChange] = useState(null);
+      const [pendingDateChange, setPendingDateChange] = useState(null); // Track pending date switch when warning shown
       const [routePlannerEditMode, setRoutePlannerEditMode] = useState(false);
       const [multiSelectDays, setMultiSelectDays] = useState(false);
       const [showMonthCalendar, setShowMonthCalendar] = useState(false);
@@ -1278,57 +1280,25 @@
         }
       }, [customers.length, savedRoutes.length]);
 
-      // Clean up orphaned scheduling data when changing dates (edit mode cleanup)
+      // When changing dates, preserve unsaved route edits in routesByDay
       useEffect(() => {
         const currentDateKey = selectedDate.toDateString();
         const prevDateKey = prevSelectedDateRef.current;
 
-        // If we changed dates and were not in saved view on the previous date
-        if (prevDateKey && prevDateKey !== currentDateKey && savedViewDays[prevDateKey] !== true) {
-          // Find saved routes for the previous date
-          const savedRoutesForPrevDay = savedRoutes.filter(r => {
+        if (prevDateKey && prevDateKey !== currentDateKey) {
+          // Check if the previous day has unsaved route edits (not in saved view and has stops)
+          const prevDayRoute = routesByDay[prevDateKey] || [];
+          const hasSavedRoute = savedRoutes.some(r => {
             const rDate = new Date(r.scheduledDate);
             return rDate.toDateString() === prevDateKey;
           });
 
-          // Get all customer IDs that are in saved routes for that day
-          const savedCustomerIds = new Set();
-          savedRoutesForPrevDay.forEach(r => {
-            if (r.customers) {
-              r.customers.forEach(c => savedCustomerIds.add(c.id));
-            }
-          });
+          if (prevDayRoute.length > 0 && !hasSavedRoute && savedViewDays[prevDateKey] !== true) {
+            // Mark this day as having unsaved changes - preserve the data
+            setUnsavedRouteDays(prev => ({ ...prev, [prevDateKey]: true }));
+            setUnsavedRouteChanges(true);
+          }
 
-          // Clear scheduling for customers that were scheduled for prev day but aren't in any saved route
-          const orphanedIds = customers.filter(c => {
-            if (!c.scheduledDate) return false;
-            const custDate = new Date(c.scheduledDate);
-            return custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id);
-          }).map(c => c.id);
-
-          setCustomers(prev => prev.map(c => {
-            if (!c.scheduledDate) return c;
-            const custDate = new Date(c.scheduledDate);
-            if (custDate.toDateString() === prevDateKey && !savedCustomerIds.has(c.id)) {
-              return {
-                ...c,
-                scheduledDate: null,
-                scheduledTime: null,
-                status: getStatusAfterUnschedule(c),
-                routeConfirmed: false
-              };
-            }
-            return c;
-          }));
-
-          orphanedIds.forEach(cid => {
-            const orphanCustomer = customers.find(c => c.id === cid);
-            const orphanStatus = getStatusAfterUnschedule(orphanCustomer);
-            propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: orphanStatus, routeConfirmed: false });
-          });
-
-          // Clear routesByDay for previous date
-          setRoutesByDay(prev => ({ ...prev, [prevDateKey]: [] }));
           setEditingSavedRouteId(null);
         }
 
@@ -2921,6 +2891,7 @@
             setEditingSavedRouteId(savedRouteForDay.id);
             setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
             setUnsavedRouteChanges(true);
+            setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
           } else {
             if (nextSlot) {
               scheduleCustomerToTimeSlot(customer, effectiveDate, nextSlot.time);
@@ -2930,6 +2901,8 @@
               if (existing.some(r => r.id === customer.id)) return prev;
               return { ...prev, [dateKey]: [...existing, customer] };
             });
+            setUnsavedRouteChanges(true);
+            setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
           }
 
           setSuggestedCustomers([]);
@@ -2941,6 +2914,11 @@
         const dateKey = selectedDate.toDateString();
         const currentDayRoute = routesByDay[dateKey] || [];
         setRoute(currentDayRoute);
+
+        // Re-engage edit mode if this day has unsaved changes
+        if (unsavedRouteDays[dateKey] && currentDayRoute.length > 0 && statusFilter === 'scheduled') {
+          setRoutePlannerEditMode(true);
+        }
       }, [selectedDate, routesByDay]);
 
       // Drag and drop handlers for route reordering
@@ -2973,6 +2951,7 @@
         setRoute(newRoute);
         setDraggedIndex(null);
         setUnsavedRouteChanges(true);
+        setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
       };
 
       // Save route (handles both new and edit modes)
@@ -3100,8 +3079,18 @@
 
         setShowSaveModal(false);
         setRouteName('');
-        setUnsavedRouteChanges(false);
         setRoutePlannerEditMode(false);
+
+        // Clear this day from unsaved tracking
+        setUnsavedRouteDays(prev => {
+          const next = { ...prev };
+          delete next[dateKey];
+          // If no more unsaved days, clear the global flag
+          if (Object.keys(next).length === 0) {
+            setUnsavedRouteChanges(false);
+          }
+          return next;
+        });
 
         // Clear routesByDay for this date so stale data doesn't accumulate
         setRoutesByDay(prev => ({
@@ -3116,6 +3105,118 @@
         }));
         setSuggestedCustomers([]);
         setEditingSavedRouteId(null);
+      };
+
+      // Save all unsaved routes across multiple days
+      const handleSaveAllRoutes = async () => {
+        const unsavedDayKeys = Object.keys(unsavedRouteDays).filter(dayKey => unsavedRouteDays[dayKey]);
+        if (unsavedDayKeys.length === 0) return;
+
+        for (const dayKey of unsavedDayKeys) {
+          const dayRoute = routesByDay[dayKey] || [];
+          if (dayRoute.length === 0) continue;
+
+          const dayDate = new Date(dayKey);
+
+          // Use routesByDay as source of truth, enrich with latest customer data
+          const routeStops = dayRoute.map(rc => {
+            const latestCustomer = customers.find(c => c.id === rc.id) || rc;
+            return {
+              ...latestCustomer,
+              scheduledDate: latestCustomer.scheduledDate || dayDate.toISOString(),
+              scheduledTime: latestCustomer.scheduledTime || rc.scheduledTime || '08:00'
+            };
+          }).sort((a, b) => {
+            const [aH, aM] = (a.scheduledTime || '08:00').split(':').map(Number);
+            const [bH, bM] = (b.scheduledTime || '08:00').split(':').map(Number);
+            return (aH * 60 + aM) - (bH * 60 + bM);
+          });
+
+          const routeCustomers = await Promise.all(routeStops.map(async (c) => {
+            const enriched = {
+              ...c,
+              customerNotes: c.notes || c.customerNotes || '',
+              distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+            };
+            if (enriched.jobPrice) return enriched;
+            try {
+              const data = await apiFetch('/jobs?customer_id=' + c.id);
+              if (data && data.jobs && data.jobs.length > 0) {
+                const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
+                return { ...enriched, jobPrice: parseFloat(activeJob.price) || 0 };
+              }
+            } catch (e) {}
+            return enriched;
+          }));
+
+          if (routeCustomers.length === 0) continue;
+
+          let routeTotalDistance = 0;
+          const stopsWithCoords = routeCustomers.filter(c => c.lat && c.lng);
+          if (stopsWithCoords.length > 0 && homeBase) {
+            routeTotalDistance = calculateDistance(homeBase.lat, homeBase.lng, stopsWithCoords[0].lat, stopsWithCoords[0].lng);
+            for (let i = 0; i < stopsWithCoords.length - 1; i++) {
+              routeTotalDistance += calculateDistance(stopsWithCoords[i].lat, stopsWithCoords[i].lng, stopsWithCoords[i+1].lat, stopsWithCoords[i+1].lng);
+            }
+            routeTotalDistance += calculateDistance(stopsWithCoords[stopsWithCoords.length - 1].lat, stopsWithCoords[stopsWithCoords.length - 1].lng, homeBase.lat, homeBase.lng);
+          }
+
+          const routeDateStr = dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          const newRoute = {
+            id: Date.now().toString() + '_' + dayKey,
+            name: `Route - ${routeDateStr}`,
+            date: new Date().toISOString(),
+            scheduledDate: dayDate.toISOString(),
+            customers: routeCustomers,
+            totalDistance: routeTotalDistance,
+            confirmed: true,
+            sentToTech: false,
+            sentDate: null
+          };
+
+          setSavedRoutes(prev => [...prev, newRoute]);
+
+          const routeIds = new Set(routeCustomers.map(c => c.id));
+          setCustomers(prev => prev.map(c => {
+            if (routeIds.has(c.id)) {
+              const scheduleUpdates = {
+                status: 'scheduled',
+                routeConfirmed: true,
+                confirmedRouteName: newRoute.name,
+                confirmedRouteDate: dayDate.toISOString()
+              };
+              propagateCustomerUpdate(c.id, scheduleUpdates);
+
+              apiFetch('/jobs?customer_id=' + c.id).then(data => {
+                if (data && data.jobs) {
+                  const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                  if (activeJob) {
+                    apiFetch(`/jobs/${activeJob.id}`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ status: 'scheduled', scheduled_date: dayDate.toISOString().split('T')[0] })
+                    }).catch(e => console.error('Failed to update job status:', e));
+                  }
+                }
+              }).catch(e => console.error('Failed to fetch jobs for route sync:', e));
+
+              return { ...c, ...scheduleUpdates };
+            }
+            return c;
+          }));
+
+          // Clear routesByDay and switch to saved view for this day
+          setRoutesByDay(prev => ({ ...prev, [dayKey]: [] }));
+          setSavedViewDays(prev => ({ ...prev, [dayKey]: true }));
+        }
+
+        setUnsavedRouteDays({});
+        setUnsavedRouteChanges(false);
+        setRoutePlannerEditMode(false);
+        setShowSaveModal(false);
+        setRouteName('');
+        setSuggestedCustomers([]);
+        setEditingSavedRouteId(null);
+        setRoute([]);
       };
 
       // Calendar helper functions
@@ -3319,6 +3420,7 @@
         });
 
         setUnsavedRouteChanges(true);
+        setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
       };
 
       // Mass email
@@ -5353,8 +5455,47 @@ const createJob = async () => {
         setCurrentView(view);
       };
 
-      const confirmDiscardRoute = () => {
+      const discardAllUnsavedRoutes = () => {
+        // Clear all unsaved route data for all days
+        Object.keys(unsavedRouteDays).forEach(dayKey => {
+          const dayRoute = routesByDay[dayKey] || [];
+          dayRoute.forEach(c => {
+            // Only unschedule if not in a saved route
+            const inSavedRoute = savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id));
+            if (!inSavedRoute) {
+              propagateCustomerUpdate(c.id, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(c), routeConfirmed: false });
+            }
+          });
+        });
+
+        // Clear customer scheduling for all unsaved days
+        setCustomers(prev => prev.map(c => {
+          if (!c.scheduledDate) return c;
+          const custDateKey = new Date(c.scheduledDate).toDateString();
+          if (unsavedRouteDays[custDateKey]) {
+            const inSavedRoute = savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id));
+            if (!inSavedRoute) {
+              return { ...c, scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(c), routeConfirmed: false };
+            }
+          }
+          return c;
+        }));
+
+        // Clear routesByDay for all unsaved days
+        setRoutesByDay(prev => {
+          const next = { ...prev };
+          Object.keys(unsavedRouteDays).forEach(dayKey => { next[dayKey] = []; });
+          return next;
+        });
+
+        setUnsavedRouteDays({});
         setUnsavedRouteChanges(false);
+        setRoutePlannerEditMode(false);
+        setRoute([]);
+      };
+
+      const confirmDiscardRoute = () => {
+        discardAllUnsavedRoutes();
         if (pendingViewChange) {
           setCurrentView(pendingViewChange);
           setPendingViewChange(null);
@@ -6186,6 +6327,19 @@ const createJob = async () => {
                             </div>
                             <div style={{ fontSize: '13px', fontWeight: 700, color: isSelected ? '#a78bfa' : isToday ? '#60a5fa' : '#f1f5f9', textAlign: 'center', position: 'relative' }}>
                               {date.getDate()}
+                              {/* Unsaved route indicator (orange dot) */}
+                              {unsavedRouteDays[date.toDateString()] && (
+                                <span style={{
+                                  position: 'absolute',
+                                  top: '-4px',
+                                  left: '-4px',
+                                  width: '8px',
+                                  height: '8px',
+                                  borderRadius: '50%',
+                                  background: '#f59e0b',
+                                  boxShadow: '0 0 6px rgba(245, 158, 11, 0.6)'
+                                }} title="Unsaved route" />
+                              )}
                               {/* Green checkmark for saved routes */}
                               {(() => {
                                 const hasSavedRoute = savedRoutes.some(r => {
@@ -6283,6 +6437,18 @@ const createJob = async () => {
                             >
                               <div style={{ fontSize: '11px', fontWeight: 600, color: isSelected ? '#a78bfa' : isToday ? '#60a5fa' : '#f1f5f9', textAlign: 'center', position: 'relative' }}>
                                 {date.getDate()}
+                                {unsavedRouteDays[date.toDateString()] && (
+                                  <span style={{
+                                    position: 'absolute',
+                                    top: '-3px',
+                                    left: '2px',
+                                    width: '6px',
+                                    height: '6px',
+                                    borderRadius: '50%',
+                                    background: '#f59e0b',
+                                    boxShadow: '0 0 4px rgba(245, 158, 11, 0.6)'
+                                  }} title="Unsaved route" />
+                                )}
                                 {hasSavedRoute && (
                                   <span style={{
                                     position: 'absolute',
@@ -6890,7 +7056,8 @@ const createJob = async () => {
                         <div>
                           {/* Action Buttons */}
                           {jobsForDay.length > 0 ? (
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', gap: '6px' }}>
                               <button
                                 onClick={() => {
                                   if (editingSavedRouteId) {
@@ -6907,7 +7074,7 @@ const createJob = async () => {
                                   justifyContent: 'center'
                                 }}
                               >
-                                💾 Save Route
+                                💾 Save This Day
                               </button>
                               <button
                                 onClick={() => {
@@ -6978,7 +7145,12 @@ const createJob = async () => {
                                   }
                                   setRoute([]);
                                   setSuggestedCustomers([]);
-                                  setUnsavedRouteChanges(false);
+                                  setUnsavedRouteDays(prev => {
+                                    const next = { ...prev };
+                                    delete next[dateKey];
+                                    if (Object.keys(next).length === 0) setUnsavedRouteChanges(false);
+                                    return next;
+                                  });
                                   setRoutePlannerEditMode(false);
                                 }}
                                 style={{
@@ -6999,6 +7171,44 @@ const createJob = async () => {
                             >
                               {editingSavedRouteId ? '↩️ Cancel' : '🗑️ Clear Day'}
                             </button>
+                              </div>
+                              {/* Save All Routes button - show when multiple days have unsaved changes */}
+                              {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 && (
+                                <button
+                                  onClick={handleSaveAllRoutes}
+                                  style={{
+                                    padding: '8px 10px',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2))',
+                                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                                    borderRadius: '6px',
+                                    color: '#6ee7b7',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '6px',
+                                    width: '100%'
+                                  }}
+                                >
+                                  💾 Save All Routes ({Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length} days)
+                                </button>
+                              )}
+                              {/* Unsaved days indicator */}
+                              {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== dateKey).length > 0 && (
+                                <div style={{
+                                  padding: '6px 10px',
+                                  background: 'rgba(245, 158, 11, 0.1)',
+                                  border: '1px solid rgba(245, 158, 11, 0.2)',
+                                  borderRadius: '6px',
+                                  fontSize: '10px',
+                                  color: '#fbbf24',
+                                  textAlign: 'center'
+                                }}>
+                                  {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== dateKey).length} other day{Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== dateKey).length > 1 ? 's' : ''} with unsaved routes
+                                </div>
+                              )}
                           </div>
                           ) : editingSavedRouteId ? (
                             <div style={{ marginBottom: '8px' }}>
@@ -7037,7 +7247,12 @@ const createJob = async () => {
                                       setEditingSavedRouteId(null);
                                       setRoutePlannerEditMode(false);
                                       setRoute([]);
-                                      setUnsavedRouteChanges(false);
+                                      setUnsavedRouteDays(prev => {
+                                        const next = { ...prev };
+                                        delete next[dateKey];
+                                        if (Object.keys(next).length === 0) setUnsavedRouteChanges(false);
+                                        return next;
+                                      });
                                     }
                                   }}
                                   style={{
@@ -7065,7 +7280,12 @@ const createJob = async () => {
                                     setEditingSavedRouteId(null);
                                     setRoutePlannerEditMode(false);
                                     setRoute([]);
-                                    setUnsavedRouteChanges(false);
+                                    setUnsavedRouteDays(prev => {
+                                      const next = { ...prev };
+                                      delete next[dateKey];
+                                      if (Object.keys(next).length === 0) setUnsavedRouteChanges(false);
+                                      return next;
+                                    });
                                   }}
                                   style={{
                                     flex: 1, padding: '8px 10px', fontSize: '11px', fontWeight: 600,
@@ -12650,40 +12870,84 @@ onClick={exitRadiusMode}
           {/* Unsaved Route Warning Modal */}
           {pendingViewChange && (
             <div className="modal" onClick={cancelDiscardRoute}>
-              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '460px' }}>
                 <div style={{ textAlign: 'center', padding: '8px 0' }}>
                   <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
                   <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0' }}>Unsaved Route Changes</h2>
-                  <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 24px 0' }}>
-                    You have customers added to today's route that haven't been saved yet. 
-                    If you leave now, your route changes won't be lost from the schedule, but the route won't be saved as a named route.
+                  <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 16px 0' }}>
+                    You have unsaved route changes on {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length} day{Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 ? 's' : ''}.
+                    If you leave, these changes will be discarded.
                   </p>
-                  <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: 600, margin: '0 0 24px 0' }}>
-                    Use the 💾 Save Route button to save your route before leaving.
-                  </p>
-                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                    <button
-                      onClick={cancelDiscardRoute}
-                      className="button-primary"
-                      style={{ padding: '10px 24px', fontSize: '14px' }}
-                    >
-                      Go Back & Save Route
-                    </button>
-                    <button
-                      onClick={confirmDiscardRoute}
-                      style={{
-                        padding: '10px 24px',
-                        fontSize: '14px',
-                        background: 'rgba(239, 68, 68, 0.15)',
-                        border: '1px solid rgba(239, 68, 68, 0.3)',
-                        borderRadius: '12px',
-                        color: '#f87171',
-                        cursor: 'pointer',
-                        fontWeight: 600
-                      }}
-                    >
-                      Leave Without Saving
-                    </button>
+                  {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 0 && (
+                    <div style={{
+                      margin: '0 0 16px 0',
+                      padding: '10px',
+                      background: 'rgba(245, 158, 11, 0.1)',
+                      border: '1px solid rgba(245, 158, 11, 0.2)',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#fbbf24'
+                    }}>
+                      {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).map(dayKey => {
+                        const dayStops = (routesByDay[dayKey] || []).length;
+                        return (
+                          <div key={dayKey} style={{ padding: '2px 0' }}>
+                            {new Date(dayKey).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} — {dayStops} stop{dayStops !== 1 ? 's' : ''}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+                    {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 0 && (
+                      <button
+                        onClick={async () => {
+                          await handleSaveAllRoutes();
+                          if (pendingViewChange) {
+                            setCurrentView(pendingViewChange);
+                            setPendingViewChange(null);
+                          }
+                        }}
+                        style={{
+                          padding: '10px 24px',
+                          fontSize: '14px',
+                          fontWeight: 700,
+                          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2))',
+                          border: '1px solid rgba(16, 185, 129, 0.4)',
+                          borderRadius: '12px',
+                          color: '#6ee7b7',
+                          cursor: 'pointer',
+                          width: '100%'
+                        }}
+                      >
+                        💾 Save All Routes & Continue
+                      </button>
+                    )}
+                    <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                      <button
+                        onClick={cancelDiscardRoute}
+                        className="button-primary"
+                        style={{ padding: '10px 24px', fontSize: '14px', flex: 1 }}
+                      >
+                        Go Back
+                      </button>
+                      <button
+                        onClick={confirmDiscardRoute}
+                        style={{
+                          padding: '10px 24px',
+                          fontSize: '14px',
+                          background: 'rgba(239, 68, 68, 0.15)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '12px',
+                          color: '#f87171',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                          flex: 1
+                        }}
+                      >
+                        Discard & Leave
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -12740,21 +13004,56 @@ onClick={exitRadiusMode}
                   Customers will be added to your pipeline as "New" leads.
                 </div>
 
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button
-                    className="button-secondary"
-                    onClick={() => setShowSaveModal(false)}
-                    style={{ flex: 1, justifyContent: 'center' }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="button-primary"
-                    onClick={handleSaveRoute}
-                    style={{ flex: 1, justifyContent: 'center' }}
-                  >
-                    {editingSavedRouteId ? '💾 Update Route' : '💾 Save Route'}
-                  </button>
+                {/* Show other unsaved days info */}
+                {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== selectedDate.toDateString()).length > 0 && (
+                  <div style={{
+                    padding: '12px',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    borderRadius: '12px',
+                    marginBottom: '16px',
+                    fontSize: '12px',
+                    color: '#fbbf24'
+                  }}>
+                    You also have unsaved routes on {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== selectedDate.toDateString()).length} other day{Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k] && k !== selectedDate.toDateString()).length > 1 ? 's' : ''}.
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button
+                      className="button-secondary"
+                      onClick={() => setShowSaveModal(false)}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="button-primary"
+                      onClick={handleSaveRoute}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      {editingSavedRouteId ? '💾 Update Route' : '💾 Save This Day'}
+                    </button>
+                  </div>
+                  {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 && (
+                    <button
+                      onClick={handleSaveAllRoutes}
+                      style={{
+                        padding: '10px 16px',
+                        fontSize: '13px',
+                        fontWeight: 700,
+                        background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2))',
+                        border: '1px solid rgba(16, 185, 129, 0.4)',
+                        borderRadius: '12px',
+                        color: '#6ee7b7',
+                        cursor: 'pointer',
+                        width: '100%'
+                      }}
+                    >
+                      💾 Save All Routes ({Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length} days)
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
