@@ -9865,46 +9865,20 @@ const createJob = async () => {
                                                 if (job.jobId) {
                                                   await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
                                                 }
-                                                const deleteKey = job.jobId || (job.jobDescription + idx);
-                                                const updatedHistory = (profileCustomer.serviceHistory || []).filter((j, i) => (j.jobId || (j.jobDescription + i)) !== deleteKey);
-                                                const deletedJobStatus = (job.status || '').toLowerCase();
-                                                const wasActiveJob = deletedJobStatus !== 'completed' && deletedJobStatus !== 'cancelled';
-                                                const newActiveCount = Math.max(0, (profileCustomer.activeJobCount || 0) - (wasActiveJob ? 1 : 0));
+                                                const custJobsData = await apiFetch(`/jobs?customer_id=${profileCustomer.id}`);
+                                                const remainingJobs = (custJobsData.jobs || []);
+                                                const remainingActive = remainingJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
                                                 let newStatus = '';
-                                                if (newActiveCount > 0) {
-                                                  const remainingUpcoming = updatedHistory.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
-                                                  const isRecurring = profileCustomer.isRecurring || profileCustomer.recurring;
-                                                  if (isRecurring && remainingUpcoming.length > 0) {
-                                                    const nearestDate = remainingUpcoming.reduce((min, j) => {
-                                                      const d = j.scheduledDate || j.date;
-                                                      return d && (!min || new Date(d) < new Date(min)) ? d : min;
-                                                    }, null);
-                                                    if (nearestDate) {
-                                                      const daysUntil = Math.floor((new Date(nearestDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                                      newStatus = daysUntil <= 30 ? 'scheduled' : '';
-                                                    } else {
-                                                      newStatus = 'unscheduled';
-                                                    }
-                                                  } else {
-                                                    newStatus = 'scheduled';
-                                                  }
+                                                if (remainingActive.length > 0) {
+                                                  const hasScheduled = remainingActive.some(j => j.scheduled_date || j.next_service_date);
+                                                  newStatus = hasScheduled ? 'scheduled' : 'unscheduled';
                                                 }
-                                                const customerPatch = {
-                                                  status: newStatus
-                                                };
                                                 await apiFetch(`/customers/${profileCustomer.id}`, {
                                                   method: 'PATCH',
-                                                  body: JSON.stringify(customerPatch)
+                                                  body: JSON.stringify({ status: newStatus })
                                                 });
-                                                const updatedCustomer = {
-                                                  ...profileCustomer,
-                                                  serviceHistory: updatedHistory,
-                                                  status: newStatus,
-                                                  activeJobCount: newActiveCount
-                                                };
-                                                setProfileCustomer(updatedCustomer);
-                                                setCustomers(prev => prev.map(c => c.id === profileCustomer.id ? {...c, status: newStatus, activeJobCount: newActiveCount, serviceHistory: updatedHistory} : c));
-                                                setSavedLists(prev => prev.map(c => c.id === profileCustomer.id ? updatedCustomer : c));
+                                                await loadFromDatabase();
+                                                setJobRefreshKey(k => k + 1);
                                                 setConfirmDeleteJobId(null);
                                               } catch (err) {
                                                 console.error('Failed to delete job:', err);
