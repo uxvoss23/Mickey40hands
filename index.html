@@ -6391,8 +6391,8 @@ const createJob = async () => {
                 {/* Content Area */}
                 <div className="scrollbar-custom" style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
 
-                  {/* Route Planner: always show selected day stats + week stats */}
-                  {statusFilter === 'scheduled' && (
+                  {/* Route Planner: show selected day stats + week stats when not in edit mode */}
+                  {statusFilter === 'scheduled' && !routePlannerEditMode && (
                     <div>
                       {/* Selected Day's Route Stats */}
                       {(() => {
@@ -6973,6 +6973,7 @@ const createJob = async () => {
                                   setRoute([]);
                                   setSuggestedCustomers([]);
                                   setUnsavedRouteChanges(false);
+                                  setRoutePlannerEditMode(false);
                                 }}
                                 style={{
                                 background: 'rgba(239, 68, 68, 0.1)',
