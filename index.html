@@ -6154,7 +6154,7 @@ const createJob = async () => {
                             fontWeight: 600
                           }}
                         >
-                          Today
+                          This Week
                         </button>
                         <button
                           onClick={() => navigateWeek(1)}
@@ -6205,7 +6205,7 @@ const createJob = async () => {
                                 fontWeight: 600
                               }}
                             >
-                              Today
+                              This Week
                             </button>
                             <button
                               onClick={() => {
@@ -7660,7 +7660,7 @@ const createJob = async () => {
                               color: '#fbbf24',
                               boxShadow: '0 0 0 1px rgba(234, 179, 8, 0.5)'
                             }}
-                          >Today</button>
+                          >This Week</button>
                         </>
                       )}
 
@@ -8051,8 +8051,8 @@ const createJob = async () => {
                                     style={{
                                       display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
                                       borderRadius: '8px', cursor: 'pointer', marginBottom: '2px',
-                                      background: isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                                      border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.5)' : isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid transparent',
+                                      background: isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                      border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.5)' : isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : isToday ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
                                       transition: 'all 0.15s'
                                     }}
                                   >
