@@ -4885,7 +4885,12 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               serviceHistory: [],
               source: c.source || 'database',
               customerType: c.customer_type || 'residential'
-            }));
+            })).map(c => {
+              if (c.status === 'scheduled' && !c.scheduledDate) {
+                return { ...c, status: 'unscheduled' };
+              }
+              return c;
+            });
 
             const listId = Date.now() + Math.random();
             const listName = 'Database Import';
@@ -5096,7 +5101,7 @@ const createJob = async () => {
             // Update customer status to scheduled
             setCustomers(prev => prev.map(c => 
               c.id === customerId 
-                ? { ...c, status: 'scheduled' }
+                ? { ...c, status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime }
                 : c
             ));
             propagateCustomerUpdate(customerId, { status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime });
