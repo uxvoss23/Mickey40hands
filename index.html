@@ -6735,15 +6735,13 @@ const createJob = async () => {
                                     return;
                                   }
                                   if (savedRouteForDay) {
-                                    // Load into routesByDay
                                     setRoutesByDay(prev => ({
                                       ...prev,
                                       [dateKey]: savedRouteForDay.customers
                                     }));
                                     setEditingSavedRouteId(savedRouteForDay.id);
+                                    setRoutePlannerEditMode(true);
 
-                                    // Restore scheduledTime/scheduledDate into customers state
-                                    // so the time slots in edit view show the jobs
                                     setCustomers(prev => {
                                       const routeCustomerMap = new Map();
                                       savedRouteForDay.customers.forEach(rc => {
@@ -6890,12 +6888,11 @@ const createJob = async () => {
                       // EDIT VIEW - Show action buttons (if jobs exist) and timeslots
                       return (
                         <div>
-                          {/* Action Buttons - Only show if there are jobs */}
-                          {jobsForDay.length > 0 && (
+                          {/* Action Buttons */}
+                          {jobsForDay.length > 0 ? (
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                               <button
                                 onClick={() => {
-                                  // Pre-fill name if editing existing route
                                   if (editingSavedRouteId) {
                                     const existingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
                                     if (existingRoute) setRouteName(existingRoute.name);
@@ -7003,7 +7000,82 @@ const createJob = async () => {
                               {editingSavedRouteId ? '↩️ Cancel' : '🗑️ Clear Day'}
                             </button>
                           </div>
-                          )}
+                          ) : editingSavedRouteId ? (
+                            <div style={{ marginBottom: '8px' }}>
+                              <div style={{ padding: '12px', background: 'rgba(239,68,68,0.08)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)', marginBottom: '8px', textAlign: 'center' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '4px' }}>All stops removed</div>
+                                <div style={{ fontSize: '11px', color: '#94a3b8' }}>Delete this route or cancel to restore it</div>
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px' }}>
+                                <button
+                                  onClick={async () => {
+                                    if (window.confirm('Delete this route? All jobs will be set back to unscheduled.')) {
+                                      const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                      if (savedRoute) {
+                                        for (const rc of savedRoute.customers) {
+                                          try {
+                                            await apiFetch(`/customers/${rc.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'unscheduled', scheduled_date: null }) });
+                                            const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+                                            const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                            for (const j of activeJobs) {
+                                              if (j.scheduled_date) {
+                                                await apiFetch(`/jobs/${j.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_date: '', status: 'unscheduled' }) });
+                                              }
+                                            }
+                                          } catch (err) { console.error('Failed to clear job:', err); }
+                                          propagateCustomerUpdate(rc.id, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null });
+                                        }
+                                        setCustomers(prev => prev.map(c => {
+                                          const inRoute = savedRoute.customers.some(rc => rc.id === c.id);
+                                          return inRoute ? { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null } : c;
+                                        }));
+                                        const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                        setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
+                                        setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
+                                        setSavedRoutes(prev => prev.filter(r => r.id !== editingSavedRouteId));
+                                      }
+                                      setEditingSavedRouteId(null);
+                                      setRoutePlannerEditMode(false);
+                                      setRoute([]);
+                                      setUnsavedRouteChanges(false);
+                                    }
+                                  }}
+                                  style={{
+                                    flex: 1, padding: '8px 10px', fontSize: '11px', fontWeight: 600,
+                                    background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.3)',
+                                    borderRadius: '6px', color: '#fca5a5', cursor: 'pointer', textAlign: 'center'
+                                  }}
+                                >🗑️ Delete Route</button>
+                                <button
+                                  onClick={() => {
+                                    const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    if (savedRoute) {
+                                      setRoutesByDay(prev => ({ ...prev, [dateKey]: [...savedRoute.customers] }));
+                                      setCustomers(prev => {
+                                        const routeCustomerMap = new Map();
+                                        savedRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
+                                        return prev.map(c => {
+                                          const rc = routeCustomerMap.get(c.id);
+                                          if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: savedRoute.scheduledDate, status: 'scheduled', routeConfirmed: true };
+                                          return c;
+                                        });
+                                      });
+                                      setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
+                                    }
+                                    setEditingSavedRouteId(null);
+                                    setRoutePlannerEditMode(false);
+                                    setRoute([]);
+                                    setUnsavedRouteChanges(false);
+                                  }}
+                                  style={{
+                                    flex: 1, padding: '8px 10px', fontSize: '11px', fontWeight: 600,
+                                    background: 'rgba(100,116,139,0.15)', border: '1px solid rgba(100,116,139,0.3)',
+                                    borderRadius: '6px', color: '#94a3b8', cursor: 'pointer', textAlign: 'center'
+                                  }}
+                                >↩️ Cancel</button>
+                              </div>
+                            </div>
+                          ) : null}
                           
                           {/* Time Slots */}
                           <div>
