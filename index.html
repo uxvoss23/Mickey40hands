@@ -3257,18 +3257,33 @@
           day: 'numeric'
         });
         
-        // When sent to tech: drop scheduled status, set lastServiceDate to the scheduled date
         const scheduledDate = savedRoute.scheduledDate || today;
         setCustomers(prev => prev.map(c => {
           const isInRoute = routeCustomers.some(rc => rc.id === c.id);
           if (isInRoute) {
+            const isRecurring = c.isRecurring || c.recurring;
+            const interval = c.recurrenceInterval || '6months';
+            let nextDate = null;
+            if (isRecurring) {
+              const base = new Date(scheduledDate);
+              if (interval === '3months') base.setMonth(base.getMonth() + 3);
+              else if (interval === '6months') base.setMonth(base.getMonth() + 6);
+              else if (interval === 'yearly' || interval === '12') base.setFullYear(base.getFullYear() + 1);
+              else if (interval === 'monthly') base.setMonth(base.getMonth() + 1);
+              else {
+                const months = parseInt(interval);
+                base.setMonth(base.getMonth() + (months > 0 ? months : 6));
+              }
+              nextDate = base.toISOString().split('T')[0];
+            }
             return {
               ...c,
-              lastServiceDate: scheduledDate, // Use the scheduled date from the route, not today
-              status: '', // Clear status - job complete (recurring will get re-scheduled via saved routes)
+              lastServiceDate: scheduledDate,
+              status: isRecurring ? 'scheduled' : '',
               routeConfirmed: false,
               confirmedRouteName: null,
-              scheduledDate: null,
+              scheduledDate: isRecurring ? nextDate : null,
+              nextScheduledDate: isRecurring ? nextDate : null,
               scheduledTime: null,
               serviceHistory: [
                 ...(c.serviceHistory || []),
@@ -3288,16 +3303,45 @@
           return c;
         }));
         
-        // Persist each customer update to database
-        routeCustomers.forEach(rc => {
-          propagateCustomerUpdate(rc.id, {
-            lastServiceDate: scheduledDate,
-            status: '',
-            routeConfirmed: false,
-            confirmedRouteName: null,
-            scheduledDate: null,
-            scheduledTime: null
-          });
+        routeCustomers.forEach(async (rc) => {
+          const isRecurring = rc.isRecurring || rc.recurring;
+          
+          if (isRecurring) {
+            try {
+              const jobsRes = await apiFetch(`/jobs?customer_id=${rc.id}`);
+              const jobsData = await jobsRes.json();
+              const activeRecurringJob = (jobsData.jobs || []).find(j => 
+                j.is_recurring && j.status !== 'completed' && j.status !== 'cancelled'
+              );
+              if (activeRecurringJob) {
+                const patchRes = await apiFetch(`/jobs/${activeRecurringJob.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'completed', completed_date: scheduledDate })
+                });
+                const patchData = await patchRes.json();
+                if (patchData.next_job) {
+                  const nextDate = patchData.next_job.scheduled_date;
+                  setCustomers(prev => prev.map(c => c.id === rc.id ? {
+                    ...c,
+                    status: 'scheduled',
+                    scheduledDate: nextDate,
+                    nextScheduledDate: nextDate
+                  } : c));
+                }
+              }
+            } catch (err) {
+              console.error('Error auto-completing recurring job for', rc.name, err);
+            }
+          } else {
+            propagateCustomerUpdate(rc.id, {
+              lastServiceDate: scheduledDate,
+              status: '',
+              routeConfirmed: false,
+              confirmedRouteName: null,
+              scheduledDate: null,
+              scheduledTime: null
+            });
+          }
         });
 
         // Mark route as sent

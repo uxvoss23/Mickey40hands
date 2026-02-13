@@ -146,4 +146,12 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-11: Bulk save to database includes deduplicated customers with full service history as job records
 - 2026-02-11: Customer profile shows most recent job date/status and sorted Job History with status badges
 - 2026-02-11: Added dedup guards to prevent duplicate job entries with same date and description
+- 2026-02-13: Multi-sort toggle buttons: select multiple sort options simultaneously (Last Service, Distance, Panels, ZIP)
+- 2026-02-13: Sort-selected data dynamically appears as tags on property cards (e.g. panel count, distance in miles, ZIP code)
+- 2026-02-13: Priority badges on sort buttons when multiple sorts are active (1st, 2nd, etc.)
+- 2026-02-13: Recurring job auto-scheduling: completing a recurring job auto-creates the next job based on recurrence interval
+- 2026-02-13: Server-side auto-scheduling in PATCH /api/jobs/:id — detects completed recurring jobs and inserts next job
+- 2026-02-13: Send to Tech flow auto-completes recurring jobs, triggering next-job creation in database
+- 2026-02-13: Customer status auto-updates to 'scheduled' with next service date after recurring job completion
+- 2026-02-13: Supported recurrence intervals: monthly, 3months, 6months, yearly, or custom months
 - 2026-02-11: Removed Google Sheets connection panel, auto-sync, write-back, and all related code (~80KB removed)

@@ -147,7 +147,79 @@ router.patch('/:id', async (req, res) => {
     );
 
     if (result.rows.length === 0) return res.status(404).json({ error: 'Job not found' });
-    res.json(result.rows[0]);
+
+    const updatedJob = result.rows[0];
+    let nextJob = null;
+
+    const statusBeingSetToCompleted = (updates.status || '').toLowerCase() === 'completed';
+    if (statusBeingSetToCompleted && updatedJob.is_recurring) {
+      try {
+        if (!updatedJob.completed_date || updatedJob.completed_date === '') {
+          const today = new Date().toISOString().split('T')[0];
+          await pool.query(`UPDATE jobs SET completed_date = $1 WHERE id = $2`, [today, updatedJob.id]);
+          updatedJob.completed_date = today;
+        }
+
+        const existingFuture = await pool.query(
+          `SELECT id FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status = 'scheduled' AND id != $2`,
+          [updatedJob.customer_id, updatedJob.id]
+        );
+        
+        if (existingFuture.rows.length === 0) {
+          const interval = updatedJob.recurrence_interval || '6months';
+          const completedDate = new Date(updatedJob.completed_date);
+          const nextDate = new Date(completedDate);
+          
+          if (interval === '3months' || interval === 'quarterly') nextDate.setMonth(nextDate.getMonth() + 3);
+          else if (interval === '6months') nextDate.setMonth(nextDate.getMonth() + 6);
+          else if (interval === 'yearly' || interval === '12') nextDate.setFullYear(nextDate.getFullYear() + 1);
+          else if (interval === 'monthly') nextDate.setMonth(nextDate.getMonth() + 1);
+          else {
+            const months = parseInt(interval);
+            nextDate.setMonth(nextDate.getMonth() + (months > 0 ? months : 6));
+          }
+          
+          const nextDateStr = nextDate.toISOString().split('T')[0];
+
+          const nextJobResult = await pool.query(`
+            INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
+                              completed_date, amount, tip, notes, is_recurring, employee, panel_count,
+                              price, price_per_panel, preferred_days, preferred_time, technician,
+                              recurrence_interval, next_service_date)
+            VALUES ($1, $2, 'scheduled', $3, $4, '', 0, 0, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+            RETURNING *
+          `, [
+            updatedJob.customer_id,
+            updatedJob.job_description || '',
+            nextDateStr,
+            updatedJob.scheduled_time || updatedJob.preferred_time || '',
+            `Auto-scheduled from completed job #${updatedJob.id}`,
+            updatedJob.employee || updatedJob.technician || '',
+            updatedJob.panel_count || 0,
+            updatedJob.price || 0,
+            updatedJob.price_per_panel || 0,
+            updatedJob.preferred_days || '',
+            updatedJob.preferred_time || '',
+            updatedJob.technician || '',
+            updatedJob.recurrence_interval || '6months',
+            ''
+          ]);
+
+          nextJob = nextJobResult.rows[0];
+
+          await pool.query(
+            `UPDATE customers SET status = 'scheduled', scheduled_date = $1, next_service_date = $1, last_service_date = $2 WHERE id = $3`,
+            [nextDateStr, updatedJob.completed_date, updatedJob.customer_id]
+          );
+
+          console.log(`Auto-scheduled next recurring job #${nextJob.id} for customer ${updatedJob.customer_id} on ${nextDateStr}`);
+        }
+      } catch (autoErr) {
+        console.error('Error auto-scheduling next recurring job:', autoErr);
+      }
+    }
+
+    res.json({ ...updatedJob, next_job: nextJob });
   } catch (err) {
     console.error('Error updating job:', err);
     res.status(500).json({ error: 'Failed to update job' });
