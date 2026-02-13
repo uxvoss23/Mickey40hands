@@ -737,7 +737,7 @@
           technician: job.technician || 'Chance T',
           isRecurring: job.isRecurring || false,
           recurrenceInterval: job.recurrenceInterval || '',
-          nextServiceDate: job.nextServiceDate || '',
+          nextServiceDate: job.nextServiceDate || job.scheduledDate || job.date || '',
           editingJobId: job.jobId || null
         });
         setQuickAddJobPopup({
@@ -9441,12 +9441,29 @@ const createJob = async () => {
                         <input
                           type="date"
                           value={profileCustomer.nextServiceDate || ''}
-                          onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, nextServiceDate: e.target.value };
-                            // Propagate to all views (savedLists, uploadedFiles, savedRoutes)
-                            propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: e.target.value });
-                            setProfileCustomer(updatedCustomer);
-                            // Protect from sheet sync overwriting this change
+                          onChange={async (e) => {
+                            const newDate = e.target.value;
+                            const updatedCustomer = { ...profileCustomer, nextServiceDate: newDate };
+                            propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: newDate });
+                            const upcomingJobs = (profileCustomer.serviceHistory || [])
+                              .filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled')
+                              .sort((a, b) => {
+                                const da = new Date(a.scheduledDate || a.date || '9999');
+                                const db = new Date(b.scheduledDate || b.date || '9999');
+                                return da - db;
+                              });
+                            const upcomingJob = upcomingJobs[0];
+                            if (upcomingJob && upcomingJob.jobId) {
+                              try {
+                                await apiFetch(`/jobs/${upcomingJob.jobId}`, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ scheduled_date: newDate, next_service_date: newDate })
+                                });
+                                upcomingJob.date = newDate;
+                                upcomingJob.scheduledDate = newDate;
+                              } catch (err) { console.error('Failed to sync job date:', err); }
+                            }
+                            setProfileCustomer({...updatedCustomer, serviceHistory: [...(profileCustomer.serviceHistory || [])]});
                           }}
                           style={{
                             width: '100%',
@@ -11556,7 +11573,13 @@ const createJob = async () => {
                             };
 
                             if (!isEditing) {
-                              jobPayload.status = 'unscheduled';
+                              const serviceDate = quickJobData.nextServiceDate;
+                              if (serviceDate) {
+                                const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                jobPayload.status = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
+                              } else {
+                                jobPayload.status = 'unscheduled';
+                              }
                             }
 
                             if (isEditing) {
@@ -11564,18 +11587,31 @@ const createJob = async () => {
                                 method: 'PATCH',
                                 body: JSON.stringify(jobPayload)
                               });
+                              const editedStatus = (jobPayload.status || '').toLowerCase();
+                              if (editedStatus !== 'completed' && editedStatus !== 'cancelled') {
+                                await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ next_service_date: quickJobData.nextServiceDate || null })
+                                });
+                              }
                             } else {
                               await apiFetch('/jobs', {
                                 method: 'POST',
                                 body: JSON.stringify(jobPayload)
                               });
+                              const serviceDate = quickJobData.nextServiceDate;
+                              let newStatus = 'unscheduled';
+                              if (quickJobData.isRecurring && serviceDate) {
+                                const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                newStatus = daysUntil <= 30 ? 'scheduled' : '';
+                              }
                               const customerPatch = {
-                                status: 'unscheduled',
+                                status: newStatus,
                                 job_description: quickJobData.serviceType,
                                 is_recurring: quickJobData.isRecurring
                               };
-                              if (quickJobData.nextServiceDate) {
-                                customerPatch.next_service_date = quickJobData.nextServiceDate;
+                              if (serviceDate) {
+                                customerPatch.next_service_date = serviceDate;
                               }
                               await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
                                 method: 'PATCH',
