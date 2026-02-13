@@ -2753,6 +2753,11 @@
 
       // Handle customer click - DAY SPECIFIC ROUTING
       const handleCustomerClick = (customer) => {
+        if (statusFilter !== 'scheduled') {
+          setSelectedCustomer(customer);
+          return;
+        }
+
         const effectiveDate = (statusFilter === 'scheduled' && focusedDays.length > 0) ? focusedDays[0] : selectedDate;
         const dateKey = effectiveDate.toDateString();
         const currentDayRoute = routesByDay[dateKey] || [];
@@ -6507,8 +6512,58 @@ const createJob = async () => {
                     </div>
                   )}
 
-                  {/* Day Schedule View - only show in edit mode for Route Planner, always for All view */}
-                  {(statusFilter !== 'scheduled' || routePlannerEditMode) && (
+                  {/* All View - Read-only route summary with Edit in Route Planner button */}
+                  {statusFilter !== 'scheduled' && (() => {
+                    const dateKey = selectedDate.toDateString();
+                    const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dateKey);
+                    if (dayRoutes.length === 0) return null;
+                    return (
+                      <div style={{ marginBottom: '12px', padding: '12px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '10px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#e2e8f0' }}>
+                            📅 {selectedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
+                          <span style={{ fontSize: '10px', color: '#94a3b8' }}>{dayRoutes.reduce((s, r) => s + (r.customers || []).length, 0)} stops</span>
+                        </div>
+                        {dayRoutes.map((r, ri) => (
+                          <div key={ri} style={{ marginBottom: '6px' }}>
+                            <div style={{ fontSize: '11px', color: '#a78bfa', fontWeight: 600, marginBottom: '4px' }}>{r.name}</div>
+                            {(r.customers || []).slice(0, 5).map((c, ci) => (
+                              <div key={ci} style={{ fontSize: '10px', color: '#94a3b8', padding: '2px 0', display: 'flex', gap: '6px' }}>
+                                <span style={{ color: '#64748b' }}>{ci + 1}.</span>
+                                <span>{c.name}</span>
+                                {c.scheduledTime && <span style={{ color: '#fbbf24', marginLeft: 'auto' }}>{new Date(`2000-01-01T${c.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}</span>}
+                              </div>
+                            ))}
+                            {(r.customers || []).length > 5 && <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>+{r.customers.length - 5} more</div>}
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => {
+                            setStatusFilter('scheduled');
+                            setShowNeedScheduling(true);
+                            setFocusedDays([selectedDate]);
+                            const dayRoute = dayRoutes[0];
+                            if (dayRoute) {
+                              setEditingSavedRouteId(dayRoute.id);
+                              setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
+                              setRoutePlannerEditMode(true);
+                            }
+                          }}
+                          style={{
+                            width: '100%', marginTop: '8px', padding: '8px', fontSize: '11px', fontWeight: 600,
+                            background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
+                            borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
+                          }}
+                        >
+                          ✏️ Edit in Route Planner
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Day Schedule View - only show in edit mode for Route Planner */}
+                  {statusFilter === 'scheduled' && routePlannerEditMode && (
                   <div style={{ marginBottom: '12px' }}>
                     {/* Tip at top */}
                     {customers.length > 0 && showTip && (
@@ -7425,20 +7480,9 @@ const createJob = async () => {
                               setStatusFilter(s.value);
                               setShowNeedScheduling(true);
                               const today = new Date(); today.setHours(0,0,0,0);
-                              const effectiveDay = focusedDays.length > 0 ? focusedDays[0] : today;
-                              setSelectedDate(effectiveDay);
-                              if (focusedDays.length === 0) setFocusedDays([today]);
-                              const dayKey = effectiveDay.toDateString();
-                              const hasRouteData = routesByDay[dayKey] && routesByDay[dayKey].length > 0;
-                              const hasSavedRoute = savedRoutes.some(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dayKey);
-                              setRoutePlannerEditMode(hasRouteData || hasSavedRoute);
-                              if (hasSavedRoute && !hasRouteData) {
-                                const dayRoute = savedRoutes.find(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dayKey);
-                                if (dayRoute) {
-                                  setEditingSavedRouteId(dayRoute.id);
-                                  setRoutesByDay(prev => ({ ...prev, [dayKey]: dayRoute.customers }));
-                                }
-                              }
+                              setSelectedDate(today);
+                              setFocusedDays([today]);
+                              setRoutePlannerEditMode(false);
                             }
                           }}
                           style={{
