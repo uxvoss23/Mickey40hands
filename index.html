@@ -623,20 +623,33 @@
 
       const allColumnKeys = ['name','status','phone','email','address','city','state','zip','panelCount','scheduledDate','preferredDate','lastServiceDate','amountPaid','employee','isRecurring','notes'];
       const defaultHiddenColumns = [];
-      const [savedHiddenColumns, setSavedHiddenColumns] = useState(() => {
+
+      const getHiddenColumnsForType = (type) => {
         try {
-          const saved = localStorage.getItem('dbViewHiddenColumns');
-          return saved ? JSON.parse(saved) : defaultHiddenColumns;
+          const saved = localStorage.getItem('dbViewHiddenColumns_' + type);
+          if (saved) return JSON.parse(saved);
+          const legacy = localStorage.getItem('dbViewHiddenColumns');
+          if (legacy) return JSON.parse(legacy);
+          return defaultHiddenColumns;
         } catch(e) { return defaultHiddenColumns; }
-      });
+      };
+
+      const [savedHiddenColumns, setSavedHiddenColumns] = useState(() => getHiddenColumnsForType(activeCustomerType));
       const [tempUnhiddenColumns, setTempUnhiddenColumns] = useState([]);
       const [showColumnManager, setShowColumnManager] = useState(false);
       const [editingCell, setEditingCell] = useState(null);
       const [editingCellValue, setEditingCellValue] = useState('');
 
+      useEffect(() => {
+        if (currentView === 'pipeline') {
+          setSavedHiddenColumns(getHiddenColumnsForType(activeCustomerType));
+          setTempUnhiddenColumns([]);
+        }
+      }, [activeCustomerType, currentView]);
+
       const saveColumnView = (hidden) => {
         setSavedHiddenColumns(hidden);
-        localStorage.setItem('dbViewHiddenColumns', JSON.stringify(hidden));
+        localStorage.setItem('dbViewHiddenColumns_' + activeCustomerType, JSON.stringify(hidden));
       };
 
       const getVisibleColumns = () => {
@@ -10268,98 +10281,94 @@ const createJob = async () => {
                   </div>
                 </div>
 
-                {/* Search & Filter Toolbar */}
-                <div style={{ marginBottom: '16px' }}>
-                  <div style={{ display: 'flex', gap: '12px', marginBottom: '12px', alignItems: 'center' }}>
-                    <div style={{ position: 'relative', flex: 1, maxWidth: '400px' }}>
-                      <input
-                        type="text"
-                        placeholder="Search all columns..."
-                        value={pipelineGlobalSearch}
-                        onChange={(e) => setPipelineGlobalSearch(e.target.value)}
-                        style={{
-                          width: '100%',
-                          padding: '10px 16px',
-                          background: 'rgba(30, 41, 59, 0.8)',
-                          border: '1px solid rgba(148, 163, 184, 0.2)',
-                          borderRadius: '8px',
-                          color: '#f1f5f9',
-                          fontSize: '14px',
-                          outline: 'none'
-                        }}
-                      />
-                    </div>
-                    <button
-                      onClick={() => setShowColumnManager(!showColumnManager)}
+                {/* Search & Filter Toolbar - Single Row */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <div style={{ position: 'relative', flex: '1 1 200px', maxWidth: '320px', minWidth: '150px' }}>
+                    <input
+                      type="text"
+                      placeholder="Search..."
+                      value={pipelineGlobalSearch}
+                      onChange={(e) => setPipelineGlobalSearch(e.target.value)}
                       style={{
-                        padding: '8px 16px',
-                        background: showColumnManager ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-                        border: '1px solid ' + (showColumnManager ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'),
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'rgba(30, 41, 59, 0.8)',
+                        border: '1px solid rgba(148, 163, 184, 0.2)',
                         borderRadius: '8px',
-                        color: showColumnManager ? '#a78bfa' : '#94a3b8',
+                        color: '#f1f5f9',
                         fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <select
+                    value={pipelineQuickFilter}
+                    onChange={(e) => {
+                      const key = e.target.value;
+                      setPipelineQuickFilter(key);
+                      const matchCol = quickFilterColumnMap[key];
+                      if (key === 'all') { setTempUnhiddenColumns([]); }
+                      else if (matchCol && savedHiddenColumns.includes(matchCol)) { setTempUnhiddenColumns([matchCol]); }
+                      else { setTempUnhiddenColumns([]); }
+                    }}
+                    style={{
+                      padding: '8px 10px',
+                      background: 'rgba(30, 41, 59, 0.8)',
+                      border: '1px solid rgba(139, 92, 246, 0.3)',
+                      borderRadius: '8px',
+                      color: pipelineQuickFilter !== 'all' ? '#a78bfa' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="all">Filter: All</option>
+                    <option value="unscheduled">Unscheduled</option>
+                    <option value="scheduled">Scheduled</option>
+                    <option value="recurring">Recurring</option>
+                    <option value="has_email">Has Email</option>
+                    <option value="has_phone">Has Phone</option>
+                  </select>
+                  <button
+                    onClick={() => setShowColumnManager(!showColumnManager)}
+                    style={{
+                      padding: '8px 12px',
+                      background: showColumnManager ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+                      border: '1px solid ' + (showColumnManager ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'),
+                      borderRadius: '8px',
+                      color: showColumnManager ? '#a78bfa' : '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    Columns ({pipelineColumns.length}/{pipelineColumnsAll.length})
+                  </button>
+                  {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
+                    <button
+                      onClick={() => {
+                        setPipelineGlobalSearch('');
+                        setPipelineQuickFilter('all');
+                        setPipelineFilters({});
+                        setPipelineSortColumn(null);
+                        setTempUnhiddenColumns([]);
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        background: 'rgba(239, 68, 68, 0.2)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '8px',
+                        color: '#ef4444',
+                        fontSize: '12px',
                         fontWeight: 600,
                         cursor: 'pointer',
                         whiteSpace: 'nowrap'
                       }}
                     >
-                      Columns ({pipelineColumns.length}/{pipelineColumnsAll.length})
+                      Clear
                     </button>
-                    {(pipelineGlobalSearch || pipelineQuickFilter !== 'all' || Object.values(pipelineFilters).some(f => f)) && (
-                      <button
-                        onClick={() => {
-                          setPipelineGlobalSearch('');
-                          setPipelineQuickFilter('all');
-                          setPipelineFilters({});
-                          setPipelineSortColumn(null);
-                          setTempUnhiddenColumns([]);
-                        }}
-                        style={{
-                          padding: '8px 16px',
-                          background: 'rgba(239, 68, 68, 0.2)',
-                          border: '1px solid rgba(239, 68, 68, 0.3)',
-                          borderRadius: '8px',
-                          color: '#ef4444',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Clear All
-                      </button>
-                    )}
-                  </div>
-                  {/* Quick Filter Dropdown */}
-                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <select
-                      value={pipelineQuickFilter}
-                      onChange={(e) => {
-                        const key = e.target.value;
-                        setPipelineQuickFilter(key);
-                        const matchCol = quickFilterColumnMap[key];
-                        if (key === 'all') { setTempUnhiddenColumns([]); }
-                        else if (matchCol && savedHiddenColumns.includes(matchCol)) { setTempUnhiddenColumns([matchCol]); }
-                        else { setTempUnhiddenColumns([]); }
-                      }}
-                      style={{
-                        padding: '6px 12px',
-                        background: 'rgba(30, 41, 59, 0.8)',
-                        border: '1px solid rgba(139, 92, 246, 0.3)',
-                        borderRadius: '8px',
-                        color: pipelineQuickFilter !== 'all' ? '#a78bfa' : '#94a3b8',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <option value="all">Filter: All</option>
-                      <option value="unscheduled">Unscheduled</option>
-                      <option value="scheduled">Scheduled</option>
-                      <option value="recurring">Recurring</option>
-                      <option value="has_email">Has Email</option>
-                      <option value="has_phone">Has Phone</option>
-                    </select>
-                  </div>
+                  )}
                 </div>
 
                 {/* Column Manager Panel */}
