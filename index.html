@@ -2242,14 +2242,7 @@
             // - Default purple pin = No upcoming job
             const isRecurringCustomer = customer.isRecurring === true || customer.recurring === 'TRUE' || customer.recurring === true;
 
-            // Calculate next service date (12 months from last service if not manually set)
             let nextServiceDate = customer.nextServiceDate;
-            if (!nextServiceDate && customer.lastServiceDate) {
-              const lastDate = new Date(customer.lastServiceDate);
-              const next = new Date(lastDate);
-              next.setFullYear(next.getFullYear() + 1);
-              nextServiceDate = next.toISOString().split('T')[0];
-            }
             const hasUpcomingJob = nextServiceDate && new Date(nextServiceDate) > new Date();
 
             let customIcon;
@@ -4838,8 +4831,22 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               isRecurring: c.is_recurring,
               amountPaid: c.amount_paid,
               tipAmount: c.tip_amount,
-              lastServiceDate: c.last_service_date || '',
-              nextServiceDate: c.next_service_date || '',
+              lastServiceDate: (() => {
+                const raw = c.last_service_date || '';
+                if (!raw) return '';
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return '';
+                return d.toISOString().split('T')[0];
+              })(),
+              nextServiceDate: (() => {
+                const raw = c.next_service_date || '';
+                if (!raw) return '';
+                if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+                const d = new Date(raw);
+                if (isNaN(d.getTime())) return '';
+                return d.toISOString().split('T')[0];
+              })(),
               jobDescription: c.job_description || '',
               tags: c.tags || '',
               employee: c.employee || '',
@@ -5734,7 +5741,7 @@ const createJob = async () => {
 
               const todaysJobs = getScheduledCustomersForRange(today, todayEnd);
               const unscheduledCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
-              const completedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'completed');
+              const completedCustomers = customers.filter(c => c.lastServiceDate && c.lastServiceDate !== '');
               const recurringCustomers = customers.filter(c => c.isRecurring || c.recurring === 'TRUE');
               const recentCustomers = [...customers].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 8);
 
@@ -5772,7 +5779,7 @@ const createJob = async () => {
                       <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Need routing</div>
                     </div>
                     <div style={{ padding: '20px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '14px' }}>
-                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Completed</div>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Serviced</div>
                       <div style={{ fontSize: '32px', fontWeight: 800, color: '#22c55e' }}>{completedCustomers.length}</div>
                     </div>
                     <div style={{ padding: '20px', background: 'rgba(34, 211, 238, 0.1)', border: '1px solid rgba(34, 211, 238, 0.2)', borderRadius: '14px' }}>
@@ -8475,7 +8482,6 @@ const createJob = async () => {
                                 <option value="">⚪ No Status</option>
                                 <option value="unscheduled">🔴 Unscheduled</option>
                                 <option value="scheduled">🟡 Scheduled</option>
-                                <option value="completed">🟢 Completed</option>
                               </select>
 
                               {selectedCustomer.status === 'unscheduled' && (
@@ -9385,7 +9391,6 @@ const createJob = async () => {
                           <option value="">⚪ No Status</option>
                           <option value="unscheduled">🔴 Unscheduled</option>
                           <option value="scheduled">🟡 Scheduled</option>
-                          <option value="completed">🟢 Completed</option>
                         </select>
                         {(profileCustomer.isRecurring || profileCustomer.recurring === 'TRUE') && (
                           <div style={{ fontSize: '12px', color: '#22c55e', marginTop: '4px' }}>🦖 Recurring Customer</div>
@@ -9445,15 +9450,7 @@ const createJob = async () => {
                         </div>
                         <input
                           type="date"
-                          value={(() => {
-                            let next = profileCustomer.nextServiceDate;
-                            if (!next && profileCustomer.lastServiceDate) {
-                              const d = new Date(profileCustomer.lastServiceDate);
-                              d.setFullYear(d.getFullYear() + 1);
-                              next = d.toISOString().split('T')[0];
-                            }
-                            return next || '';
-                          })()}
+                          value={profileCustomer.nextServiceDate || ''}
                           onChange={(e) => {
                             const updatedCustomer = { ...profileCustomer, nextServiceDate: e.target.value };
                             // Propagate to all views (savedLists, uploadedFiles, savedRoutes)
@@ -10777,7 +10774,6 @@ const createJob = async () => {
                                           <option value="">None</option>
                                           <option value="unscheduled">Unscheduled</option>
                                           <option value="scheduled">Scheduled</option>
-                                          <option value="completed">Completed</option>
                                         </select>
                                       ) : col.key === 'isRecurring' ? (
                                         <select
