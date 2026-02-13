@@ -2751,7 +2751,7 @@
         const isInRoute = isInRoutesByDay || isScheduledForDay;
 
         if (isInRoute) {
-          // Remove from THIS DAY'S route AND clear scheduling
+          // Remove from THIS DAY'S route AND clear scheduling (only if actually scheduled)
           setRoutesByDay(prev => ({
             ...prev,
             [dateKey]: (prev[dateKey] || []).filter(r => r.id !== customer.id)
@@ -2782,7 +2782,12 @@
           }
           setSuggestedCustomers([]);
         } else {
-          const allSlots = generateTimeSlots();
+          const savedRoutesForDay = savedRoutes.filter(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === dateKey;
+          });
+          const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+          const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
 
           const jobsForDay = customers
             .filter(c => {
@@ -2796,18 +2801,35 @@
               return (aH * 60 + aM) - (bH * 60 + bM);
             });
 
-          let nextSlot = null;
+          let allExistingJobs = [...jobsForDay];
+          if (savedRouteForDay && savedViewDays[dateKey] === true) {
+            const savedJobs = (savedRouteForDay.customers || [])
+              .filter(rc => rc.scheduledTime)
+              .sort((a, b) => {
+                const [aH, aM] = a.scheduledTime.split(':').map(Number);
+                const [bH, bM] = b.scheduledTime.split(':').map(Number);
+                return (aH * 60 + aM) - (bH * 60 + bM);
+              });
+            const existingIds = new Set(jobsForDay.map(j => j.id));
+            savedJobs.forEach(sj => {
+              if (!existingIds.has(sj.id)) allExistingJobs.push(sj);
+            });
+            allExistingJobs.sort((a, b) => {
+              const [aH, aM] = a.scheduledTime.split(':').map(Number);
+              const [bH, bM] = b.scheduledTime.split(':').map(Number);
+              return (aH * 60 + aM) - (bH * 60 + bM);
+            });
+          }
 
-          if (jobsForDay.length === 0) {
-            nextSlot = allSlots.find(s => s.hour === 8 && s.minute === 0);
+          let nextSlot = null;
+          if (allExistingJobs.length === 0) {
+            nextSlot = { time: '08:00', hour: 8, minute: 0 };
           } else {
-            const lastJob = jobsForDay[jobsForDay.length - 1];
+            const lastJob = allExistingJobs[allExistingJobs.length - 1];
             const [lastH, lastM] = lastJob.scheduledTime.split(':').map(Number);
-            const lastMinutes = lastH * 60 + lastM;
-            const nextMinutes = lastMinutes + 75;
+            const nextMinutes = (lastH * 60 + lastM) + 75;
             const nextH = Math.floor(nextMinutes / 60);
             const nextM = nextMinutes % 60;
-
             if (nextH < 20) {
               nextSlot = {
                 time: `${String(nextH).padStart(2, '0')}:${String(nextM).padStart(2, '0')}`,
@@ -2817,23 +2839,22 @@
             }
           }
 
-          if (nextSlot) {
-            scheduleCustomerToTimeSlot(customer, effectiveDate, nextSlot.time);
-          }
-
-          const savedRoutesForDay = savedRoutes.filter(r => {
-            const rDate = new Date(r.scheduledDate);
-            return rDate.toDateString() === dateKey;
-          });
-          const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
-          const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
-
           if (savedRouteForDay && savedViewDays[dateKey] === true) {
             const routeCustomerMap = new Map();
             savedRouteForDay.customers.forEach(rc => {
               routeCustomerMap.set(rc.id, rc);
             });
+            const newTime = nextSlot ? nextSlot.time : '08:00';
             setCustomers(prev => prev.map(c => {
+              if (c.id === customer.id) {
+                return {
+                  ...c,
+                  scheduledDate: effectiveDate.toISOString(),
+                  scheduledTime: newTime,
+                  status: 'scheduled',
+                  routeConfirmed: false
+                };
+              }
               const rc = routeCustomerMap.get(c.id);
               if (rc) {
                 return {
@@ -2849,11 +2870,15 @@
 
             setRoutesByDay(prev => ({
               ...prev,
-              [dateKey]: [...savedRouteForDay.customers, customer]
+              [dateKey]: [...savedRouteForDay.customers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
             }));
             setEditingSavedRouteId(savedRouteForDay.id);
             setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+            setUnsavedRouteChanges(true);
           } else {
+            if (nextSlot) {
+              scheduleCustomerToTimeSlot(customer, effectiveDate, nextSlot.time);
+            }
             setRoutesByDay(prev => {
               const existing = prev[dateKey] || [];
               if (existing.some(r => r.id === customer.id)) return prev;
@@ -2861,19 +2886,7 @@
             });
           }
 
-          const availableCustomers = filteredCustomers.filter(c => 
-            c.id !== customer.id && !currentDayRoute.some(r => r.id === c.id)
-          );
-
-          const closest = availableCustomers
-            .map(c => ({
-              ...c,
-              distance: calculateDistance(customer.lat, customer.lng, c.lat, c.lng)
-            }))
-            .sort((a, b) => a.distance - b.distance)
-            .slice(0, 3);
-
-          setSuggestedCustomers(closest);
+          setSuggestedCustomers([]);
         }
       };
 
