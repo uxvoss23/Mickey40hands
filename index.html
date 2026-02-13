@@ -3047,7 +3047,6 @@
           setSavedRoutes(prev => [...prev, newRoute]);
         }
 
-        // Mark all customers in route as "scheduled" when route is saved
         const routeIds = new Set(routeCustomers.map(c => c.id));
         setCustomers(prev => prev.map(c => {
           if (routeIds.has(c.id)) {
@@ -3058,6 +3057,19 @@
               confirmedRouteDate: selectedDate.toISOString()
             };
             propagateCustomerUpdate(c.id, scheduleUpdates);
+
+            apiFetch('/jobs?customer_id=' + c.id).then(data => {
+              if (data && data.jobs) {
+                const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                if (activeJob) {
+                  apiFetch(`/jobs/${activeJob.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ status: 'scheduled' })
+                  }).catch(e => console.error('Failed to update job status:', e));
+                }
+              }
+            }).catch(e => console.error('Failed to fetch jobs for route sync:', e));
+
             return { ...c, ...scheduleUpdates };
           }
           return c;
@@ -9673,6 +9685,9 @@ const createJob = async () => {
                         </div>
                         <div style={{ fontSize: '14px', color: '#60a5fa', padding: '4px 0' }}>
                           {(() => {
+                            if (profileCustomer.scheduledDate) {
+                              return new Date(profileCustomer.scheduledDate).toLocaleDateString();
+                            }
                             const upcoming = (profileCustomer.serviceHistory || [])
                               .filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled')
                               .filter(j => j.scheduledDate || j.nextServiceDate)
