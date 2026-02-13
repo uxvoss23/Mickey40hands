@@ -12107,6 +12107,7 @@ const createJob = async () => {
                             });
 
                             setProfileCustomer(null);
+                            setShowCustomerProfile(false);
                           } catch (err) {
                             console.error('Failed to save job:', err);
                             alert('Failed to save job: ' + err.message);
