@@ -117,6 +117,10 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Customer type filtering integrated into unified filter (works with all other filters)
 - 2026-02-13: Customer type selector in profile modal for changing customer type
 - 2026-02-13: Converted Database view quick filter buttons to dropdown menu for cleaner UI
+- 2026-02-13: Added Dashboard as default landing view with stats cards, weekly calendar strip, today's jobs, needs attention, and recently added sections
+- 2026-02-13: Dashboard is the first tab users see on load — clean overview before diving into map/database
+- 2026-02-13: Replaced spread-out filter toolbar in Database view with compact settings icon that opens filter panel
+- 2026-02-13: Top search bar hidden on Dashboard and Database views (both have their own search)
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

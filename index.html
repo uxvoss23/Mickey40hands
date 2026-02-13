@@ -479,7 +479,7 @@
       const [showAddTabInput, setShowAddTabInput] = useState(false);
       const [newTabName, setNewTabName] = useState('');
       const allTypeTabs = [...defaultTabs, ...customTypeTabs];
-      const [currentView, setCurrentView] = useState('map');
+      const [currentView, setCurrentView] = useState('dashboard');
       const [uploadedFiles, setUploadedFiles] = useState([]); // Array of {id, name, customers, visible}
       const [savedLists, setSavedLists] = useState([]); // Array of {id, name, customers, visible, type: 'list'}
       const [showRecurringList, setShowRecurringList] = useState(false); // Toggle for auto-generated recurring list
@@ -5523,6 +5523,9 @@ const createJob = async () => {
             {/* View Tabs and Search */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '4px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                <button className={`tab-button ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}>
+                  📊 Dashboard
+                </button>
                 <button className={`tab-button ${currentView === 'map' ? 'active' : ''}`} onClick={() => setCurrentView('map')}>
                   🗺️ Map
                 </button>
@@ -5535,8 +5538,8 @@ const createJob = async () => {
 
               </div>
               
-              {/* Search Bar - hidden on Database view since it has its own */}
-              {customers.length > 0 && currentView !== 'pipeline' && (
+              {/* Search Bar - hidden on Database and Dashboard views */}
+              {customers.length > 0 && currentView !== 'pipeline' && currentView !== 'dashboard' && (
                 <div style={{ position: 'relative', flex: 1, minWidth: '200px', maxWidth: '350px' }}>
                   <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#64748b', fontSize: '14px' }}>
                     🔍
@@ -5597,6 +5600,260 @@ const createJob = async () => {
 
           {/* Content - Keep map always rendered but hidden */}
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+
+            {/* Dashboard View */}
+            {currentView === 'dashboard' && (() => {
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const todayEnd = new Date(today);
+              todayEnd.setHours(23, 59, 59, 999);
+
+              const weekStart = new Date(today);
+              const dayOfWeek = today.getDay();
+              weekStart.setDate(today.getDate() - ((dayOfWeek + 6) % 7));
+              const weekDays = Array.from({ length: 6 }, (_, i) => {
+                const d = new Date(weekStart);
+                d.setDate(weekStart.getDate() + i);
+                return d;
+              });
+
+              const todaysJobs = getScheduledCustomersForRange(today, todayEnd);
+              const unscheduledCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
+              const completedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'completed');
+              const recurringCustomers = customers.filter(c => c.isRecurring || c.recurring === 'TRUE');
+              const recentCustomers = [...customers].sort((a, b) => (b.id || 0) - (a.id || 0)).slice(0, 8);
+
+              return (
+                <div style={{
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  overflow: 'auto', padding: '28px 32px'
+                }} className="scrollbar-custom">
+
+                  {/* Greeting */}
+                  <div style={{ marginBottom: '24px' }}>
+                    <h2 style={{ fontSize: '22px', fontWeight: 800, margin: '0 0 4px 0', color: '#f1f5f9' }}>
+                      {new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening'}
+                    </h2>
+                    <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                      {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  </div>
+
+                  {/* Stats Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
+                    <div
+                      onClick={() => setCurrentView('pipeline')}
+                      style={{ padding: '20px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.2)', borderRadius: '14px', cursor: 'pointer', transition: 'all 0.2s' }}
+                    >
+                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Total Customers</div>
+                      <div style={{ fontSize: '32px', fontWeight: 800, color: '#a78bfa' }}>{customers.length}</div>
+                    </div>
+                    <div
+                      onClick={() => { setCurrentView('map'); }}
+                      style={{ padding: '20px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '14px', cursor: 'pointer', transition: 'all 0.2s' }}
+                    >
+                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Unscheduled</div>
+                      <div style={{ fontSize: '32px', fontWeight: 800, color: '#ef4444' }}>{unscheduledCustomers.length}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px' }}>Need routing</div>
+                    </div>
+                    <div style={{ padding: '20px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '14px' }}>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Completed</div>
+                      <div style={{ fontSize: '32px', fontWeight: 800, color: '#22c55e' }}>{completedCustomers.length}</div>
+                    </div>
+                    <div style={{ padding: '20px', background: 'rgba(34, 211, 238, 0.1)', border: '1px solid rgba(34, 211, 238, 0.2)', borderRadius: '14px' }}>
+                      <div style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>Recurring</div>
+                      <div style={{ fontSize: '32px', fontWeight: 800, color: '#22d3ee' }}>{recurringCustomers.length}</div>
+                    </div>
+                  </div>
+
+                  {/* Weekly Calendar Strip + Today's Jobs side by side */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+
+                    {/* Weekly Calendar */}
+                    <div style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(148, 163, 184, 0.1)', borderRadius: '14px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0', marginBottom: '16px' }}>This Week</div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '8px' }}>
+                        {weekDays.map((day, i) => {
+                          const dayStart = new Date(day); dayStart.setHours(0, 0, 0, 0);
+                          const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
+                          const dayJobs = getScheduledCustomersForRange(dayStart, dayEnd);
+                          const isToday = day.toDateString() === today.toDateString();
+                          const isPast = day < today;
+                          return (
+                            <div
+                              key={i}
+                              onClick={() => {
+                                setCurrentView('map');
+                              }}
+                              style={{
+                                padding: '12px 8px',
+                                background: isToday ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
+                                border: isToday ? '2px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(148, 163, 184, 0.1)',
+                                borderRadius: '10px',
+                                textAlign: 'center',
+                                cursor: 'pointer',
+                                opacity: isPast && !isToday ? 0.5 : 1,
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              <div style={{ fontSize: '11px', color: isToday ? '#a78bfa' : '#64748b', fontWeight: 600, marginBottom: '4px' }}>
+                                {day.toLocaleDateString('en-US', { weekday: 'short' })}
+                              </div>
+                              <div style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>
+                                {day.getDate()}
+                              </div>
+                              <div style={{
+                                fontSize: '18px', fontWeight: 800,
+                                color: dayJobs.length > 0 ? (isToday ? '#a78bfa' : '#e2e8f0') : '#334155'
+                              }}>
+                                {dayJobs.length}
+                              </div>
+                              <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>
+                                {dayJobs.length === 1 ? 'job' : 'jobs'}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Today's Jobs */}
+                    <div style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(148, 163, 184, 0.1)', borderRadius: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0' }}>Today's Jobs</div>
+                        <span style={{ fontSize: '11px', padding: '3px 10px', background: todaysJobs.length > 0 ? 'rgba(139, 92, 246, 0.2)' : 'rgba(100, 116, 139, 0.2)', border: '1px solid ' + (todaysJobs.length > 0 ? 'rgba(139, 92, 246, 0.3)' : 'rgba(100, 116, 139, 0.2)'), borderRadius: '12px', color: todaysJobs.length > 0 ? '#a78bfa' : '#64748b' }}>
+                          {todaysJobs.length} scheduled
+                        </span>
+                      </div>
+                      {todaysJobs.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '24px 0', color: '#475569' }}>
+                          <div style={{ fontSize: '28px', marginBottom: '8px' }}>📭</div>
+                          <div style={{ fontSize: '13px' }}>No jobs scheduled for today</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflow: 'auto' }} className="scrollbar-custom">
+                          {todaysJobs.slice(0, 8).map((c, i) => (
+                            <div
+                              key={c.id || i}
+                              onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                              style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '10px 12px', background: 'rgba(30, 41, 59, 0.5)',
+                                border: '1px solid rgba(148, 163, 184, 0.1)', borderRadius: '8px',
+                                cursor: 'pointer', transition: 'all 0.15s'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>{c.city}{c.city && c.state ? ', ' : ''}{c.state}</div>
+                              </div>
+                              <div style={{ fontSize: '10px', color: '#94a3b8', textAlign: 'right' }}>
+                                {c._routeName && <div>{c._routeName}</div>}
+                              </div>
+                            </div>
+                          ))}
+                          {todaysJobs.length > 8 && (
+                            <div style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', padding: '4px' }}>
+                              +{todaysJobs.length - 8} more
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Needs Attention + Recent Activity side by side */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+
+                    {/* Needs Attention */}
+                    <div style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(148, 163, 184, 0.1)', borderRadius: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0' }}>Needs Attention</div>
+                        {unscheduledCustomers.length > 0 && (
+                          <span style={{ fontSize: '11px', padding: '3px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', color: '#ef4444' }}>
+                            {unscheduledCustomers.length} unscheduled
+                          </span>
+                        )}
+                      </div>
+                      {unscheduledCustomers.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '24px 0', color: '#475569' }}>
+                          <div style={{ fontSize: '28px', marginBottom: '8px' }}>✅</div>
+                          <div style={{ fontSize: '13px' }}>All customers are scheduled</div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflow: 'auto' }} className="scrollbar-custom">
+                          {unscheduledCustomers.slice(0, 10).map((c, i) => (
+                            <div
+                              key={c.id || i}
+                              onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                              style={{
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)',
+                                border: '1px solid rgba(239, 68, 68, 0.1)', borderRadius: '8px',
+                                cursor: 'pointer', transition: 'all 0.15s'
+                              }}
+                            >
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
+                                <div style={{ fontSize: '11px', color: '#64748b' }}>{c.address ? `${c.city || ''}${c.city && c.state ? ', ' : ''}${c.state || ''}` : 'No address'}</div>
+                              </div>
+                              <div style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '10px', color: '#ef4444' }}>
+                                unscheduled
+                              </div>
+                            </div>
+                          ))}
+                          {unscheduledCustomers.length > 10 && (
+                            <button
+                              onClick={() => { setCurrentView('map'); }}
+                              style={{ textAlign: 'center', fontSize: '12px', color: '#a78bfa', padding: '8px', background: 'none', border: 'none', cursor: 'pointer' }}
+                            >
+                              View all {unscheduledCustomers.length} unscheduled →
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Recent Customers */}
+                    <div style={{ padding: '20px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(148, 163, 184, 0.1)', borderRadius: '14px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#e2e8f0' }}>Recently Added</div>
+                        <button
+                          onClick={() => setCurrentView('pipeline')}
+                          style={{ fontSize: '11px', color: '#a78bfa', background: 'none', border: 'none', cursor: 'pointer' }}
+                        >
+                          View All →
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflow: 'auto' }} className="scrollbar-custom">
+                        {recentCustomers.map((c, i) => (
+                          <div
+                            key={c.id || i}
+                            onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                            style={{
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                              padding: '8px 12px', background: 'rgba(30, 41, 59, 0.4)',
+                              border: '1px solid rgba(148, 163, 184, 0.08)', borderRadius: '8px',
+                              cursor: 'pointer', transition: 'all 0.15s'
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
+                              <div style={{ fontSize: '11px', color: '#64748b' }}>{c.city}{c.city && c.state ? ', ' : ''}{c.state}{c.zip ? ' ' + c.zip : ''}</div>
+                            </div>
+                            <div style={{ fontSize: '10px', padding: '2px 8px', background: c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.15)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.15)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(100, 116, 139, 0.15)', border: '1px solid ' + (c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.2)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.2)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 116, 139, 0.15)'), borderRadius: '10px', color: c.status === 'unscheduled' ? '#ef4444' : c.status === 'scheduled' ? '#fbbf24' : c.status === 'completed' ? '#22c55e' : '#64748b' }}>
+                              {c.status || 'no status'}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              );
+            })()}
+
             {/* Map View */}
             <div style={{ 
               display: currentView === 'map' ? 'flex' : 'none',
