@@ -8172,11 +8172,11 @@ const createJob = async () => {
                                       Recurring
                                     </span>
                                   )}
-                                  {activeSorts.includes('lastService') && customer.lastServiceDate && (
+                                  {customer.lastServiceDate && (
                                     <span style={{
                                       fontSize: '10px', padding: '2px 7px',
-                                      background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
-                                      borderRadius: '4px', color: '#a78bfa'
+                                      background: 'rgba(100, 116, 139, 0.15)', border: '1px solid rgba(100, 116, 139, 0.25)',
+                                      borderRadius: '4px', color: '#94a3b8'
                                     }}>
                                       Last: {new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                                     </span>
