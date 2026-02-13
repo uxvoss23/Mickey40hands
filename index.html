@@ -9437,14 +9437,15 @@ const createJob = async () => {
                           {(() => {
                             const upcoming = (profileCustomer.serviceHistory || [])
                               .filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled')
+                              .filter(j => j.scheduledDate || j.nextServiceDate)
                               .sort((a, b) => {
-                                const da = new Date(a.scheduledDate || a.date || '9999');
-                                const db = new Date(b.scheduledDate || b.date || '9999');
+                                const da = new Date(a.scheduledDate || a.nextServiceDate || '9999');
+                                const db = new Date(b.scheduledDate || b.nextServiceDate || '9999');
                                 return da - db;
                               });
                             const nearest = upcoming[0];
-                            const dateStr = nearest ? (nearest.scheduledDate || nearest.date) : (profileCustomer.nextServiceDate || '');
-                            return dateStr ? new Date(dateStr).toLocaleDateString() : 'No upcoming jobs';
+                            const dateStr = nearest ? (nearest.scheduledDate || nearest.nextServiceDate) : '';
+                            return dateStr ? new Date(dateStr).toLocaleDateString() : 'Not scheduled';
                           })()}
                         </div>
                       </div>
@@ -9472,11 +9473,13 @@ const createJob = async () => {
                       </div>
                       {(() => {
                         const allJobs = profileCustomer.serviceHistory || [];
-                        const upcomingJobs = allJobs.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
+                        const activeJobs = allJobs.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
+                        const upcomingJobs = activeJobs.filter(j => j.scheduledDate || j.nextServiceDate || j.date);
+                        const unscheduledJobs = activeJobs.filter(j => !j.scheduledDate && !j.nextServiceDate && !j.date);
                         const pastJobs = allJobs.filter(j => !j.status || j.status.toLowerCase() === 'completed' || j.status.toLowerCase() === 'cancelled');
                         const sortByDate = (a, b) => {
-                          const da = a.date ? new Date(a.date).getTime() : 0;
-                          const db = b.date ? new Date(b.date).getTime() : 0;
+                          const da = new Date(a.scheduledDate || a.nextServiceDate || a.date || '1970-01-01').getTime();
+                          const db = new Date(b.scheduledDate || b.nextServiceDate || b.date || '1970-01-01').getTime();
                           return db - da;
                         };
                         const renderJobCard = (job, idx, sectionType) => (
@@ -9689,10 +9692,20 @@ const createJob = async () => {
                         );
                         return (
                           <React.Fragment>
+                            {unscheduledJobs.length > 0 && (
+                              <div style={{ marginBottom: '20px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#ef4444', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Needs Scheduling ({unscheduledJobs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                  {unscheduledJobs.map((job, idx) => renderJobCard(job, idx, 'upcoming'))}
+                                </div>
+                              </div>
+                            )}
                             {upcomingJobs.length > 0 && (
                               <div style={{ marginBottom: '20px' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 700, color: '#fbbf24', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                  Upcoming Jobs ({upcomingJobs.length})
+                                  Scheduled ({upcomingJobs.length})
                                 </div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                   {[...upcomingJobs].sort(sortByDate).map((job, idx) => renderJobCard(job, idx, 'upcoming'))}
@@ -9709,7 +9722,7 @@ const createJob = async () => {
                                 </div>
                               </div>
                             )}
-                            {upcomingJobs.length === 0 && pastJobs.length === 0 && (
+                            {unscheduledJobs.length === 0 && upcomingJobs.length === 0 && pastJobs.length === 0 && (
                               <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: 'rgba(30, 41, 59, 0.3)', borderRadius: '12px' }}>
                                 No jobs yet
                               </div>
@@ -11600,6 +11613,7 @@ const createJob = async () => {
 
                             const isEditing = !!quickJobData.editingJobId;
 
+                            const hasServiceDate = quickJobData.isRecurring && quickJobData.nextServiceDate;
                             const jobPayload = {
                               customer_id: quickAddJobPopup.customerId,
                               job_description: quickJobData.serviceType,
@@ -11611,23 +11625,13 @@ const createJob = async () => {
                               preferred_time: quickJobData.preferredTime,
                               technician: quickJobData.technician,
                               is_recurring: quickJobData.isRecurring,
-                              recurrence_interval: quickJobData.recurrenceInterval,
-                              next_service_date: quickJobData.nextServiceDate,
-                              scheduled_date: quickJobData.nextServiceDate
+                              recurrence_interval: quickJobData.isRecurring ? quickJobData.recurrenceInterval : '',
+                              next_service_date: hasServiceDate ? quickJobData.nextServiceDate : '',
+                              scheduled_date: ''
                             };
 
                             if (!isEditing) {
-                              if (quickJobData.isRecurring) {
-                                const serviceDate = quickJobData.nextServiceDate;
-                                if (serviceDate) {
-                                  const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                  jobPayload.status = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
-                                } else {
-                                  jobPayload.status = 'unscheduled';
-                                }
-                              } else {
-                                jobPayload.status = quickJobData.nextServiceDate ? 'scheduled' : 'unscheduled';
-                              }
+                              jobPayload.status = 'unscheduled';
                             }
 
                             if (isEditing) {
@@ -11647,15 +11651,15 @@ const createJob = async () => {
                                 let custStatus = '';
                                 if (allUpcoming.length === 0) {
                                   custStatus = '';
-                                } else if (isRecurring) {
-                                  if (nearestDate) {
+                                } else if (nearestDate) {
+                                  if (isRecurring) {
                                     const daysUntil = Math.floor((new Date(nearestDate) - new Date()) / (1000 * 60 * 60 * 24));
                                     custStatus = daysUntil <= 30 ? 'scheduled' : '';
                                   } else {
-                                    custStatus = 'unscheduled';
+                                    custStatus = 'scheduled';
                                   }
                                 } else {
-                                  custStatus = 'scheduled';
+                                  custStatus = 'unscheduled';
                                 }
                                 await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
                                   method: 'PATCH',
@@ -11667,26 +11671,11 @@ const createJob = async () => {
                                 method: 'POST',
                                 body: JSON.stringify(jobPayload)
                               });
-                              const serviceDate = quickJobData.nextServiceDate;
-                              let newStatus = 'unscheduled';
-                              if (quickJobData.isRecurring) {
-                                if (serviceDate) {
-                                  const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                  newStatus = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
-                                } else {
-                                  newStatus = 'unscheduled';
-                                }
-                              } else {
-                                newStatus = serviceDate ? 'scheduled' : 'unscheduled';
-                              }
                               const customerPatch = {
-                                status: newStatus,
+                                status: 'unscheduled',
                                 job_description: quickJobData.serviceType,
                                 is_recurring: quickJobData.isRecurring
                               };
-                              if (serviceDate) {
-                                customerPatch.next_service_date = serviceDate;
-                              }
                               await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
                                 method: 'PATCH',
                                 body: JSON.stringify(customerPatch)
@@ -11710,37 +11699,9 @@ const createJob = async () => {
 
                             if (!isEditing && custLat && custLng) {
                               setCurrentView('map');
-                              setStatusFilter('scheduled');
+                              setStatusFilter('');
                               setProfileCustomer(null);
-
-                              const serviceDate = quickJobData.nextServiceDate;
-                              if (serviceDate) {
-                                const dayNameToNum = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
-                                let targetDate = null;
-                                if (prefDays.length > 0) {
-                                  const today = new Date();
-                                  today.setHours(0,0,0,0);
-                                  const prefNums = prefDays.map(d => dayNameToNum[d]).filter(n => n !== undefined);
-                                  for (let offset = 0; offset < 30; offset++) {
-                                    const candidate = new Date(today);
-                                    candidate.setDate(today.getDate() + offset);
-                                    if (prefNums.includes(candidate.getDay())) {
-                                      targetDate = candidate;
-                                      break;
-                                    }
-                                  }
-                                }
-                                if (targetDate) {
-                                  const weekStart = new Date(targetDate);
-                                  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-                                  weekStart.setHours(0,0,0,0);
-                                  setScheduledViewWeekStart(weekStart);
-                                  setSelectedDate(targetDate);
-                                  setFocusedDays([targetDate]);
-                                }
-                              } else {
-                                setFocusedDays([]);
-                              }
+                              setFocusedDays([]);
 
                               setTimeout(() => {
                                 if (mapInstanceRef.current) {

@@ -129,6 +129,12 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Multi-day route selection: click days to toggle, shows all selected routes on map simultaneously
 - 2026-02-13: Route lines color-coded by day-of-week for multi-day view
 - 2026-02-13: Two view options: Today (defaults to today, multi-select days in week) and Next 2 Weeks (shows all routes)
+- 2026-02-13: Overhauled Route Planner: sidebar with Today's Route, This Week, Next 2 Weeks (expandable), Unrouted Jobs
+- 2026-02-13: Consistent green markers (removed day-color coding), simplified top toolbar to All/Route Planner toggle
+- 2026-02-13: Sidebar day selection toggles route lines on map, multi-day support
+- 2026-02-13: Profile job sections: Needs Scheduling (red, no date), Scheduled (yellow, has date), Job History (gray, completed)
+- 2026-02-13: New jobs default to 'unscheduled' status; customers stay 'unscheduled' until placed on route
+- 2026-02-13: Job categorization uses scheduledDate, nextServiceDate, and date fields consistently
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header
