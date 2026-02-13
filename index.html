@@ -8038,6 +8038,20 @@ const createJob = async () => {
                                             {customer.preferredTimeWindow && <div style={{ fontSize: '9px', color: '#94a3b8' }}>{customer.preferredTimeWindow}</div>}
                                           </div>
                                         )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setProfileCustomer(customer);
+                                            setShowCustomerProfile(true);
+                                          }}
+                                          title="View job details"
+                                          style={{
+                                            width: '26px', height: '26px', borderRadius: '6px', flexShrink: 0,
+                                            background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                                            color: '#a78bfa', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                            justifyContent: 'center', fontSize: '13px', padding: 0
+                                          }}
+                                        >📋</button>
                                       </div>
                                     ))
                                   )}
