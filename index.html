@@ -537,6 +537,7 @@
       const [unsavedRouteChanges, setUnsavedRouteChanges] = useState(false);
       const [pendingViewChange, setPendingViewChange] = useState(null);
       const [routePlannerEditMode, setRoutePlannerEditMode] = useState(false);
+      const [multiSelectDays, setMultiSelectDays] = useState(false);
       const [showMonthCalendar, setShowMonthCalendar] = useState(false);
       const [suggestedCustomers, setSuggestedCustomers] = useState([]);
       const [savedRoutes, setSavedRoutes] = useState([]);
@@ -2943,8 +2944,17 @@
           distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
         }));
 
+        let routeTotalDistance = 0;
+        const stopsWithCoords = routeCustomers.filter(c => c.lat && c.lng);
+        if (stopsWithCoords.length > 0 && homeBase) {
+          routeTotalDistance = calculateDistance(homeBase.lat, homeBase.lng, stopsWithCoords[0].lat, stopsWithCoords[0].lng);
+          for (let i = 0; i < stopsWithCoords.length - 1; i++) {
+            routeTotalDistance += calculateDistance(stopsWithCoords[i].lat, stopsWithCoords[i].lng, stopsWithCoords[i+1].lat, stopsWithCoords[i+1].lng);
+          }
+          routeTotalDistance += calculateDistance(stopsWithCoords[stopsWithCoords.length - 1].lat, stopsWithCoords[stopsWithCoords.length - 1].lng, homeBase.lat, homeBase.lng);
+        }
+
         if (editingSavedRouteId) {
-          // UPDATE existing saved route
           setSavedRoutes(prev => prev.map(r => {
             if (r.id === editingSavedRouteId) {
               return {
@@ -2952,21 +2962,20 @@
                 name: routeName,
                 scheduledDate: selectedDate.toISOString(),
                 customers: routeCustomers,
-                totalDistance: stats.totalDistance
+                totalDistance: routeTotalDistance
               };
             }
             return r;
           }));
           setEditingSavedRouteId(null);
         } else {
-          // CREATE new saved route
           const newRoute = {
             id: Date.now().toString(),
             name: routeName,
             date: new Date().toISOString(),
             scheduledDate: selectedDate.toISOString(),
             customers: routeCustomers,
-            totalDistance: stats.totalDistance,
+            totalDistance: routeTotalDistance,
             confirmed: true,
             sentToTech: false,
             sentDate: null
@@ -6382,41 +6391,54 @@ const createJob = async () => {
                 {/* Content Area */}
                 <div className="scrollbar-custom" style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
 
-                  {/* Route Planner: show stats when not in edit mode */}
+                  {/* Route Planner: show selected day stats + week stats when not in edit mode */}
                   {statusFilter === 'scheduled' && !routePlannerEditMode && (
                     <div>
-                      {/* Today's Route Stats */}
+                      {/* Selected Day's Route Stats */}
                       {(() => {
-                        const today = new Date();
-                        today.setHours(0,0,0,0);
-                        const todayStr = today.toDateString();
-                        const todayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === todayStr);
-                        const todayStops = todayRoutes.flatMap(r => r.customers || []);
-                        const todayRevenue = todayStops.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0);
-                        const todayMiles = todayRoutes.reduce((sum, r) => sum + (parseFloat(r.totalDistance) || 0), 0);
+                        const displayDate = focusedDays.length > 0 ? focusedDays[0] : (() => { const t = new Date(); t.setHours(0,0,0,0); return t; })();
+                        const displayStr = displayDate.toDateString();
+                        const isToday = displayStr === new Date().toDateString();
+                        const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === displayStr);
+                        const dayStops = dayRoutes.flatMap(r => r.customers || []);
+                        const dayRevenue = dayStops.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0);
+                        const calcRouteDistance = (routeObj) => {
+                          if (!homeBase || !routeObj.customers || routeObj.customers.length === 0) return parseFloat(routeObj.totalDistance) || 0;
+                          const stops = routeObj.customers.filter(c => c.lat && c.lng);
+                          if (stops.length === 0) return 0;
+                          let dist = calculateDistance(homeBase.lat, homeBase.lng, stops[0].lat, stops[0].lng);
+                          for (let i = 0; i < stops.length - 1; i++) {
+                            dist += calculateDistance(stops[i].lat, stops[i].lng, stops[i+1].lat, stops[i+1].lng);
+                          }
+                          dist += calculateDistance(stops[stops.length - 1].lat, stops[stops.length - 1].lng, homeBase.lat, homeBase.lng);
+                          return dist;
+                        };
+                        const dayMiles = dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
                         return (
                           <div style={{ padding: '12px', borderBottom: '1px solid rgba(234, 179, 8, 0.2)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                              <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#fbbf24' }}>Today's Route</h3>
-                              <span style={{ fontSize: '10px', color: '#94a3b8' }}>{today.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                              <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#fbbf24' }}>
+                                {isToday ? "Today's Route" : displayDate.toLocaleDateString('en-US', { weekday: 'long' }) + "'s Route"}
+                              </h3>
+                              <span style={{ fontSize: '10px', color: '#94a3b8' }}>{displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                             </div>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
                               <div style={{ padding: '10px', background: 'rgba(234, 179, 8, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(234, 179, 8, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#fbbf24' }}>{todayStops.length}</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#fbbf24' }}>{dayStops.length}</div>
                                 <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Stops</div>
                               </div>
                               <div style={{ padding: '10px', background: 'rgba(34, 197, 94, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#22c55e' }}>{todayMiles.toFixed(1)}</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#22c55e' }}>{dayMiles.toFixed(1)}</div>
                                 <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Miles</div>
                               </div>
                               <div style={{ padding: '10px', background: 'rgba(139, 92, 246, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#a78bfa' }}>${todayRevenue.toFixed(0)}</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#a78bfa' }}>${dayRevenue.toFixed(0)}</div>
                                 <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Revenue</div>
                               </div>
                             </div>
-                            {todayStops.length > 0 && (
+                            {dayStops.length > 0 && (
                               <div style={{ marginTop: '8px' }}>
-                                {todayStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => (
+                                {dayStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => (
                                   <div key={stop.id || idx} style={{
                                     display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px',
                                     borderRadius: '6px', marginBottom: '2px',
@@ -6442,24 +6464,23 @@ const createJob = async () => {
                                 ))}
                               </div>
                             )}
-                            {todayRoutes.length > 0 && (
+                            {dayRoutes.length > 0 && (
                               <button
                                 onClick={() => {
-                                  const todayDate = new Date(); todayDate.setHours(0,0,0,0);
-                                  setFocusedDays([todayDate]);
-                                  setSelectedDate(todayDate);
+                                  setFocusedDays([displayDate]);
+                                  setSelectedDate(displayDate);
                                   setRoutePlannerEditMode(true);
-                                  const todayRoute = todayRoutes[0];
-                                  if (todayRoute) {
-                                    setEditingSavedRouteId(todayRoute.id);
-                                    const dateKey = todayDate.toDateString();
-                                    setRoutesByDay(prev => ({ ...prev, [dateKey]: todayRoute.customers }));
+                                  const dayRoute = dayRoutes[0];
+                                  if (dayRoute) {
+                                    setEditingSavedRouteId(dayRoute.id);
+                                    const dateKey = displayDate.toDateString();
+                                    setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
                                     setCustomers(prev => {
                                       const routeCustomerMap = new Map();
-                                      todayRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
+                                      dayRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
                                       return prev.map(c => {
                                         const rc = routeCustomerMap.get(c.id);
-                                        if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: todayRoute.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
+                                        if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: dayRoute.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
                                         return c;
                                       });
                                     });
@@ -6472,16 +6493,33 @@ const createJob = async () => {
                                   borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
                                 }}
                               >
-                                ✏️ Edit Today's Route
+                                ✏️ Edit {isToday ? "Today's" : displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} Route
                               </button>
                             )}
                           </div>
                         );
                       })()}
 
-                      {/* This Week Stats */}
+                      {/* Current Week Stats */}
                       {(() => {
                         const weekDays = getWeekDays(scheduledViewWeekStart);
+                        const weekLabel = (() => {
+                          const now = new Date(); now.setHours(0,0,0,0);
+                          const thisWeekStart = new Date(now); thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
+                          return scheduledViewWeekStart.toDateString() === thisWeekStart.toDateString() ? 'This Week' :
+                            weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' - ' + weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        })();
+                        const calcRouteDistance = (routeObj) => {
+                          if (!homeBase || !routeObj.customers || routeObj.customers.length === 0) return parseFloat(routeObj.totalDistance) || 0;
+                          const stops = routeObj.customers.filter(c => c.lat && c.lng);
+                          if (stops.length === 0) return 0;
+                          let dist = calculateDistance(homeBase.lat, homeBase.lng, stops[0].lat, stops[0].lng);
+                          for (let i = 0; i < stops.length - 1; i++) {
+                            dist += calculateDistance(stops[i].lat, stops[i].lng, stops[i+1].lat, stops[i+1].lng);
+                          }
+                          dist += calculateDistance(stops[stops.length - 1].lat, stops[stops.length - 1].lng, homeBase.lat, homeBase.lng);
+                          return dist;
+                        };
                         const weekStops = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.reduce((sum, r) => sum + (r.customers || []).length, 0);
@@ -6492,14 +6530,14 @@ const createJob = async () => {
                         }, 0);
                         const weekMiles = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                          return total + dayRoutes.reduce((sum, r) => sum + (parseFloat(r.totalDistance) || 0), 0);
+                          return total + dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
                         }, 0);
                         const daysWithRoutes = weekDays.filter(date => {
                           return savedRoutes.some(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                         }).length;
                         return (
                           <div style={{ padding: '12px', borderBottom: '1px solid rgba(234, 179, 8, 0.15)' }}>
-                            <h4 style={{ fontSize: '11px', fontWeight: 700, margin: '0 0 8px 0', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>This Week</h4>
+                            <h4 style={{ fontSize: '11px', fontWeight: 700, margin: '0 0 8px 0', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{weekLabel}</h4>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                               <div style={{ padding: '8px', background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px' }}>
                                 <div style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0' }}>{weekStops}</div>
@@ -7793,12 +7831,21 @@ const createJob = async () => {
                                   style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
                                 >▶</button>
                               </div>
-                              <button
-                                onClick={() => setShowMonthCalendar(!showMonthCalendar)}
-                                style={{ padding: '2px 8px', fontSize: '10px', background: showMonthCalendar ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer', fontWeight: 600 }}
-                              >
-                                {showMonthCalendar ? '📆 Week' : '📅 Month'}
-                              </button>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  onClick={() => { setMultiSelectDays(!multiSelectDays); if (multiSelectDays && focusedDays.length > 1) { setFocusedDays([focusedDays[0]]); } }}
+                                  title={multiSelectDays ? 'Switch to single day' : 'Select multiple days'}
+                                  style={{ padding: '2px 6px', fontSize: '10px', background: multiSelectDays ? 'rgba(34, 197, 94, 0.25)' : 'rgba(100, 116, 139, 0.15)', border: multiSelectDays ? '1px solid rgba(34, 197, 94, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)', borderRadius: '4px', color: multiSelectDays ? '#4ade80' : '#94a3b8', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                  {multiSelectDays ? '✓ Multi' : '⊞'}
+                                </button>
+                                <button
+                                  onClick={() => setShowMonthCalendar(!showMonthCalendar)}
+                                  style={{ padding: '2px 8px', fontSize: '10px', background: showMonthCalendar ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)', borderRadius: '4px', color: '#a78bfa', cursor: 'pointer', fontWeight: 600 }}
+                                >
+                                  {showMonthCalendar ? '📆 Week' : '📅 Month'}
+                                </button>
+                              </div>
                             </div>
 
                             {showMonthCalendar ? (
@@ -7836,11 +7883,19 @@ const createJob = async () => {
                                           onClick={() => {
                                             const clickedDate = new Date(date); clickedDate.setHours(0,0,0,0);
                                             setSelectedDate(clickedDate);
-                                            setFocusedDays([clickedDate]);
+                                            if (multiSelectDays) {
+                                              setFocusedDays(prev => {
+                                                const exists = prev.some(d => d.toDateString() === clickedDate.toDateString());
+                                                if (exists) return prev.filter(d => d.toDateString() !== clickedDate.toDateString());
+                                                return [...prev, clickedDate];
+                                              });
+                                            } else {
+                                              setFocusedDays([clickedDate]);
+                                            }
                                             const weekStart = new Date(clickedDate);
                                             weekStart.setDate(weekStart.getDate() - weekStart.getDay());
                                             setScheduledViewWeekStart(weekStart);
-                                            setShowMonthCalendar(false);
+                                            if (!multiSelectDays) setShowMonthCalendar(false);
                                           }}
                                           style={{
                                             padding: '4px 2px', borderRadius: '4px', cursor: 'pointer', textAlign: 'center',
@@ -7860,7 +7915,13 @@ const createJob = async () => {
                                 </div>
                               </div>
                             ) : (
-                              getWeekDays(scheduledViewWeekStart).map((date, idx) => {
+                              (() => {
+                                const weekDaysList = getWeekDays(scheduledViewWeekStart);
+                                const todayStr = new Date().toDateString();
+                                const todayIdx = weekDaysList.findIndex(d => d.toDateString() === todayStr);
+                                const sortedDays = todayIdx >= 0 ? [...weekDaysList.slice(todayIdx), ...weekDaysList.slice(0, todayIdx)] : weekDaysList;
+                                return sortedDays;
+                              })().map((date, idx) => {
                                 const dayColor = DAY_COLORS[date.getDay()];
                                 const isToday = date.toDateString() === new Date().toDateString();
                                 const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
@@ -7874,11 +7935,15 @@ const createJob = async () => {
                                       const clickedDate = new Date(date);
                                       clickedDate.setHours(0,0,0,0);
                                       setSelectedDate(clickedDate);
-                                      setFocusedDays(prev => {
-                                        const exists = prev.some(d => d.toDateString() === clickedDate.toDateString());
-                                        if (exists) return prev.filter(d => d.toDateString() !== clickedDate.toDateString());
-                                        return [...prev, clickedDate];
-                                      });
+                                      if (multiSelectDays) {
+                                        setFocusedDays(prev => {
+                                          const exists = prev.some(d => d.toDateString() === clickedDate.toDateString());
+                                          if (exists) return prev.filter(d => d.toDateString() !== clickedDate.toDateString());
+                                          return [...prev, clickedDate];
+                                        });
+                                      } else {
+                                        setFocusedDays([clickedDate]);
+                                      }
                                     }}
                                     style={{
                                       display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
