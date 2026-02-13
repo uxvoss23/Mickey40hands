@@ -6905,39 +6905,71 @@ const createJob = async () => {
                               </button>
                               <button
                                 onClick={() => {
-                                  // Clear all jobs for selected day
-                                  const affectedIds = customers.filter(c => {
-                                    if (!c.scheduledDate) return false;
-                                    return new Date(c.scheduledDate).toDateString() === dateKey;
-                                  }).map(c => c.id);
-
-                                  setCustomers(prev => prev.map(c => {
-                                    if (!c.scheduledDate) return c;
-                                    const custDate = new Date(c.scheduledDate);
-                                    if (custDate.toDateString() === dateKey) {
-                                      return {
-                                        ...c,
-                                        scheduledDate: null,
-                                        scheduledTime: null,
-                                        status: getStatusAfterUnschedule(c),
-                                        routeConfirmed: false
-                                      };
+                                  if (editingSavedRouteId) {
+                                    const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    if (savedRoute) {
+                                      const savedCustomerIds = new Set(savedRoute.customers.map(c => c.id));
+                                      setCustomers(prev => prev.map(c => {
+                                        if (!c.scheduledDate) return c;
+                                        const custDate = new Date(c.scheduledDate);
+                                        if (custDate.toDateString() === dateKey && !savedCustomerIds.has(c.id)) {
+                                          return {
+                                            ...c,
+                                            scheduledDate: null,
+                                            scheduledTime: null,
+                                            status: getStatusAfterUnschedule(c),
+                                            routeConfirmed: false
+                                          };
+                                        }
+                                        if (savedCustomerIds.has(c.id)) {
+                                          const rc = savedRoute.customers.find(sc => sc.id === c.id);
+                                          return {
+                                            ...c,
+                                            scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                            scheduledDate: savedRoute.scheduledDate,
+                                            status: 'scheduled',
+                                            routeConfirmed: true
+                                          };
+                                        }
+                                        return c;
+                                      }));
+                                      setRoutesByDay(prev => ({
+                                        ...prev,
+                                        [dateKey]: [...savedRoute.customers]
+                                      }));
+                                      setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
+                                      setEditingSavedRouteId(null);
                                     }
-                                    return c;
-                                  }));
+                                  } else {
+                                    const affectedIds = customers.filter(c => {
+                                      if (!c.scheduledDate) return false;
+                                      return new Date(c.scheduledDate).toDateString() === dateKey;
+                                    }).map(c => c.id);
 
-                                  affectedIds.forEach(cid => {
-                                    const affectedCustomer = customers.find(c => c.id === cid);
-                                    propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(affectedCustomer), routeConfirmed: false });
-                                  });
-                                  
-                                  // Clear THIS DAY'S route
-                                  setRoutesByDay(prev => ({
-                                    ...prev,
-                                    [dateKey]: []
-                                  }));
-                                  
-                                  // Clear old route state (backward compatibility)
+                                    setCustomers(prev => prev.map(c => {
+                                      if (!c.scheduledDate) return c;
+                                      const custDate = new Date(c.scheduledDate);
+                                      if (custDate.toDateString() === dateKey) {
+                                        return {
+                                          ...c,
+                                          scheduledDate: null,
+                                          scheduledTime: null,
+                                          status: getStatusAfterUnschedule(c),
+                                          routeConfirmed: false
+                                        };
+                                      }
+                                      return c;
+                                    }));
+
+                                    affectedIds.forEach(cid => {
+                                      const affectedCustomer = customers.find(c => c.id === cid);
+                                      propagateCustomerUpdate(cid, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(affectedCustomer), routeConfirmed: false });
+                                    });
+                                    setRoutesByDay(prev => ({
+                                      ...prev,
+                                      [dateKey]: []
+                                    }));
+                                  }
                                   setRoute([]);
                                   setSuggestedCustomers([]);
                                   setUnsavedRouteChanges(false);
@@ -6958,7 +6990,7 @@ const createJob = async () => {
                                 gap: '4px'
                               }}
                             >
-                              🗑️ Clear Day
+                              {editingSavedRouteId ? '↩️ Cancel' : '🗑️ Clear Day'}
                             </button>
                           </div>
                           )}
