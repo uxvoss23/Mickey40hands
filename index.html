@@ -10749,6 +10749,17 @@ const createJob = async () => {
                                       <button onClick={() => {
                                         setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, customerNotes: editedNotes, notes: editedNotes } : c) } : r));
                                         setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, notes: editedNotes } : c));
+                                        apiFetch('/jobs?customer_id=' + customer.id).then(data => {
+                                          if (data && data.jobs) {
+                                            const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                            if (activeJob) {
+                                              apiFetch(`/jobs/${activeJob.id}`, {
+                                                method: 'PATCH',
+                                                body: JSON.stringify({ notes: editedNotes })
+                                              }).catch(e => console.error('Failed to sync notes to job:', e));
+                                            }
+                                          }
+                                        }).catch(e => console.error('Failed to fetch jobs for note sync:', e));
                                         setEditingCustomerNotes(null); setEditedNotes('');
                                       }}
                                         style={{ padding: '3px 8px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>Save</button>
@@ -12098,6 +12109,15 @@ const createJob = async () => {
                             const custLng = quickAddJobPopup.lng;
                             const prefDays = quickJobData.preferredDays;
                             const prefTime = quickJobData.preferredTime;
+
+                            setSavedRoutes(prev => prev.map(r => ({
+                              ...r,
+                              customers: (r.customers || []).map(c =>
+                                c.id === quickAddJobPopup.customerId
+                                  ? { ...c, customerNotes: combinedNotes, notes: combinedNotes }
+                                  : c
+                              )
+                            })));
 
                             await loadFromDatabase();
                             setQuickAddJobPopup(null);
