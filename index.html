@@ -761,6 +761,17 @@
       const customerHasOpenJobs = (customer) => {
         if (!customer) return false;
         if (customer.activeJobCount > 0) return true;
+        if (customer.existingJob) return true;
+        if (customer.jobPrice > 0) return true;
+        if (customer.totalJobCount > 0) {
+          const completed = (customer.serviceHistory || []).filter(j => j.status === 'completed' || j.status === 'cancelled').length;
+          if (completed < customer.totalJobCount) return true;
+        }
+        const fullCustomer = customers.find(c => c.id === customer.id);
+        if (fullCustomer && fullCustomer !== customer) {
+          if (fullCustomer.activeJobCount > 0) return true;
+          if (fullCustomer.existingJob) return true;
+        }
         return false;
       };
       const getStatusAfterUnschedule = (customer) => customerHasOpenJobs(customer) ? 'unscheduled' : '';
