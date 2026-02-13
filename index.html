@@ -4846,7 +4846,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               email: c.email,
               secondaryPhones: c.secondary_phones || [],
               secondaryEmails: c.secondary_emails || [],
-              status: (c.status || '').toLowerCase(),
+              status: (c.status || 'unscheduled').toLowerCase() || 'unscheduled',
               activeJobCount: c.active_job_count || 0,
               totalJobCount: c.total_job_count || 0,
               notes: c.notes || '',
