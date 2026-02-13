@@ -496,6 +496,8 @@
       const [hoveredCustomer, setHoveredCustomer] = useState(null);
       const [hoveredPrefDay, setHoveredPrefDay] = useState(null);
       const [hoveredPrefTime, setHoveredPrefTime] = useState(null);
+      const [hoveredUnroutedDays, setHoveredUnroutedDays] = useState([]);
+      const [dayPickerPopup, setDayPickerPopup] = useState(null);
       const [verifyingCustomer, setVerifyingCustomer] = useState(false);
       const [visibleCustomers, setVisibleCustomers] = useState([]);
       const [loading, setLoading] = useState(false);
@@ -1922,6 +1924,13 @@
           openJobPopupForCustomer(customer);
         };
 
+        const handleShowDayPicker = (e) => {
+          const cust = customers.find(c => c.id === e.detail.customerId);
+          if (cust && focusedDays.length >= 1) {
+            setDayPickerPopup({ customer: cust, days: [...focusedDays].sort((a, b) => a - b) });
+          }
+        };
+
         window.addEventListener('addToRoute', handleAddToRoute);
         window.addEventListener('viewCustomerProfile', handleViewProfile);
         window.addEventListener('verifySolar', handleVerifySolar);
@@ -1929,6 +1938,7 @@
         window.addEventListener('markRecurring', handleMarkRecurring);
         window.addEventListener('autoVerifyProperty', handleAutoVerify);
         window.addEventListener('addJobForCustomer', handleAddJobForCustomer);
+        window.addEventListener('showDayPicker', handleShowDayPicker);
         
         return () => {
           window.removeEventListener('addToRoute', handleAddToRoute);
@@ -1938,8 +1948,9 @@
           window.removeEventListener('markRecurring', handleMarkRecurring);
           window.removeEventListener('autoVerifyProperty', handleAutoVerify);
           window.removeEventListener('addJobForCustomer', handleAddJobForCustomer);
+          window.removeEventListener('showDayPicker', handleShowDayPicker);
         };
-      }, [customers]);
+      }, [customers, focusedDays]);
       
       // Highlight map marker when hovering sidebar card
       useEffect(() => {
@@ -2346,11 +2357,15 @@
               offset: [0, -10]  // Slight offset above pin
             });
             
-            // Click = add to route instantly
+            // Click = add to route instantly (or show day picker if unscheduled + multi-day)
             marker.on('click', (e) => {
               L.DomEvent.stopPropagation(e);
-              marker.closePopup(); // Close popup if open
-              handleCustomerClick(customer);
+              marker.closePopup();
+              if (customer._needsScheduling && focusedDays.length > 1 && statusFilter === 'scheduled') {
+                window.dispatchEvent(new CustomEvent('showDayPicker', { detail: { customerId: customer.id } }));
+              } else {
+                handleCustomerClick(customer);
+              }
             });
             
             // Hover = show popup with delay
@@ -7655,6 +7670,7 @@ const createJob = async () => {
                               const dayColor = DAY_COLORS[date.getDay()];
                               const isToday = date.toDateString() === new Date().toDateString();
                               const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
+                              const isPrefMatch = hoveredUnroutedDays.includes(date.getDay());
                               const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                               const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
                               return (
@@ -7673,16 +7689,17 @@ const createJob = async () => {
                                   style={{
                                     display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
                                     borderRadius: '8px', cursor: 'pointer', marginBottom: '2px',
-                                    background: isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                                    border: isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid transparent',
+                                    background: isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                                    border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.5)' : isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : '1px solid transparent',
                                     transition: 'all 0.15s'
                                   }}
                                 >
-                                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: jobCount > 0 ? dayColor.color : 'rgba(100, 116, 139, 0.3)', flexShrink: 0 }} />
-                                  <span style={{ fontSize: '12px', fontWeight: isFocused ? 700 : 500, color: isFocused ? '#fbbf24' : isToday ? '#93c5fd' : '#e2e8f0', flex: 1 }}>
+                                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isPrefMatch ? '#22c55e' : jobCount > 0 ? dayColor.color : 'rgba(100, 116, 139, 0.3)', flexShrink: 0 }} />
+                                  <span style={{ fontSize: '12px', fontWeight: isFocused || isPrefMatch ? 700 : 500, color: isPrefMatch ? '#4ade80' : isFocused ? '#fbbf24' : isToday ? '#93c5fd' : '#e2e8f0', flex: 1 }}>
                                     {dayColor.label} {date.getMonth() + 1}/{date.getDate()}
                                   </span>
-                                  {isToday && <span style={{ fontSize: '9px', color: '#93c5fd', fontWeight: 600 }}>TODAY</span>}
+                                  {isPrefMatch && <span style={{ fontSize: '9px', color: '#4ade80', fontWeight: 700 }}>PREFERRED</span>}
+                                  {isToday && !isPrefMatch && <span style={{ fontSize: '9px', color: '#93c5fd', fontWeight: 600 }}>TODAY</span>}
                                   <span style={{ fontSize: '11px', color: jobCount > 0 ? dayColor.color : '#475569', fontWeight: 600 }}>{jobCount} stop{jobCount !== 1 ? 's' : ''}</span>
                                 </div>
                               );
@@ -7762,6 +7779,12 @@ const createJob = async () => {
                           {/* Section D: Unrouted Jobs */}
                           {(() => {
                             const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
+                            const parsePrefDays = (prefStr) => {
+                              if (!prefStr) return [];
+                              const dayMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0,
+                                'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0 };
+                              return prefStr.toLowerCase().split(/[,\s]+/).map(d => dayMap[d.trim()]).filter(d => d !== undefined);
+                            };
                             return (
                               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
@@ -7776,7 +7799,18 @@ const createJob = async () => {
                                     unroutedCustomers.map(customer => (
                                       <div
                                         key={customer.id}
-                                        onClick={() => { setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                        onClick={() => {
+                                          if (focusedDays.length > 1) {
+                                            setDayPickerPopup({ customer, days: [...focusedDays].sort((a, b) => a - b) });
+                                          } else if (focusedDays.length === 1) {
+                                            const chosenDate = new Date(focusedDays[0]);
+                                            chosenDate.setHours(0,0,0,0);
+                                            setSelectedDate(chosenDate);
+                                            setTimeout(() => handleCustomerClick(customer), 100);
+                                          } else {
+                                            setProfileCustomer(customer); setShowCustomerProfile(true);
+                                          }
+                                        }}
                                         style={{
                                           display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px',
                                           borderRadius: '8px', cursor: 'pointer', marginBottom: '3px',
@@ -7784,8 +7818,15 @@ const createJob = async () => {
                                           border: '1px solid rgba(100, 116, 139, 0.15)',
                                           transition: 'all 0.15s'
                                         }}
-                                        onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(100, 116, 139, 0.15)'; }}
-                                        onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(100, 116, 139, 0.08)'; }}
+                                        onMouseOver={(e) => {
+                                          e.currentTarget.style.background = 'rgba(100, 116, 139, 0.15)';
+                                          const days = parsePrefDays(customer.preferredDate);
+                                          setHoveredUnroutedDays(days);
+                                        }}
+                                        onMouseOut={(e) => {
+                                          e.currentTarget.style.background = 'rgba(100, 116, 139, 0.08)';
+                                          setHoveredUnroutedDays([]);
+                                        }}
                                       >
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b', flexShrink: 0 }} />
                                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -11300,6 +11341,82 @@ const createJob = async () => {
               );
             })()}
           </div>
+
+          {dayPickerPopup && (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.6)', zIndex: 10000,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }} onClick={() => setDayPickerPopup(null)}>
+              <div onClick={(e) => e.stopPropagation()} style={{
+                background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+                borderRadius: '16px', padding: '24px', minWidth: '300px', maxWidth: '400px',
+                boxShadow: '0 25px 50px rgba(0,0,0,0.5)'
+              }}>
+                <h3 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#f1f5f9' }}>
+                  Schedule to Route
+                </h3>
+                <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#94a3b8' }}>
+                  Add <strong style={{ color: '#e2e8f0' }}>{dayPickerPopup.customer.name}</strong> to which day?
+                </p>
+                {dayPickerPopup.customer.preferredDate && (
+                  <div style={{ marginBottom: '12px', padding: '8px 12px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.25)', borderRadius: '8px' }}>
+                    <span style={{ fontSize: '11px', color: '#4ade80', fontWeight: 600 }}>Preferred: {dayPickerPopup.customer.preferredDate}</span>
+                    {dayPickerPopup.customer.preferredTimeWindow && (
+                      <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '8px' }}>{dayPickerPopup.customer.preferredTimeWindow}</span>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {dayPickerPopup.days.map((day, idx) => {
+                    const dayLabel = day.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                    const isToday = day.toDateString() === new Date().toDateString();
+                    const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === day.toDateString());
+                    const stopCount = routesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
+                    return (
+                      <button
+                        key={idx}
+                        onClick={async () => {
+                          const chosenDate = new Date(day);
+                          chosenDate.setHours(0,0,0,0);
+                          setSelectedDate(chosenDate);
+                          setDayPickerPopup(null);
+                          setTimeout(() => {
+                            handleCustomerClick(dayPickerPopup.customer);
+                          }, 100);
+                        }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '12px 16px', borderRadius: '10px', cursor: 'pointer',
+                          background: isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.5)',
+                          border: isToday ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid rgba(148, 163, 184, 0.15)',
+                          color: '#f1f5f9', fontSize: '14px', fontWeight: 600,
+                          transition: 'all 0.15s'
+                        }}
+                        onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.2)'; e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)'; }}
+                        onMouseOut={(e) => { e.currentTarget.style.background = isToday ? 'rgba(59, 130, 246, 0.15)' : 'rgba(30, 41, 59, 0.5)'; e.currentTarget.style.borderColor = isToday ? 'rgba(59, 130, 246, 0.4)' : 'rgba(148, 163, 184, 0.15)'; }}
+                      >
+                        <span>{dayLabel}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {isToday && <span style={{ fontSize: '10px', color: '#93c5fd', fontWeight: 700 }}>TODAY</span>}
+                          <span style={{ fontSize: '12px', color: '#94a3b8' }}>{stopCount} stop{stopCount !== 1 ? 's' : ''}</span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setDayPickerPopup(null)}
+                  style={{
+                    marginTop: '16px', width: '100%', padding: '10px',
+                    background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.2)',
+                    borderRadius: '8px', color: '#94a3b8', fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                  }}
+                >Cancel</button>
+              </div>
+            </div>
+          )}
 
           {quickAddJobPopup && (() => {
               const jobInputStyle = {
