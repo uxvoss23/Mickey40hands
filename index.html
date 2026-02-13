@@ -12106,33 +12106,7 @@ const createJob = async () => {
                               editingJobId: null
                             });
 
-                            if (!isEditing && custLat && custLng) {
-                              setCurrentView('map');
-                              setStatusFilter('scheduled');
-                              setProfileCustomer(null);
-                              const today = new Date(); today.setHours(0,0,0,0);
-                              setFocusedDays([today]);
-                              setScheduledMapView('week');
-
-                              setTimeout(() => {
-                                if (mapInstanceRef.current) {
-                                  const bounds = L.latLngBounds([[custLat, custLng]]);
-                                  const todayStr = today.toDateString();
-                                  const todayStops = (savedRoutes || []).filter(r => {
-                                    const rd = r.route_date ? new Date(r.route_date) : null;
-                                    return rd && rd.toDateString() === todayStr;
-                                  });
-                                  todayStops.forEach(s => {
-                                    if (s.lat && s.lng) bounds.extend([s.lat, s.lng]);
-                                  });
-                                  if (bounds.isValid()) {
-                                    mapInstanceRef.current.fitBounds(bounds.pad(0.3));
-                                  } else {
-                                    mapInstanceRef.current.setView([custLat, custLng], 12);
-                                  }
-                                }
-                              }, 500);
-                            }
+                            setProfileCustomer(null);
                           } catch (err) {
                             console.error('Failed to save job:', err);
                             alert('Failed to save job: ' + err.message);
