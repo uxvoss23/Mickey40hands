@@ -1356,11 +1356,17 @@
             return bounds.contains([c.lat, c.lng]);
           });
           
-          // Apply sorting
           if (sortBy !== 'none') {
+            const getDistFromHome = (c) => {
+              if (!homeBase || !c.lat || !c.lng) return 99999;
+              const R = 3959;
+              const dLat = (c.lat - homeBase.lat) * Math.PI / 180;
+              const dLng = (c.lng - homeBase.lng) * Math.PI / 180;
+              const a2 = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(homeBase.lat * Math.PI / 180) * Math.cos(c.lat * Math.PI / 180) * Math.sin(dLng/2) * Math.sin(dLng/2);
+              return R * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
+            };
             visible = [...visible].sort((a, b) => {
               let compareValue = 0;
-              
               if (sortBy === 'lastService') {
                 const dateA = a.lastServiceDate ? new Date(a.lastServiceDate).getTime() : 0;
                 const dateB = b.lastServiceDate ? new Date(b.lastServiceDate).getTime() : 0;
@@ -1373,8 +1379,9 @@
                 const panelsA = parseInt(a.panelCount || a.totalPanels) || 0;
                 const panelsB = parseInt(b.panelCount || b.totalPanels) || 0;
                 compareValue = panelsA - panelsB;
+              } else if (sortBy === 'distance') {
+                compareValue = getDistFromHome(a) - getDistFromHome(b);
               }
-              
               return sortOrder === 'asc' ? compareValue : -compareValue;
             });
           }
@@ -7877,9 +7884,10 @@ const createJob = async () => {
                           }}
                         >
                           <option value="none">No Sorting</option>
-                          <option value="lastService">Last Service Date</option>
-                          <option value="zip">ZIP Code</option>
+                          <option value="lastService">Since Last Service</option>
+                          <option value="distance">Distance from Home Base</option>
                           <option value="panels">Panel Count</option>
+                          <option value="zip">ZIP Code</option>
                         </select>
                         
                         {sortBy !== 'none' && (
@@ -7928,13 +7936,7 @@ const createJob = async () => {
                           );
                         }
 
-                        // Filter to only show customers visible in current map bounds
-                        const visibleInMap = mapBounds
-                          ? filteredCustomers.filter(customer => {
-                              if (!customer.lat || !customer.lng) return false;
-                              return mapBounds.contains([customer.lat, customer.lng]);
-                            })
-                          : filteredCustomers;
+                        const visibleInMap = mapBounds ? visibleCustomers : filteredCustomers;
 
                         if (visibleInMap.length === 0) {
                           return (
@@ -7957,8 +7959,6 @@ const createJob = async () => {
                         return visibleInMap.map((customer, index) => {
                         const isHovered = hoveredCustomer?.id === customer.id;
                         const isSelected = selectedCustomer?.id === customer.id;
-                        const verifyIcon = customer.solarVerified === 'no' ? '❌' : 
-                                         !customer.solarVerified ? '🔍' : '';
                         
                         return (
                           <div
@@ -8055,252 +8055,84 @@ const createJob = async () => {
                                 const y = Math.floor((1 - Math.log(Math.tan(customer.lat * Math.PI / 180) + 1 / Math.cos(customer.lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
                                 return (
                                   <div style={{
-                                    width: '60px',
-                                    height: '60px',
+                                    width: '52px',
+                                    height: '52px',
                                     borderRadius: '8px',
                                     overflow: 'hidden',
                                     flexShrink: 0,
                                     border: '1px solid rgba(139, 92, 246, 0.3)',
-                                    position: 'relative',
                                     background: '#0a0e27'
                                   }}>
                                     <img 
                                       src={`https://mt1.google.com/vt/lyrs=y&x=${x}&y=${y}&z=${zoom}`} 
-                                      style={{ 
-                                        width: '100%', 
-                                        height: '100%', 
-                                        objectFit: 'cover',
-                                        display: 'block'
-                                      }} 
+                                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
                                       alt=""
                                     />
-                                    {/* Solar Verification Badge */}
-                                    {customer.solarVerified === 'yes' && (
-                                      <div style={{
-                                        position: 'absolute',
-                                        top: '4px',
-                                        right: '4px',
-                                        background: 'rgba(251, 191, 36, 0.95)',
-                                        borderRadius: '50%',
-                                        width: '18px',
-                                        height: '18px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        color: '#000',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                                      }}>
-                                        ✓
-                                      </div>
-                                    )}
-                                    {customer.solarVerified === 'no' && (
-                                      <div style={{
-                                        position: 'absolute',
-                                        top: '4px',
-                                        right: '4px',
-                                        background: 'rgba(239, 68, 68, 0.95)',
-                                        borderRadius: '50%',
-                                        width: '18px',
-                                        height: '18px',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        fontSize: '10px',
-                                        fontWeight: 700,
-                                        color: '#fff',
-                                        boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                                      }}>
-                                        ✕
-                                      </div>
-                                    )}
                                   </div>
                                 );
                               })()}
                               
                               {/* Info */}
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                                  <div style={{
-                                    fontSize: '18px',
-                                    lineHeight: 1,
-                                    flexShrink: 0
-                                  }}>
-                                    {verifyIcon}
-                                  </div>
-                                  <div
-                                    onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); }}
-                                    style={{
-                                    fontSize: '14px',
-                                    fontWeight: 600,
-                                    color: '#f1f5f9',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    cursor: 'pointer'
+                                <div
+                                  onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); }}
+                                  style={{
+                                    fontSize: '14px', fontWeight: 600, color: '#f1f5f9',
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    cursor: 'pointer', marginBottom: '3px'
                                   }}
-                                    onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
-                                    onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
-                                  >
-                                    {customer.name}
-                                  </div>
+                                  onMouseOver={(e) => e.currentTarget.style.color = '#a78bfa'}
+                                  onMouseOut={(e) => e.currentTarget.style.color = '#f1f5f9'}
+                                >
+                                  {customer.name}
                                 </div>
-                                <div style={{
-                                  fontSize: '12px',
-                                  color: '#94a3b8',
-                                  marginBottom: '8px',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap'
-                                }}>
+                                {(customer.phone || customer.email) && (
+                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {customer.phone && <span>{customer.phone}</span>}
+                                    {customer.phone && customer.email && <span style={{ margin: '0 6px', color: '#475569' }}>|</span>}
+                                    {customer.email && <span>{customer.email}</span>}
+                                  </div>
+                                )}
+                                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                   {customer.address}
                                 </div>
                                 
                                 {/* Tags */}
-                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                                  {customer.status === 'unscheduled' && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(239, 68, 68, 0.2)',
-                                      border: '1px solid rgba(239, 68, 68, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#fca5a5',
-                                      fontWeight: 600
-                                    }}>
-                                      🔴 Unscheduled
-                                    </span>
-                                  )}
-                                  {customer.status === 'scheduled' && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(251, 191, 36, 0.2)',
-                                      border: '1px solid rgba(251, 191, 36, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#fbbf24',
-                                      fontWeight: 600
-                                    }}>
-                                      🟡 Scheduled
-                                    </span>
-                                  )}
-                                  {customer.routeConfirmed && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.2)',
-                                      border: '1px solid rgba(34, 197, 94, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#22c55e',
-                                      fontWeight: 600
-                                    }}
-                                    title={`Confirmed on ${customer.confirmedRouteName || 'route'}`}>
-                                      ✓ Route Saved
-                                    </span>
-                                  )}
-                                  {customer.panelCount && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(251, 191, 36, 0.1)',
-                                      border: '1px solid rgba(251, 191, 36, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#fbbf24',
-                                      fontWeight: 600
-                                    }}>
-                                      {customer.panelCount} panels
-                                    </span>
-                                  )}
+                                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                   {(customer.isRecurring || customer.recurring) && (
                                     <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(59, 130, 246, 0.2)',
-                                      border: '1px solid rgba(59, 130, 246, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#3b82f6',
-                                      fontWeight: 600
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(59, 130, 246, 0.2)', border: '1px solid rgba(59, 130, 246, 0.4)',
+                                      borderRadius: '4px', color: '#3b82f6', fontWeight: 600
                                     }}>
-                                      🦖 Recurring
-                                    </span>
-                                  )}
-                                  {customer.existingJob && !(customer.isRecurring || customer.recurring) && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.2)',
-                                      border: '1px solid rgba(34, 197, 94, 0.4)',
-                                      borderRadius: '4px',
-                                      color: '#22c55e',
-                                      fontWeight: 600
-                                    }}>
-                                      🦕 Past
+                                      Recurring
                                     </span>
                                   )}
                                   {customer.lastServiceDate && (
                                     <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(100, 116, 139, 0.2)',
-                                      border: '1px solid rgba(100, 116, 139, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#94a3b8'
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(100, 116, 139, 0.15)', border: '1px solid rgba(100, 116, 139, 0.25)',
+                                      borderRadius: '4px', color: '#94a3b8'
                                     }}>
                                       Last: {new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                                     </span>
                                   )}
+                                  {customer.scheduledDate && new Date(customer.scheduledDate) >= new Date(new Date().toDateString()) && (
+                                    <span style={{
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '4px', color: '#22c55e', fontWeight: 600
+                                    }}>
+                                      Upcoming: {new Date(customer.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  )}
                                   {customer.nextScheduledDate && (customer.isRecurring || customer.recurring) && (
                                     <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(59, 130, 246, 0.2)',
-                                      border: '1px solid rgba(59, 130, 246, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#3b82f6'
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)',
+                                      borderRadius: '4px', color: '#3b82f6'
                                     }}>
-                                      Next: {new Date(customer.nextScheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                                    </span>
-                                  )}
-                                  {route.some(r => r.id === customer.id) && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.1)',
-                                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#22c55e'
-                                    }}>
-                                      In Route
-                                    </span>
-                                  )}
-                                  {(customer.amountPaid || customer.jobAmount) && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(34, 197, 94, 0.15)',
-                                      border: '1px solid rgba(34, 197, 94, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#22c55e',
-                                      fontWeight: 600
-                                    }}>
-                                      ${customer.amountPaid || customer.jobAmount}
-                                    </span>
-                                  )}
-                                  {customer.tipAmount && (
-                                    <span style={{
-                                      fontSize: '11px',
-                                      padding: '3px 8px',
-                                      background: 'rgba(251, 191, 36, 0.15)',
-                                      border: '1px solid rgba(251, 191, 36, 0.3)',
-                                      borderRadius: '4px',
-                                      color: '#fbbf24',
-                                      fontWeight: 600
-                                    }}>
-                                      +${customer.tipAmount} tip
+                                      Next: {new Date(customer.nextScheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     </span>
                                   )}
                                 </div>
@@ -8308,35 +8140,22 @@ const createJob = async () => {
                               
                               {/* Actions */}
                               <div style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px',
-                                flexShrink: 0,
-                                opacity: isHovered ? 1 : 0.3,
-                                transition: 'opacity 0.2s ease'
+                                display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0,
+                                opacity: isHovered ? 1 : 0.3, transition: 'opacity 0.2s ease'
                               }}>
                                 <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openJobPopupForCustomer(customer);
-                                  }}
+                                  onClick={(e) => { e.stopPropagation(); openJobPopupForCustomer(customer); }}
                                   style={{
                                     padding: '4px 8px', borderRadius: '4px',
-                                    background: 'rgba(34, 197, 94, 0.1)',
-                                    border: '1px solid rgba(34, 197, 94, 0.3)',
-                                    color: '#22c55e', fontSize: '10px',
-                                    fontWeight: 600, cursor: 'pointer',
-                                    fontFamily: 'inherit', whiteSpace: 'nowrap'
+                                    background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                                    color: '#22c55e', fontSize: '10px', fontWeight: 600,
+                                    cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap'
                                   }}
                                   title="Add Job"
                                 >
                                   + Job
                                 </button>
-                                <div style={{
-                                  color: '#8b5cf6',
-                                  fontSize: '18px',
-                                  textAlign: 'center'
-                                }}>
+                                <div style={{ color: '#8b5cf6', fontSize: '18px', textAlign: 'center' }}>
                                   →
                                 </div>
                               </div>
