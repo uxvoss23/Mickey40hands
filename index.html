@@ -6425,7 +6425,7 @@ const createJob = async () => {
                         const isToday = displayStr === new Date().toDateString();
                         const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === displayStr);
                         const dayStops = dayRoutes.flatMap(r => r.customers || []);
-                        const dayRevenue = dayStops.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0);
+                        const dayRevenue = dayStops.reduce((sum, c) => sum + (parseFloat(c.jobPrice) || parseFloat(c.amountPaid) || parseFloat(c.price) || 0), 0);
                         const calcRouteDistance = (routeObj) => {
                           if (!homeBase || !routeObj.customers || routeObj.customers.length === 0) return parseFloat(routeObj.totalDistance) || 0;
                           const stops = routeObj.customers.filter(c => c.lat && c.lng);
@@ -6550,7 +6550,7 @@ const createJob = async () => {
                         }, 0);
                         const weekRevenue = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                          return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0);
+                          return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => sum + (parseFloat(c.jobPrice) || parseFloat(c.amountPaid) || parseFloat(c.price) || 0), 0);
                         }, 0);
                         const weekMiles = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
