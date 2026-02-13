@@ -678,6 +678,7 @@
         addJob: false, panels: '0', notes: ''
       });
       const [quickAddJobPopup, setQuickAddJobPopup] = useState(null);
+      const [jobRefreshKey, setJobRefreshKey] = useState(0);
       const [quickJobData, setQuickJobData] = useState({
         serviceType: '', notes: '', panels: '0',
         pricePerPanel: '9', totalPrice: '0', priceOverridden: false,
@@ -1229,7 +1230,7 @@
           }
         };
         fetchJobs();
-      }, [profileCustomer?.id]);
+      }, [profileCustomer?.id, jobRefreshKey]);
 
       // Restore scheduling data from savedRoutes into customers on load
       // This ensures scheduledTime/scheduledDate persist across page reloads
@@ -12049,9 +12050,11 @@ const createJob = async () => {
                               technician: quickJobData.technician,
                               is_recurring: quickJobData.isRecurring,
                               recurrence_interval: quickJobData.isRecurring ? quickJobData.recurrenceInterval : '',
-                              next_service_date: hasServiceDate ? quickJobData.nextServiceDate : '',
-                              scheduled_date: ''
+                              next_service_date: hasServiceDate ? quickJobData.nextServiceDate : ''
                             };
+                            if (!isEditing) {
+                              jobPayload.scheduled_date = '';
+                            }
 
                             if (!isEditing) {
                               jobPayload.status = 'unscheduled';
@@ -12120,6 +12123,7 @@ const createJob = async () => {
                             })));
 
                             await loadFromDatabase();
+                            setJobRefreshKey(k => k + 1);
                             setQuickAddJobPopup(null);
                             setQuickJobData({
                               serviceType: '', notes: '', panels: '0',
