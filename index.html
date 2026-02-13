@@ -2530,7 +2530,8 @@
             dayInfoMap.set(c.id, { _routeDate: c._routeDate, _routeName: c._routeName, _dayOfWeek: c._dayOfWeek, _dayLabel: c._dayLabel });
           });
 
-          // Filter to scheduled customers (with day info), always include unscheduled for sidebar
+          // Filter to scheduled customers (with day info) + unscheduled customers with jobs
+          const unscheduledCustomers = results.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && !scheduledIds.has(c.id));
           results = results.filter(c => scheduledIds.has(c.id));
           results = results.map(c => {
             const info = dayInfoMap.get(c.id);
@@ -2544,6 +2545,8 @@
               return rd && focusedDateStrs.has(rd);
             });
           }
+          // Always include unscheduled customers on Route Planner map
+          results = results.concat(unscheduledCustomers.map(c => ({ ...c, _needsScheduling: true })));
         } else if (statusFilter === 'unscheduled') {
           results = results.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
         } else if (statusFilter !== 'all') {
@@ -11699,15 +11702,30 @@ const createJob = async () => {
 
                             if (!isEditing && custLat && custLng) {
                               setCurrentView('map');
-                              setStatusFilter('');
+                              setStatusFilter('scheduled');
                               setProfileCustomer(null);
-                              setFocusedDays([]);
+                              const today = new Date(); today.setHours(0,0,0,0);
+                              setFocusedDays([today]);
+                              setScheduledMapView('week');
 
                               setTimeout(() => {
                                 if (mapInstanceRef.current) {
-                                  mapInstanceRef.current.setView([custLat, custLng], 12);
+                                  const bounds = L.latLngBounds([[custLat, custLng]]);
+                                  const todayStr = today.toDateString();
+                                  const todayStops = (savedRoutes || []).filter(r => {
+                                    const rd = r.route_date ? new Date(r.route_date) : null;
+                                    return rd && rd.toDateString() === todayStr;
+                                  });
+                                  todayStops.forEach(s => {
+                                    if (s.lat && s.lng) bounds.extend([s.lat, s.lng]);
+                                  });
+                                  if (bounds.isValid()) {
+                                    mapInstanceRef.current.fitBounds(bounds.pad(0.3));
+                                  } else {
+                                    mapInstanceRef.current.setView([custLat, custLng], 12);
+                                  }
                                 }
-                              }, 400);
+                              }, 500);
                             }
                           } catch (err) {
                             console.error('Failed to save job:', err);
