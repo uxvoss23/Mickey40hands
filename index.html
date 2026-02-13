@@ -11626,7 +11626,7 @@ const createJob = async () => {
                                   jobPayload.status = 'unscheduled';
                                 }
                               } else {
-                                jobPayload.status = 'scheduled';
+                                jobPayload.status = quickJobData.nextServiceDate ? 'scheduled' : 'unscheduled';
                               }
                             }
 
@@ -11668,14 +11668,16 @@ const createJob = async () => {
                                 body: JSON.stringify(jobPayload)
                               });
                               const serviceDate = quickJobData.nextServiceDate;
-                              let newStatus = 'scheduled';
+                              let newStatus = 'unscheduled';
                               if (quickJobData.isRecurring) {
                                 if (serviceDate) {
                                   const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                  newStatus = daysUntil <= 30 ? 'scheduled' : '';
+                                  newStatus = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
                                 } else {
                                   newStatus = 'unscheduled';
                                 }
+                              } else {
+                                newStatus = serviceDate ? 'scheduled' : 'unscheduled';
                               }
                               const customerPatch = {
                                 status: newStatus,
@@ -11709,31 +11711,35 @@ const createJob = async () => {
                             if (!isEditing && custLat && custLng) {
                               setCurrentView('map');
                               setStatusFilter('scheduled');
-                              setShowNeedScheduling(true);
                               setProfileCustomer(null);
 
-                              const dayNameToNum = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
-                              let targetDate = null;
-                              if (prefDays.length > 0) {
-                                const today = new Date();
-                                today.setHours(0,0,0,0);
-                                const prefNums = prefDays.map(d => dayNameToNum[d]).filter(n => n !== undefined);
-                                for (let offset = 0; offset < 30; offset++) {
-                                  const candidate = new Date(today);
-                                  candidate.setDate(today.getDate() + offset);
-                                  if (prefNums.includes(candidate.getDay())) {
-                                    targetDate = candidate;
-                                    break;
+                              const serviceDate = quickJobData.nextServiceDate;
+                              if (serviceDate) {
+                                const dayNameToNum = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+                                let targetDate = null;
+                                if (prefDays.length > 0) {
+                                  const today = new Date();
+                                  today.setHours(0,0,0,0);
+                                  const prefNums = prefDays.map(d => dayNameToNum[d]).filter(n => n !== undefined);
+                                  for (let offset = 0; offset < 30; offset++) {
+                                    const candidate = new Date(today);
+                                    candidate.setDate(today.getDate() + offset);
+                                    if (prefNums.includes(candidate.getDay())) {
+                                      targetDate = candidate;
+                                      break;
+                                    }
                                   }
                                 }
-                              }
-                              if (targetDate) {
-                                const weekStart = new Date(targetDate);
-                                weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-                                weekStart.setHours(0,0,0,0);
-                                setScheduledViewWeekStart(weekStart);
-                                setSelectedDate(targetDate);
-                                setFocusedDays([targetDate]);
+                                if (targetDate) {
+                                  const weekStart = new Date(targetDate);
+                                  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                                  weekStart.setHours(0,0,0,0);
+                                  setScheduledViewWeekStart(weekStart);
+                                  setSelectedDate(targetDate);
+                                  setFocusedDays([targetDate]);
+                                }
+                              } else {
+                                setFocusedDays([]);
                               }
 
                               setTimeout(() => {
