@@ -10556,11 +10556,29 @@ const createJob = async () => {
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
-                                  savedRoute.customers.forEach(rc => {
+                                  savedRoute.customers.forEach(async (rc) => {
                                     const fullCustomer = customers.find(c => c.id === rc.id);
-                                    propagateCustomerUpdate(rc.id, { scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(fullCustomer), routeConfirmed: false, confirmedRouteName: null });
+                                    propagateCustomerUpdate(rc.id, { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null });
+                                    try {
+                                      await apiFetch(`/customers/${rc.id}`, {
+                                        method: 'PATCH',
+                                        body: JSON.stringify({ status: 'unscheduled', scheduled_date: null })
+                                      });
+                                      const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+                                      const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                      for (const j of activeJobs) {
+                                        if (j.scheduled_date) {
+                                          await apiFetch(`/jobs/${j.id}`, {
+                                            method: 'PATCH',
+                                            body: JSON.stringify({ scheduled_date: '', status: 'unscheduled' })
+                                          });
+                                        }
+                                      }
+                                    } catch (err) {
+                                      console.error('Failed to clear job scheduled dates:', err);
+                                    }
                                   });
-                                  setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, scheduledDate: null, scheduledTime: null, status: getStatusAfterUnschedule(c), routeConfirmed: false, confirmedRouteName: null } : c));
+                                  setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null } : c));
                                   const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                   setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                   setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
