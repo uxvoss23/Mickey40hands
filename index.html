@@ -3062,9 +3062,10 @@
               if (data && data.jobs) {
                 const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
                 if (activeJob) {
+                  const routeDateStr = selectedDate.toISOString().split('T')[0];
                   apiFetch(`/jobs/${activeJob.id}`, {
                     method: 'PATCH',
-                    body: JSON.stringify({ status: 'scheduled' })
+                    body: JSON.stringify({ status: 'scheduled', scheduled_date: routeDateStr })
                   }).catch(e => console.error('Failed to update job status:', e));
                 }
               }
