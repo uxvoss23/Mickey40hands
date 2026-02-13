@@ -154,4 +154,9 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Send to Tech flow auto-completes recurring jobs, triggering next-job creation in database
 - 2026-02-13: Customer status auto-updates to 'scheduled' with next service date after recurring job completion
 - 2026-02-13: Supported recurrence intervals: monthly, 3months, 6months, yearly, or custom months
+- 2026-02-13: Status rules: non-recurring customers always 'scheduled' when they have a job; recurring uses 30-day rule (empty if >30 days, scheduled if ≤30 days)
+- 2026-02-13: Daily auto-scheduler runs every 24h to flip recurring customers with jobs ≤30 days out to 'scheduled'
+- 2026-02-13: Multiple upcoming jobs per customer: each job has its own editable service date in profile
+- 2026-02-13: Next Service Date in profile is now read-only, auto-derived from nearest upcoming job
+- 2026-02-13: Job edit/create/delete all recalculate customer status and next_service_date from all jobs
 - 2026-02-11: Removed Google Sheets connection panel, auto-sync, write-back, and all related code (~80KB removed)

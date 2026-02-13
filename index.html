@@ -9434,48 +9434,23 @@ const createJob = async () => {
                         />
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '12px', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>
                           <span>Next Service</span>
-                          <span style={{ fontSize: '10px', color: '#60a5fa' }}>click to edit</span>
                         </div>
-                        <input
-                          type="date"
-                          value={profileCustomer.nextServiceDate || ''}
-                          onChange={async (e) => {
-                            const newDate = e.target.value;
-                            const updatedCustomer = { ...profileCustomer, nextServiceDate: newDate };
-                            propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: newDate });
-                            const upcomingJobs = (profileCustomer.serviceHistory || [])
+                        <div style={{ fontSize: '14px', color: '#60a5fa', padding: '4px 0' }}>
+                          {(() => {
+                            const upcoming = (profileCustomer.serviceHistory || [])
                               .filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled')
                               .sort((a, b) => {
                                 const da = new Date(a.scheduledDate || a.date || '9999');
                                 const db = new Date(b.scheduledDate || b.date || '9999');
                                 return da - db;
                               });
-                            const upcomingJob = upcomingJobs[0];
-                            if (upcomingJob && upcomingJob.jobId) {
-                              try {
-                                await apiFetch(`/jobs/${upcomingJob.jobId}`, {
-                                  method: 'PATCH',
-                                  body: JSON.stringify({ scheduled_date: newDate, next_service_date: newDate })
-                                });
-                                upcomingJob.date = newDate;
-                                upcomingJob.scheduledDate = newDate;
-                              } catch (err) { console.error('Failed to sync job date:', err); }
-                            }
-                            setProfileCustomer({...updatedCustomer, serviceHistory: [...(profileCustomer.serviceHistory || [])]});
-                          }}
-                          style={{
-                            width: '100%',
-                            padding: '4px 8px',
-                            background: 'rgba(59, 130, 246, 0.2)',
-                            border: '1px solid rgba(59, 130, 246, 0.3)',
-                            borderRadius: '6px',
-                            color: '#60a5fa',
-                            fontSize: '14px',
-                            cursor: 'pointer'
-                          }}
-                        />
+                            const nearest = upcoming[0];
+                            const dateStr = nearest ? (nearest.scheduledDate || nearest.date) : (profileCustomer.nextServiceDate || '');
+                            return dateStr ? new Date(dateStr).toLocaleDateString() : 'No upcoming jobs';
+                          })()}
+                        </div>
                       </div>
                     </div>
 
@@ -9527,9 +9502,61 @@ const createJob = async () => {
                                       </span>
                                     )}
                                   </div>
-                                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                                    📅 {job.date ? new Date(job.date).toLocaleDateString() : 'No date set'}
-                                  </div>
+                                  {sectionType === 'upcoming' ? (
+                                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                      📅 <input
+                                        type="date"
+                                        value={job.scheduledDate || job.date || ''}
+                                        onChange={async (ev) => {
+                                          ev.stopPropagation();
+                                          const newDate = ev.target.value;
+                                          if (job.jobId) {
+                                            try {
+                                              await apiFetch(`/jobs/${job.jobId}`, {
+                                                method: 'PATCH',
+                                                body: JSON.stringify({ scheduled_date: newDate, next_service_date: newDate })
+                                              });
+                                              job.date = newDate;
+                                              job.scheduledDate = newDate;
+                                              const allJobs = (profileCustomer.serviceHistory || []).map(j => j.jobId === job.jobId ? {...j, date: newDate, scheduledDate: newDate} : j);
+                                              const upcomingAfterEdit = allJobs.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
+                                              const nearestDate = upcomingAfterEdit.reduce((min, j) => {
+                                                const d = j.scheduledDate || j.date;
+                                                return d && (!min || new Date(d) < new Date(min)) ? d : min;
+                                              }, null);
+                                              const customerPatch = { next_service_date: nearestDate || null };
+                                              const isRecurring = profileCustomer.isRecurring || profileCustomer.recurring;
+                                              if (isRecurring && nearestDate) {
+                                                const daysUntil = Math.floor((new Date(nearestDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                                customerPatch.status = daysUntil <= 30 ? 'scheduled' : '';
+                                              } else if (!isRecurring && upcomingAfterEdit.length > 0) {
+                                                customerPatch.status = 'scheduled';
+                                              }
+                                              await apiFetch(`/customers/${profileCustomer.id}`, {
+                                                method: 'PATCH',
+                                                body: JSON.stringify(customerPatch)
+                                              });
+                                              propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: nearestDate, status: customerPatch.status });
+                                              setProfileCustomer(prev => ({...prev, nextServiceDate: nearestDate, status: customerPatch.status, serviceHistory: allJobs}));
+                                            } catch (err) { console.error('Failed to update job date:', err); }
+                                          }
+                                        }}
+                                        style={{
+                                          background: 'transparent',
+                                          border: '1px solid rgba(251, 191, 36, 0.3)',
+                                          borderRadius: '4px',
+                                          color: '#fbbf24',
+                                          fontSize: '12px',
+                                          padding: '2px 4px',
+                                          cursor: 'pointer'
+                                        }}
+                                      />
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                                      📅 {job.date ? new Date(job.date).toLocaleDateString() : 'No date set'}
+                                    </div>
+                                  )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
                                   <div style={{ textAlign: 'right' }}>
@@ -9563,7 +9590,25 @@ const createJob = async () => {
                                                 const deletedJobStatus = (job.status || '').toLowerCase();
                                                 const wasActiveJob = deletedJobStatus !== 'completed' && deletedJobStatus !== 'cancelled';
                                                 const newActiveCount = Math.max(0, (profileCustomer.activeJobCount || 0) - (wasActiveJob ? 1 : 0));
-                                                const newStatus = newActiveCount > 0 ? 'unscheduled' : '';
+                                                let newStatus = '';
+                                                if (newActiveCount > 0) {
+                                                  const remainingUpcoming = updatedHistory.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
+                                                  const isRecurring = profileCustomer.isRecurring || profileCustomer.recurring;
+                                                  if (isRecurring && remainingUpcoming.length > 0) {
+                                                    const nearestDate = remainingUpcoming.reduce((min, j) => {
+                                                      const d = j.scheduledDate || j.date;
+                                                      return d && (!min || new Date(d) < new Date(min)) ? d : min;
+                                                    }, null);
+                                                    if (nearestDate) {
+                                                      const daysUntil = Math.floor((new Date(nearestDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                                      newStatus = daysUntil <= 30 ? 'scheduled' : '';
+                                                    } else {
+                                                      newStatus = 'unscheduled';
+                                                    }
+                                                  } else {
+                                                    newStatus = 'scheduled';
+                                                  }
+                                                }
                                                 const customerPatch = {
                                                   status: newStatus
                                                 };
@@ -11573,12 +11618,16 @@ const createJob = async () => {
                             };
 
                             if (!isEditing) {
-                              const serviceDate = quickJobData.nextServiceDate;
-                              if (serviceDate) {
-                                const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                jobPayload.status = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
+                              if (quickJobData.isRecurring) {
+                                const serviceDate = quickJobData.nextServiceDate;
+                                if (serviceDate) {
+                                  const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                  jobPayload.status = daysUntil <= 30 ? 'scheduled' : 'unscheduled';
+                                } else {
+                                  jobPayload.status = 'unscheduled';
+                                }
                               } else {
-                                jobPayload.status = 'unscheduled';
+                                jobPayload.status = 'scheduled';
                               }
                             }
 
@@ -11589,9 +11638,29 @@ const createJob = async () => {
                               });
                               const editedStatus = (jobPayload.status || '').toLowerCase();
                               if (editedStatus !== 'completed' && editedStatus !== 'cancelled') {
+                                const custJobsData = await apiFetch(`/jobs?customer_id=${quickAddJobPopup.customerId}`);
+                                const allUpcoming = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                const nearestDate = allUpcoming.reduce((min, j) => {
+                                  const d = j.scheduled_date || j.next_service_date;
+                                  return d && d !== '' && (!min || new Date(d) < new Date(min)) ? d : min;
+                                }, null);
+                                const isRecurring = quickJobData.isRecurring;
+                                let custStatus = '';
+                                if (allUpcoming.length === 0) {
+                                  custStatus = '';
+                                } else if (isRecurring) {
+                                  if (nearestDate) {
+                                    const daysUntil = Math.floor((new Date(nearestDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                    custStatus = daysUntil <= 30 ? 'scheduled' : '';
+                                  } else {
+                                    custStatus = 'unscheduled';
+                                  }
+                                } else {
+                                  custStatus = 'scheduled';
+                                }
                                 await apiFetch(`/customers/${quickAddJobPopup.customerId}`, {
                                   method: 'PATCH',
-                                  body: JSON.stringify({ next_service_date: quickJobData.nextServiceDate || null })
+                                  body: JSON.stringify({ next_service_date: nearestDate || null, status: custStatus })
                                 });
                               }
                             } else {
@@ -11600,10 +11669,14 @@ const createJob = async () => {
                                 body: JSON.stringify(jobPayload)
                               });
                               const serviceDate = quickJobData.nextServiceDate;
-                              let newStatus = 'unscheduled';
-                              if (quickJobData.isRecurring && serviceDate) {
-                                const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
-                                newStatus = daysUntil <= 30 ? 'scheduled' : '';
+                              let newStatus = 'scheduled';
+                              if (quickJobData.isRecurring) {
+                                if (serviceDate) {
+                                  const daysUntil = Math.floor((new Date(serviceDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                  newStatus = daysUntil <= 30 ? 'scheduled' : '';
+                                } else {
+                                  newStatus = 'unscheduled';
+                                }
                               }
                               const customerPatch = {
                                 status: newStatus,

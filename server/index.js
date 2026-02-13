@@ -127,7 +127,7 @@ const start = async () => {
     });
     
     await updateScheduledStatuses();
-    setInterval(updateScheduledStatuses, 6 * 60 * 60 * 1000);
+    setInterval(updateScheduledStatuses, 24 * 60 * 60 * 1000);
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);

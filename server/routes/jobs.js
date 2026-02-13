@@ -197,11 +197,12 @@ router.patch('/:id', async (req, res) => {
                                 completed_date, amount, tip, notes, is_recurring, employee, panel_count,
                                 price, price_per_panel, preferred_days, preferred_time, technician,
                                 recurrence_interval, next_service_date)
-              VALUES ($1, $2, 'scheduled', $3, $4, '', 0, 0, $5, true, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+              VALUES ($1, $2, $3, $4, $5, '', 0, 0, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, $15)
               RETURNING *
             `, [
               updatedJob.customer_id,
               updatedJob.job_description || '',
+              autoStatus,
               nextDateStr,
               updatedJob.scheduled_time || updatedJob.preferred_time || '',
               `Auto-scheduled from completed job #${updatedJob.id}`,
