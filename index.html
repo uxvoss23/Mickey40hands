@@ -7249,8 +7249,10 @@ const createJob = async () => {
                             if (statusFilter === s.value) {
                               setStatusFilter('all');
                               setFocusedDays([]);
+                              setShowNeedScheduling(false);
                             } else {
                               setStatusFilter(s.value);
+                              setShowNeedScheduling(true);
                               const today = new Date(); today.setHours(0,0,0,0);
                               setFocusedDays([today]);
                             }
@@ -7309,6 +7311,8 @@ const createJob = async () => {
                               if (key === 'week') {
                                 const today = new Date(); today.setHours(0,0,0,0);
                                 setFocusedDays([today]);
+                                const ws = new Date(); ws.setDate(ws.getDate() - ws.getDay()); ws.setHours(0,0,0,0);
+                                setScheduledViewWeekStart(ws);
                               } else {
                                 setFocusedDays([]);
                               }
