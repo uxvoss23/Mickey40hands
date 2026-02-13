@@ -832,7 +832,6 @@
         if (saved) {
           const parsedRoutes = JSON.parse(saved);
           setSavedRoutes(parsedRoutes);
-          // Initialize saved view for days that have saved routes
           const savedDays = {};
           parsedRoutes.forEach(r => {
             if (r.scheduledDate) {
@@ -840,6 +839,26 @@
             }
           });
           setSavedViewDays(savedDays);
+
+          const enrichRoutesWithJobPrices = async () => {
+            const enriched = await Promise.all(parsedRoutes.map(async (route) => {
+              if (!route.customers || route.customers.length === 0) return route;
+              const enrichedCustomers = await Promise.all(route.customers.map(async (c) => {
+                if (c.jobPrice) return c;
+                try {
+                  const data = await apiFetch('/jobs?customer_id=' + c.id);
+                  if (data && data.jobs && data.jobs.length > 0) {
+                    const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
+                    return { ...c, jobPrice: parseFloat(activeJob.price) || 0 };
+                  }
+                } catch (e) {}
+                return c;
+              }));
+              return { ...route, customers: enrichedCustomers };
+            }));
+            setSavedRoutes(enriched);
+          };
+          enrichRoutesWithJobPrices();
         }
         setTimeout(async () => {
           const count = await loadFromDatabase();
@@ -2936,15 +2955,13 @@
       };
 
       // Save route (handles both new and edit modes)
-      const handleSaveRoute = () => {
+      const handleSaveRoute = async () => {
         if (!routeName.trim()) {
           setError('Please enter a route name');
           setTimeout(() => setError(null), 3000);
           return;
         }
 
-        // Build route customers from the CUSTOMERS state (source of truth for scheduling)
-        // rather than from route/routesByDay which may have stale objects
         const dateKey = selectedDate.toDateString();
         const scheduledForDay = customers
           .filter(c => {
@@ -2957,10 +2974,22 @@
             return (aH * 60 + aM) - (bH * 60 + bM);
           });
 
-        const routeCustomers = scheduledForDay.map(c => ({
+        const routeCustomersRaw = scheduledForDay.map(c => ({
           ...c,
           customerNotes: c.notes || c.customerNotes || '',
           distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
+        }));
+
+        const routeCustomers = await Promise.all(routeCustomersRaw.map(async (c) => {
+          if (c.jobPrice) return c;
+          try {
+            const data = await apiFetch('/jobs?customer_id=' + c.id);
+            if (data && data.jobs && data.jobs.length > 0) {
+              const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
+              return { ...c, jobPrice: parseFloat(activeJob.price) || 0 };
+            }
+          } catch (e) {}
+          return c;
         }));
 
         let routeTotalDistance = 0;
@@ -6425,7 +6454,10 @@ const createJob = async () => {
                         const isToday = displayStr === new Date().toDateString();
                         const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === displayStr);
                         const dayStops = dayRoutes.flatMap(r => r.customers || []);
-                        const dayRevenue = dayStops.reduce((sum, c) => sum + (parseFloat(c.jobPrice) || parseFloat(c.amountPaid) || parseFloat(c.price) || 0), 0);
+                        const dayRevenue = dayStops.reduce((sum, c) => {
+                          const custMatch = customers.find(cu => cu.id === c.id);
+                          return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
+                        }, 0);
                         const calcRouteDistance = (routeObj) => {
                           if (!homeBase || !routeObj.customers || routeObj.customers.length === 0) return parseFloat(routeObj.totalDistance) || 0;
                           const stops = routeObj.customers.filter(c => c.lat && c.lng);
@@ -6550,7 +6582,10 @@ const createJob = async () => {
                         }, 0);
                         const weekRevenue = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                          return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => sum + (parseFloat(c.jobPrice) || parseFloat(c.amountPaid) || parseFloat(c.price) || 0), 0);
+                          return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => {
+                            const custMatch = customers.find(cu => cu.id === c.id);
+                            return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
+                          }, 0);
                         }, 0);
                         const weekMiles = weekDays.reduce((total, date) => {
                           const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
