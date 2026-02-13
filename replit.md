@@ -135,6 +135,10 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Profile job sections: Needs Scheduling (red, no date), Scheduled (yellow, has date), Job History (gray, completed)
 - 2026-02-13: New jobs default to 'unscheduled' status; customers stay 'unscheduled' until placed on route
 - 2026-02-13: Job categorization uses scheduledDate, nextServiceDate, and date fields consistently
+- 2026-02-13: Hover unrouted customer cards highlights matching preferred days in sidebar's This Week section (green + "PREFERRED" label)
+- 2026-02-13: Day-picker popup: clicking unscheduled customer with multiple days focused shows day selection popup
+- 2026-02-13: Single focused day click on unrouted customer adds directly to that day's route
+- 2026-02-13: Unscheduled customers always visible on Route Planner map (gray markers with _needsScheduling flag)
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header
