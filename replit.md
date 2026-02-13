@@ -128,7 +128,7 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Map defaults to today's route when entering Route Planner
 - 2026-02-13: Multi-day route selection: click days to toggle, shows all selected routes on map simultaneously
 - 2026-02-13: Route lines color-coded by day-of-week for multi-day view
-- 2026-02-13: View options: This Week (default), Next 2 Weeks, This Month
+- 2026-02-13: Two view options: Today (defaults to today, multi-select days in week) and Next 2 Weeks (shows all routes)
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

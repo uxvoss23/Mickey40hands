@@ -558,7 +558,7 @@
       const [showDayView, setShowDayView] = useState(false);
       const [dayViewDate, setDayViewDate] = useState(null);
       // Scheduled map view: show routes on map by week or month
-      const [scheduledMapView, setScheduledMapView] = useState('week'); // 'week', 'next', 'both', or 'month'
+      const [scheduledMapView, setScheduledMapView] = useState('week'); // 'week' or 'both'
       const [scheduledViewWeekStart, setScheduledViewWeekStart] = useState(() => {
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
@@ -2490,28 +2490,12 @@
             rangeStart.setHours(0, 0, 0, 0);
             rangeEnd = new Date(sortedDays[sortedDays.length - 1]);
             rangeEnd.setHours(23, 59, 59, 999);
-          } else if (scheduledMapView === 'week') {
-            rangeStart = new Date(scheduledViewWeekStart);
-            rangeStart.setHours(0, 0, 0, 0);
-            rangeEnd = new Date(rangeStart);
-            rangeEnd.setDate(rangeEnd.getDate() + 6);
-            rangeEnd.setHours(23, 59, 59, 999);
-          } else if (scheduledMapView === 'next') {
-            rangeStart = new Date(scheduledViewWeekStart);
-            rangeStart.setDate(rangeStart.getDate() + 7);
-            rangeStart.setHours(0, 0, 0, 0);
-            rangeEnd = new Date(rangeStart);
-            rangeEnd.setDate(rangeEnd.getDate() + 6);
-            rangeEnd.setHours(23, 59, 59, 999);
-          } else if (scheduledMapView === 'both') {
-            rangeStart = new Date(scheduledViewWeekStart);
-            rangeStart.setHours(0, 0, 0, 0);
-            rangeEnd = new Date(rangeStart);
-            rangeEnd.setDate(rangeEnd.getDate() + 13);
-            rangeEnd.setHours(23, 59, 59, 999);
           } else {
-            rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
-            rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23, 59, 59, 999);
+            rangeStart = new Date(scheduledViewWeekStart);
+            rangeStart.setHours(0, 0, 0, 0);
+            rangeEnd = new Date(rangeStart);
+            rangeEnd.setDate(rangeEnd.getDate() + (scheduledMapView === 'both' ? 13 : 6));
+            rangeEnd.setHours(23, 59, 59, 999);
           }
 
           // Cap range to 3 months from today max (far-future recurring jobs are hidden)
@@ -7317,14 +7301,17 @@ const createJob = async () => {
                           <div style={{ width: '1px', height: '18px', background: 'rgba(100, 116, 139, 0.3)', margin: '0 2px' }} />
                           {(() => {
                             const viewBtns = [
-                              { key: 'week', label: 'This Week' },
-                              { key: 'both', label: 'Next 2 Weeks' },
-                              { key: 'month', label: 'This Month' }
+                              { key: 'week', label: 'Today' },
+                              { key: 'both', label: 'Next 2 Weeks' }
                             ];
                             const handleViewClick = (key) => {
                               setScheduledMapView(key);
-                              const today = new Date(); today.setHours(0,0,0,0);
-                              setFocusedDays([today]);
+                              if (key === 'week') {
+                                const today = new Date(); today.setHours(0,0,0,0);
+                                setFocusedDays([today]);
+                              } else {
+                                setFocusedDays([]);
+                              }
                             };
                             const isActive = (key) => scheduledMapView === key;
                             return viewBtns.map(v => (
@@ -7631,16 +7618,14 @@ const createJob = async () => {
                         flexWrap: 'wrap'
                       }}>
                         {(() => {
-                          const isWeekish = scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both';
-                          const navLabel = scheduledMapView === 'month' ? 'Month:' : scheduledMapView === 'both' ? '2 Weeks:' : scheduledMapView === 'next' ? 'Next Week:' : 'Week:';
+                          const navLabel = scheduledMapView === 'both' ? '2 Weeks:' : 'Week:';
                           return (
                             <>
                               <span style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 600, whiteSpace: 'nowrap' }}>{navLabel}</span>
                               <button
                                 onClick={() => {
                                   const d = new Date(scheduledViewWeekStart);
-                                  if (isWeekish) d.setDate(d.getDate() - 7);
-                                  else d.setMonth(d.getMonth() - 1);
+                                  d.setDate(d.getDate() - 7);
                                   setScheduledViewWeekStart(d);
                                 }}
                                 style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
@@ -7649,14 +7634,9 @@ const createJob = async () => {
                           );
                         })()}
 
-                        {scheduledMapView === 'month' ? (
-                          <span style={{ fontSize: '13px', color: '#f1f5f9', fontWeight: 600 }}>
-                            {scheduledViewWeekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
-                          </span>
-                        ) : (
-                          (() => {
+                        {(() => {
                             const weeks = scheduledMapView === 'both' ? 2 : 1;
-                            const startOffset = scheduledMapView === 'next' ? 7 : 0;
+                            const startOffset = 0;
                             const days = [];
                             for (let w = 0; w < weeks; w++) {
                               const weekStart = new Date(scheduledViewWeekStart);
@@ -7704,17 +7684,15 @@ const createJob = async () => {
                               );
                             });
                           })()
-                        )}
+                        }
 
                         {(() => {
-                          const isWeekish = scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both';
                           return (
                             <>
                               <button
                                 onClick={() => {
                                   const d = new Date(scheduledViewWeekStart);
-                                  if (isWeekish) d.setDate(d.getDate() + 7);
-                                  else d.setMonth(d.getMonth() + 1);
+                                  d.setDate(d.getDate() + 7);
                                   setScheduledViewWeekStart(d);
                                 }}
                                 style={{ padding: '2px 6px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer' }}
@@ -7772,17 +7750,11 @@ const createJob = async () => {
                     <div style={{ fontSize: '10px', fontWeight: 700, color: '#fbbf24', marginBottom: '2px' }}>Route Days</div>
                     {(() => {
                       let rangeStart, rangeEnd;
-                      if (scheduledMapView === 'week' || scheduledMapView === 'next' || scheduledMapView === 'both') {
-                        rangeStart = new Date(scheduledViewWeekStart);
-                        if (scheduledMapView === 'next') rangeStart.setDate(rangeStart.getDate() + 7);
+                      rangeStart = new Date(scheduledViewWeekStart);
                         rangeStart.setHours(0,0,0,0);
                         rangeEnd = new Date(rangeStart);
                         rangeEnd.setDate(rangeEnd.getDate() + (scheduledMapView === 'both' ? 13 : 6));
                         rangeEnd.setHours(23,59,59,999);
-                      } else {
-                        rangeStart = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth(), 1);
-                        rangeEnd = new Date(scheduledViewWeekStart.getFullYear(), scheduledViewWeekStart.getMonth() + 1, 0, 23,59,59,999);
-                      }
                       const activeDays = new Set();
                       savedRoutes.forEach(r => {
                         if (r.sentToTech) return;
