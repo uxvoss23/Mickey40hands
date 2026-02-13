@@ -111,6 +111,12 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-12: Intake form has Google Places autocomplete, name/phone/email/address fields, optional job request
 - 2026-02-12: Intake form submissions save to database with source='intake-form' tag
 - 2026-02-12: intake.html served via dedicated route, separate from main SPA
+- 2026-02-13: Added customer_type column to database (residential, commercial, partner, hoa) with index
+- 2026-02-13: Customer type tabs at top of UI: All, Residential, Commercial, Partners, HOAs, + custom tabs
+- 2026-02-13: Custom customer type tabs stored in localStorage, users can add unlimited custom types
+- 2026-02-13: Customer type filtering integrated into unified filter (works with all other filters)
+- 2026-02-13: Customer type selector in profile modal for changing customer type
+- 2026-02-13: Converted Database view quick filter buttons to dropdown menu for cleaner UI
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

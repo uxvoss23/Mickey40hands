@@ -241,11 +241,11 @@ router.post('/', async (req, res) => {
         preferred_date, preferred_time_window, scheduled_date, scheduled_time,
         solar_verified, is_recurring, amount_paid, tip_amount,
         last_service_date, next_service_date, job_description, tags, employee,
-        existing_job, route_confirmed, verification_data, notes_history, source
+        existing_job, route_confirmed, verification_data, notes_history, source, customer_type
       ) VALUES (
         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
         $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-        $29, $30, $31, $32, $33, $34, $35, $36, $37, $38
+        $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39
       ) RETURNING *
     `, [
       c.first_name || c.firstName || '', c.last_name || c.lastName || '',
@@ -268,7 +268,8 @@ router.post('/', async (req, res) => {
       c.existing_job || c.existingJob || false, c.route_confirmed || c.routeConfirmed || false,
       c.verification_data || c.verificationData || null,
       JSON.stringify(c.notes_history || c.notesHistory || []),
-      c.source || ''
+      c.source || '',
+      c.customer_type || c.customerType || 'residential'
     ]);
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -297,11 +298,11 @@ router.post('/bulk', async (req, res) => {
           preferred_date, preferred_time_window, scheduled_date, scheduled_time,
           solar_verified, is_recurring, amount_paid, tip_amount,
           last_service_date, next_service_date, job_description, tags, employee,
-          existing_job, route_confirmed, notes_history, source
+          existing_job, route_confirmed, notes_history, source, customer_type
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
           $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-          $29, $30, $31, $32, $33, $34, $35, $36, $37
+          $29, $30, $31, $32, $33, $34, $35, $36, $37, $38
         ) RETURNING *
       `, [
         c.first_name || c.firstName || '', c.last_name || c.lastName || '',
@@ -323,7 +324,8 @@ router.post('/bulk', async (req, res) => {
         c.job_description || c.jobDescription || '', c.tags || '', c.employee || '',
         c.existing_job || c.existingJob || false, c.route_confirmed || c.routeConfirmed || false,
         JSON.stringify(c.notes_history || c.notesHistory || []),
-        c.source || ''
+        c.source || '',
+        c.customer_type || c.customerType || 'residential'
       ]);
       const customerId = result.rows[0].id;
       results.push(result.rows[0]);
@@ -396,7 +398,8 @@ router.patch('/:id', async (req, res) => {
       routeConfirmed: 'route_confirmed', route_confirmed: 'route_confirmed',
       verificationData: 'verification_data', verification_data: 'verification_data',
       notesHistory: 'notes_history', notes_history: 'notes_history',
-      source: 'source'
+      source: 'source',
+      customerType: 'customer_type', customer_type: 'customer_type'
     };
 
     for (const [key, value] of Object.entries(updates)) {

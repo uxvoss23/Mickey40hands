@@ -465,6 +465,20 @@
       const PRODUCTION_MODE = true; // Set to true to boost performance
       const log = PRODUCTION_MODE ? () => {} : console.log;
       
+      const [activeCustomerType, setActiveCustomerType] = useState('all');
+      const defaultTabs = [
+        { key: 'all', label: 'All' },
+        { key: 'residential', label: 'Residential' },
+        { key: 'commercial', label: 'Commercial' },
+        { key: 'partner', label: 'Partners' },
+        { key: 'hoa', label: 'HOAs' }
+      ];
+      const [customTypeTabs, setCustomTypeTabs] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('customTypeTabs') || '[]'); } catch { return []; }
+      });
+      const [showAddTabInput, setShowAddTabInput] = useState(false);
+      const [newTabName, setNewTabName] = useState('');
+      const allTypeTabs = [...defaultTabs, ...customTypeTabs];
       const [currentView, setCurrentView] = useState('map');
       const [uploadedFiles, setUploadedFiles] = useState([]); // Array of {id, name, customers, visible}
       const [savedLists, setSavedLists] = useState([]); // Array of {id, name, customers, visible, type: 'list'}
@@ -1106,8 +1120,13 @@
         console.log(`Loaded ${allCustomers.length} total customers, ${uniqueCustomers.length} unique by address (with merged contacts)`);
         
         setCustomers(uniqueCustomers);
-        // filteredCustomers will be set by the unified filter useEffect reacting to customers change
       }, [uploadedFiles, savedLists]);
+
+      const typeFilteredCustomers = React.useMemo(() => {
+        if (activeCustomerType === 'all') return customers;
+        return customers.filter(c => (c.customerType || 'residential') === activeCustomerType);
+      }, [customers, activeCustomerType]);
+
 
       useEffect(() => {
         if (!profileCustomer || !profileCustomer.id) return;
@@ -1435,18 +1454,17 @@
         setDrawMode(false);
         // Reset filtered customers if no other filters active
         if (!referencePoint) {
-          setFilteredCustomers(customers);
+          setFilteredCustomers(typeFilteredCustomers);
         }
       };
 
-      // Completely exit radius mode and reset view
       const exitRadiusMode = () => {
         clearRadius();
         clearDrawnArea();
         setRadiusMode(false);
         setAwaitingMapClick(false);
         setLastServiceFilter('');
-        setFilteredCustomers(customers);
+        setFilteredCustomers(typeFilteredCustomers);
       };
 
       // Drawing state for freehand polygon
@@ -2366,7 +2384,7 @@
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDay]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
-      // This includes: nav filters (status, date, time), search bar filters (city, state, zip),
+      // This includes: customer type, nav filters (status, date, time), search bar filters (city, state, zip),
       // active filters (solar, existing, recurring, panels), radius/drawn area, and text search
       useEffect(() => {
         if (customers.length === 0) {
@@ -2374,7 +2392,7 @@
           return;
         }
 
-        let results = customers;
+        let results = typeFilteredCustomers;
 
         // --- Navigation bar filters ---
         // Status filter (unscheduled, scheduled)
@@ -2602,7 +2620,7 @@
         }
 
         setFilteredCustomers(results);
-      }, [searchQuery, customers, cityFilter, stateFilter, zipFilter, lastServiceFilter,
+      }, [searchQuery, customers, typeFilteredCustomers, activeCustomerType, cityFilter, stateFilter, zipFilter, lastServiceFilter,
           drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
           preferredTimeFilter, showRecurringList, referencePoint, radiusMiles,
           scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDay]);
@@ -4597,7 +4615,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       const getSortedPipelineData = () => {
-        let data = [...customers];
+        let data = [...typeFilteredCustomers];
         if (!pipelineSortColumn) return data;
 
         return data.sort((a, b) => {
@@ -4700,7 +4718,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               routeConfirmed: c.route_confirmed,
               notesHistory: c.notes_history || [],
               serviceHistory: [],
-              source: c.source || 'database'
+              source: c.source || 'database',
+              customerType: c.customer_type || 'residential'
             }));
 
             const listId = Date.now() + Math.random();
@@ -5486,8 +5505,73 @@ const createJob = async () => {
               </div>
             )}
 
-            {/* Tabs and Search */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', borderTop: '1px solid rgba(139, 92, 246, 0.1)', paddingTop: '8px', flexWrap: 'wrap' }}>
+            {/* Customer Type Tabs */}
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', borderTop: '1px solid rgba(139, 92, 246, 0.1)', paddingTop: '8px', flexWrap: 'wrap' }}>
+              {allTypeTabs.map(tab => {
+                const count = tab.key === 'all' ? customers.length : customers.filter(c => (c.customerType || 'residential') === tab.key).length;
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setActiveCustomerType(tab.key)}
+                    style={{
+                      padding: '6px 14px',
+                      background: activeCustomerType === tab.key ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                      border: activeCustomerType === tab.key ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                      borderBottom: activeCustomerType === tab.key ? '2px solid #8b5cf6' : '2px solid transparent',
+                      borderRadius: '8px 8px 0 0',
+                      color: activeCustomerType === tab.key ? '#a78bfa' : '#94a3b8',
+                      fontSize: '13px',
+                      fontWeight: activeCustomerType === tab.key ? 700 : 500,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    {tab.label} <span style={{ fontSize: '11px', opacity: 0.7 }}>({count})</span>
+                  </button>
+                );
+              })}
+              {showAddTabInput ? (
+                <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    value={newTabName}
+                    onChange={(e) => setNewTabName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newTabName.trim()) {
+                        const key = newTabName.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+                        const newTab = { key, label: newTabName.trim() };
+                        const updated = [...customTypeTabs, newTab];
+                        setCustomTypeTabs(updated);
+                        localStorage.setItem('customTypeTabs', JSON.stringify(updated));
+                        setNewTabName('');
+                        setShowAddTabInput(false);
+                        setActiveCustomerType(key);
+                      }
+                      if (e.key === 'Escape') { setShowAddTabInput(false); setNewTabName(''); }
+                    }}
+                    placeholder="Tab name..."
+                    autoFocus
+                    style={{
+                      padding: '4px 8px', fontSize: '12px', background: 'rgba(30,41,59,0.8)',
+                      border: '1px solid rgba(139,92,246,0.3)', borderRadius: '6px', color: '#f1f5f9', width: '100px'
+                    }}
+                  />
+                  <button onClick={() => { setShowAddTabInput(false); setNewTabName(''); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAddTabInput(true)}
+                  style={{
+                    padding: '4px 8px', background: 'none', border: '1px dashed rgba(148,163,184,0.3)',
+                    borderRadius: '6px', color: '#64748b', fontSize: '12px', cursor: 'pointer'
+                  }}
+                  title="Add custom tab"
+                >+</button>
+              )}
+            </div>
+
+            {/* View Tabs and Search */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '4px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
                 <button className={`tab-button ${currentView === 'map' ? 'active' : ''}`} onClick={() => setCurrentView('map')}>
                   🗺️ Map
@@ -9118,6 +9202,28 @@ const createJob = async () => {
                           <div style={{ fontSize: '12px', color: '#22c55e', marginTop: '4px' }}>🦖 Recurring Customer</div>
                         )}
                       </div>
+                      <div style={{ padding: '16px', background: 'rgba(99, 102, 241, 0.1)', borderRadius: '12px', border: '1px solid rgba(99, 102, 241, 0.2)' }}>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase' }}>
+                          Type
+                        </div>
+                        <select
+                          value={profileCustomer.customerType || 'residential'}
+                          onChange={(e) => {
+                            const updatedCustomer = { ...profileCustomer, customerType: e.target.value };
+                            propagateCustomerUpdate(profileCustomer.id, { customerType: e.target.value });
+                            setProfileCustomer(updatedCustomer);
+                          }}
+                          style={{
+                            width: '100%', padding: '6px 8px',
+                            background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.3)',
+                            borderRadius: '6px', color: '#818cf8', fontSize: '14px', cursor: 'pointer'
+                          }}
+                        >
+                          {allTypeTabs.filter(t => t.key !== 'all').map(t => (
+                            <option key={t.key} value={t.key}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>Last Service</span>
@@ -10222,34 +10328,36 @@ const createJob = async () => {
                       </button>
                     )}
                   </div>
-                  {/* Quick Filter Buttons */}
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {[
-                      { key: 'all', label: 'All' },
-                      { key: 'unscheduled', label: 'Unscheduled' },
-                      { key: 'scheduled', label: 'Scheduled' },
-                      { key: 'recurring', label: 'Recurring' },
-                      { key: 'has_email', label: 'Has Email' },
-                      { key: 'has_phone', label: 'Has Phone' }
-                    ].map(filter => (
-                      <button
-                        key={filter.key}
-                        onClick={() => {                          setPipelineQuickFilter(filter.key);                          const matchCol = quickFilterColumnMap[filter.key];                          if (filter.key === 'all') {                            setTempUnhiddenColumns([]);                          } else if (matchCol && savedHiddenColumns.includes(matchCol)) {                            setTempUnhiddenColumns([matchCol]);                          } else {                            setTempUnhiddenColumns([]);                          }                        }}
-                        style={{
-                          padding: '6px 14px',
-                          background: pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
-                          border: `1px solid ${pipelineQuickFilter === filter.key ? 'rgba(139, 92, 246, 0.5)' : 'rgba(148, 163, 184, 0.15)'}`,
-                          borderRadius: '20px',
-                          color: pipelineQuickFilter === filter.key ? '#a78bfa' : '#94a3b8',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
+                  {/* Quick Filter Dropdown */}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <select
+                      value={pipelineQuickFilter}
+                      onChange={(e) => {
+                        const key = e.target.value;
+                        setPipelineQuickFilter(key);
+                        const matchCol = quickFilterColumnMap[key];
+                        if (key === 'all') { setTempUnhiddenColumns([]); }
+                        else if (matchCol && savedHiddenColumns.includes(matchCol)) { setTempUnhiddenColumns([matchCol]); }
+                        else { setTempUnhiddenColumns([]); }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        background: 'rgba(30, 41, 59, 0.8)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '8px',
+                        color: pipelineQuickFilter !== 'all' ? '#a78bfa' : '#94a3b8',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="all">Filter: All</option>
+                      <option value="unscheduled">Unscheduled</option>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="recurring">Recurring</option>
+                      <option value="has_email">Has Email</option>
+                      <option value="has_phone">Has Phone</option>
+                    </select>
                   </div>
                 </div>
 
