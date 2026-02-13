@@ -623,6 +623,7 @@
       const [showCustomerProfile, setShowCustomerProfile] = useState(false);
       const [profileCustomer, setProfileCustomer] = useState(null);
       const [confirmDeleteJobId, setConfirmDeleteJobId] = useState(null);
+      const [confirmDeleteCustomer, setConfirmDeleteCustomer] = useState(false);
       const [newJobNote, setNewJobNote] = useState('');
       const [newCustomerNote, setNewCustomerNote] = useState('');
 
@@ -6414,6 +6415,11 @@ const createJob = async () => {
                                     <div style={{ flex: 1, minWidth: 0 }}>
                                       <div style={{ fontSize: '11px', fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</div>
                                     </div>
+                                    {stop.jobPrice > 0 && (
+                                      <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 700, flexShrink: 0 }}>
+                                        ${stop.jobPrice}
+                                      </span>
+                                    )}
                                     {stop.scheduledTime && (
                                       <span style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 600, flexShrink: 0 }}>
                                         {new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
@@ -9411,7 +9417,7 @@ const createJob = async () => {
                   zIndex: 10005,
                   animation: 'fadeIn 0.2s ease'
                 }}
-                onClick={() => { setShowCustomerProfile(false); setProfileCustomer(null); }}
+                onClick={() => { setShowCustomerProfile(false); setProfileCustomer(null); setConfirmDeleteCustomer(false); }}
               >
                 <div
                   onClick={(e) => e.stopPropagation()}
@@ -9822,24 +9828,27 @@ const createJob = async () => {
                                       </div>
                                     )}
                                   </div>
-                                  {job.jobId && (
+                                  {(
                                     <div style={{ display: 'flex', gap: '4px' }}>
-                                      <button
+                                      {job.jobId && <button
                                         onClick={(e) => { e.stopPropagation(); editJobFromHistory(job, profileCustomer); }}
                                         style={{
                                           padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
                                           background: 'rgba(139,92,246,0.1)', border: '1px solid rgba(139,92,246,0.25)',
                                           color: '#a78bfa', cursor: 'pointer'
                                         }}
-                                      >Edit</button>
-                                      {confirmDeleteJobId === job.jobId ? (
+                                      >Edit</button>}
+                                      {confirmDeleteJobId === (job.jobId || job.jobDescription + idx) ? (
                                         <React.Fragment>
                                           <button
                                             onClick={async (e) => {
                                               e.stopPropagation();
                                               try {
-                                                await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
-                                                const updatedHistory = (profileCustomer.serviceHistory || []).filter(j => j.jobId !== job.jobId);
+                                                if (job.jobId) {
+                                                  await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
+                                                }
+                                                const deleteKey = job.jobId || (job.jobDescription + idx);
+                                                const updatedHistory = (profileCustomer.serviceHistory || []).filter((j, i) => (j.jobId || (j.jobDescription + i)) !== deleteKey);
                                                 const deletedJobStatus = (job.status || '').toLowerCase();
                                                 const wasActiveJob = deletedJobStatus !== 'completed' && deletedJobStatus !== 'cancelled';
                                                 const newActiveCount = Math.max(0, (profileCustomer.activeJobCount || 0) - (wasActiveJob ? 1 : 0));
@@ -9901,7 +9910,7 @@ const createJob = async () => {
                                         </React.Fragment>
                                       ) : (
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteJobId(job.jobId); }}
+                                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteJobId(job.jobId || job.jobDescription + idx); }}
                                           style={{
                                             padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
                                             background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
@@ -10052,6 +10061,65 @@ const createJob = async () => {
                           color: '#cbd5e1'
                         }}>
                           {profileCustomer.customerNotes}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                      {!confirmDeleteCustomer ? (
+                        <button
+                          onClick={() => setConfirmDeleteCustomer(true)}
+                          style={{
+                            width: '100%', padding: '12px', borderRadius: '10px',
+                            background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                            color: '#f87171', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                          }}
+                        >
+                          🗑️ Delete Customer
+                        </button>
+                      ) : (
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: '13px', color: '#fca5a5', marginBottom: '10px', fontWeight: 600 }}>
+                            Are you sure? This will permanently delete this customer and all their jobs.
+                          </div>
+                          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await apiFetch(`/customers/${profileCustomer.id}`, { method: 'DELETE' });
+                                  setCustomers(prev => prev.filter(c => c.id !== profileCustomer.id));
+                                  setSavedLists(prev => prev.map(list => ({
+                                    ...list,
+                                    customers: list.customers.filter(c => c.id !== profileCustomer.id)
+                                  })));
+                                  setSavedRoutes(prev => prev.map(route => ({
+                                    ...route,
+                                    customers: (route.customers || []).filter(c => c.id !== profileCustomer.id)
+                                  })));
+                                  setPipelineCustomers(prev => prev.filter(c => c.id !== profileCustomer.id));
+                                  setShowCustomerProfile(false);
+                                  setProfileCustomer(null);
+                                  setConfirmDeleteCustomer(false);
+                                } catch (err) {
+                                  console.error('Failed to delete customer:', err);
+                                  setConfirmDeleteCustomer(false);
+                                }
+                              }}
+                              style={{
+                                padding: '10px 24px', borderRadius: '8px',
+                                background: 'rgba(239, 68, 68, 0.3)', border: '1px solid rgba(239, 68, 68, 0.5)',
+                                color: '#fca5a5', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                              }}
+                            >Yes, Delete Forever</button>
+                            <button
+                              onClick={() => setConfirmDeleteCustomer(false)}
+                              style={{
+                                padding: '10px 24px', borderRadius: '8px',
+                                background: 'rgba(148, 163, 184, 0.1)', border: '1px solid rgba(148, 163, 184, 0.3)',
+                                color: '#94a3b8', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                              }}
+                            >Cancel</button>
+                          </div>
                         </div>
                       )}
                     </div>
