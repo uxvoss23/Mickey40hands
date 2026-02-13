@@ -12108,6 +12108,14 @@ const createJob = async () => {
 
                             setProfileCustomer(null);
                             setShowCustomerProfile(false);
+
+                            if (!isEditing) {
+                              setCurrentView('map');
+                              setStatusFilter('scheduled');
+                              const today = new Date(); today.setHours(0,0,0,0);
+                              setFocusedDays([today]);
+                              setRoutePlannerEditMode(true);
+                            }
                           } catch (err) {
                             console.error('Failed to save job:', err);
                             alert('Failed to save job: ' + err.message);
