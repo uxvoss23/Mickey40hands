@@ -8022,9 +8022,7 @@ const createJob = async () => {
                                 const weekDaysList = getWeekDays(scheduledViewWeekStart);
                                 const todayStr = new Date().toDateString();
                                 const todayIdx = weekDaysList.findIndex(d => d.toDateString() === todayStr);
-                                const todayEntry = todayIdx >= 0 ? [weekDaysList[todayIdx]] : [];
-                                const restDays = weekDaysList.filter((_, i) => i !== todayIdx);
-                                const sortedDays = [...todayEntry, ...restDays];
+                                const sortedDays = weekDaysList;
                                 return sortedDays;
                               })().map((date, idx) => {
                                 const dayColor = DAY_COLORS[date.getDay()];
