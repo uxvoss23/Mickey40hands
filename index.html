@@ -735,9 +735,12 @@
         const panels = String(job.panelCount || customer.panelCount || customer.totalPanels || '0');
         const ppp = String(job.pricePerPanel || 9);
         const price = String(job.price || (parseInt(panels) || 0) * (parseFloat(ppp) || 9));
+        let cleanNotes = (job.notes || '');
+        cleanNotes = cleanNotes.replace(/Preferred days?:\s*[^|]*/gi, '').replace(/Preferred time:\s*[^|]*/gi, '').replace(/Technician:\s*[^|]*/gi, '');
+        cleanNotes = cleanNotes.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
         setQuickJobData({
           serviceType: job.jobDescription || '',
-          notes: job.notes || '',
+          notes: cleanNotes,
           panels: panels,
           pricePerPanel: ppp,
           totalPrice: price,
@@ -9961,11 +9964,14 @@ const createJob = async () => {
                                   )}
                                 </div>
                               )}
-                              {job.notes && (
-                                <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
-                                  📝 {job.notes}
-                                </div>
-                              )}
+                              {job.notes && (() => {
+                                const displayNotes = job.notes.replace(/Preferred days?:\s*[^|]*/gi, '').replace(/Preferred time:\s*[^|]*/gi, '').replace(/Technician:\s*[^|]*/gi, '').split('|').map(s => s.trim()).filter(Boolean).join(' | ');
+                                return displayNotes ? (
+                                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', padding: '8px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                                    📝 {displayNotes}
+                                  </div>
+                                ) : null;
+                              })()}
                             </div>
                         );
                         return (
@@ -12026,14 +12032,7 @@ const createJob = async () => {
                         disabled={!quickJobData.serviceType}
                         onClick={async () => {
                           try {
-                            const noteParts = [];
-                            if (isResidential) {
-                              if (quickJobData.preferredDays.length > 0) noteParts.push('Preferred days: ' + quickJobData.preferredDays.join(', '));
-                              if (quickJobData.preferredTime) noteParts.push('Preferred time: ' + quickJobData.preferredTime);
-                            }
-                            if (quickJobData.technician) noteParts.push('Technician: ' + quickJobData.technician);
-                            if (quickJobData.notes) noteParts.push(quickJobData.notes);
-                            const combinedNotes = noteParts.join(' | ');
+                            const combinedNotes = quickJobData.notes || '';
 
                             const isEditing = !!quickJobData.editingJobId;
 
