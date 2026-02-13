@@ -7425,9 +7425,20 @@ const createJob = async () => {
                               setStatusFilter(s.value);
                               setShowNeedScheduling(true);
                               const today = new Date(); today.setHours(0,0,0,0);
-                              setSelectedDate(today);
-                              setFocusedDays([today]);
-                              setRoutePlannerEditMode(false);
+                              const effectiveDay = focusedDays.length > 0 ? focusedDays[0] : today;
+                              setSelectedDate(effectiveDay);
+                              if (focusedDays.length === 0) setFocusedDays([today]);
+                              const dayKey = effectiveDay.toDateString();
+                              const hasRouteData = routesByDay[dayKey] && routesByDay[dayKey].length > 0;
+                              const hasSavedRoute = savedRoutes.some(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dayKey);
+                              setRoutePlannerEditMode(hasRouteData || hasSavedRoute);
+                              if (hasSavedRoute && !hasRouteData) {
+                                const dayRoute = savedRoutes.find(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dayKey);
+                                if (dayRoute) {
+                                  setEditingSavedRouteId(dayRoute.id);
+                                  setRoutesByDay(prev => ({ ...prev, [dayKey]: dayRoute.customers }));
+                                }
+                              }
                             }
                           }}
                           style={{
