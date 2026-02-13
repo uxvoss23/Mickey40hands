@@ -6391,8 +6391,8 @@ const createJob = async () => {
                 {/* Content Area */}
                 <div className="scrollbar-custom" style={{ flex: 1, overflow: 'auto', padding: '12px' }}>
 
-                  {/* Route Planner: show selected day stats + week stats when not in edit mode */}
-                  {statusFilter === 'scheduled' && !routePlannerEditMode && (
+                  {/* Route Planner: always show selected day stats + week stats */}
+                  {statusFilter === 'scheduled' && (
                     <div>
                       {/* Selected Day's Route Stats */}
                       {(() => {
