@@ -538,7 +538,7 @@
       const [showFailedCustomersModal, setShowFailedCustomersModal] = useState(false);
       const [pipelineCustomers, setPipelineCustomers] = useState([]);
       const [selectedPipeline, setSelectedPipeline] = useState([]);
-      const [sortBy, setSortBy] = useState('none'); // 'none', 'lastService', 'zip', 'panels'
+      const [activeSorts, setActiveSorts] = useState([]); // array of sort keys: 'lastService', 'distance', 'panels', 'zip'
       const [sortOrder, setSortOrder] = useState('asc'); // 'asc', 'desc'
       const [selectedDate, setSelectedDate] = useState(new Date());
       const [savedViewDays, setSavedViewDays] = useState({}); // Track which days show saved view: { 'dateString': true/false }
@@ -1356,7 +1356,7 @@
             return bounds.contains([c.lat, c.lng]);
           });
           
-          if (sortBy !== 'none') {
+          if (activeSorts.length > 0) {
             const getDistFromHome = (c) => {
               if (!homeBase || !c.lat || !c.lng) return 99999;
               const R = 3959;
@@ -1365,24 +1365,23 @@
               const a2 = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(homeBase.lat * Math.PI / 180) * Math.cos(c.lat * Math.PI / 180) * Math.sin(dLng/2) * Math.sin(dLng/2);
               return R * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
             };
+            const getSortValue = (c, key) => {
+              if (key === 'lastService') return c.lastServiceDate ? new Date(c.lastServiceDate).getTime() : 0;
+              if (key === 'zip') return parseInt(c.zip) || 0;
+              if (key === 'panels') return parseInt(c.panelCount || c.totalPanels) || 0;
+              if (key === 'distance') return getDistFromHome(c);
+              return 0;
+            };
             visible = [...visible].sort((a, b) => {
-              let compareValue = 0;
-              if (sortBy === 'lastService') {
-                const dateA = a.lastServiceDate ? new Date(a.lastServiceDate).getTime() : 0;
-                const dateB = b.lastServiceDate ? new Date(b.lastServiceDate).getTime() : 0;
-                compareValue = dateA - dateB;
-              } else if (sortBy === 'zip') {
-                const zipA = parseInt(a.zip) || 0;
-                const zipB = parseInt(b.zip) || 0;
-                compareValue = zipA - zipB;
-              } else if (sortBy === 'panels') {
-                const panelsA = parseInt(a.panelCount || a.totalPanels) || 0;
-                const panelsB = parseInt(b.panelCount || b.totalPanels) || 0;
-                compareValue = panelsA - panelsB;
-              } else if (sortBy === 'distance') {
-                compareValue = getDistFromHome(a) - getDistFromHome(b);
+              for (const key of activeSorts) {
+                const valA = getSortValue(a, key);
+                const valB = getSortValue(b, key);
+                if (valA !== valB) {
+                  const diff = valA - valB;
+                  return sortOrder === 'asc' ? diff : -diff;
+                }
               }
-              return sortOrder === 'asc' ? compareValue : -compareValue;
+              return 0;
             });
           }
           
@@ -1400,7 +1399,7 @@
             mapInstanceRef.current.off('zoomend', updateVisible);
           }
         };
-      }, [filteredCustomers, sortBy, sortOrder]);
+      }, [filteredCustomers, activeSorts, sortOrder]);
 
       // Geocode address to coordinates
       const geocodeAddress = async (address) => {
@@ -7862,46 +7861,67 @@ const createJob = async () => {
                         </button>
                       )}
                       
-                      {/* Sorting Controls */}
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <select
-                          value={sortBy}
-                          onChange={(e) => {
-                            setSortBy(e.target.value);
-                            if (e.target.value !== 'none' && !sortOrder) {
-                              setSortOrder('asc');
-                            }
-                          }}
-                          style={{
-                            flex: 1,
-                            padding: '8px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(139, 92, 246, 0.3)',
-                            borderRadius: '6px',
-                            color: '#f1f5f9',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          <option value="none">No Sorting</option>
-                          <option value="lastService">Since Last Service</option>
-                          <option value="distance">Distance from Home Base</option>
-                          <option value="panels">Panel Count</option>
-                          <option value="zip">ZIP Code</option>
-                        </select>
-                        
-                        {sortBy !== 'none' && (
+                      {/* Multi-Sort Toggle Buttons */}
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {[
+                          { key: 'lastService', label: 'Last Service' },
+                          { key: 'distance', label: 'Distance' },
+                          { key: 'panels', label: 'Panels' },
+                          { key: 'zip', label: 'ZIP' }
+                        ].map(opt => {
+                          const isActive = activeSorts.includes(opt.key);
+                          const sortIndex = activeSorts.indexOf(opt.key);
+                          return (
+                            <button
+                              key={opt.key}
+                              onClick={() => {
+                                setActiveSorts(prev => 
+                                  prev.includes(opt.key)
+                                    ? prev.filter(k => k !== opt.key)
+                                    : [...prev, opt.key]
+                                );
+                              }}
+                              style={{
+                                padding: '5px 10px',
+                                borderRadius: '6px',
+                                background: isActive ? 'rgba(139, 92, 246, 0.3)' : 'rgba(30, 41, 59, 0.5)',
+                                border: `1px solid ${isActive ? 'rgba(139, 92, 246, 0.6)' : 'rgba(100, 116, 139, 0.3)'}`,
+                                color: isActive ? '#c4b5fd' : '#94a3b8',
+                                fontSize: '11px',
+                                fontWeight: isActive ? 600 : 400,
+                                cursor: 'pointer',
+                                fontFamily: 'inherit',
+                                transition: 'all 0.15s ease',
+                                position: 'relative'
+                              }}
+                            >
+                              {opt.label}
+                              {isActive && activeSorts.length > 1 && (
+                                <span style={{
+                                  marginLeft: '4px',
+                                  fontSize: '9px',
+                                  background: 'rgba(139, 92, 246, 0.5)',
+                                  borderRadius: '50%',
+                                  width: '14px',
+                                  height: '14px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  color: '#fff'
+                                }}>{sortIndex + 1}</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                        {activeSorts.length > 0 && (
                           <button
                             onClick={() => setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
                             style={{
-                              padding: '8px 12px',
+                              padding: '5px 8px', borderRadius: '6px',
                               background: 'rgba(139, 92, 246, 0.2)',
                               border: '1px solid rgba(139, 92, 246, 0.3)',
-                              borderRadius: '6px',
-                              color: '#f1f5f9',
-                              fontSize: '12px',
-                              cursor: 'pointer',
-                              fontWeight: 600
+                              color: '#f1f5f9', fontSize: '12px',
+                              cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit'
                             }}
                             title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
                           >
@@ -8097,7 +8117,7 @@ const createJob = async () => {
                                   {customer.address}
                                 </div>
                                 
-                                {/* Tags */}
+                                {/* Tags - dynamically show based on active sorts */}
                                 <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
                                   {(customer.isRecurring || customer.recurring) && (
                                     <span style={{
@@ -8108,15 +8128,49 @@ const createJob = async () => {
                                       Recurring
                                     </span>
                                   )}
-                                  {customer.lastServiceDate && (
+                                  {activeSorts.includes('lastService') && customer.lastServiceDate && (
                                     <span style={{
                                       fontSize: '10px', padding: '2px 7px',
-                                      background: 'rgba(100, 116, 139, 0.15)', border: '1px solid rgba(100, 116, 139, 0.25)',
-                                      borderRadius: '4px', color: '#94a3b8'
+                                      background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                                      borderRadius: '4px', color: '#a78bfa'
                                     }}>
                                       Last: {new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                                     </span>
                                   )}
+                                  {activeSorts.includes('panels') && (
+                                    <span style={{
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)',
+                                      borderRadius: '4px', color: '#fbbf24', fontWeight: 600
+                                    }}>
+                                      {parseInt(customer.panelCount || customer.totalPanels) || 0} panels
+                                    </span>
+                                  )}
+                                  {activeSorts.includes('zip') && customer.zip && (
+                                    <span style={{
+                                      fontSize: '10px', padding: '2px 7px',
+                                      background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                                      borderRadius: '4px', color: '#22c55e'
+                                    }}>
+                                      ZIP: {customer.zip}
+                                    </span>
+                                  )}
+                                  {activeSorts.includes('distance') && homeBase && customer.lat && customer.lng && (() => {
+                                    const R = 3959;
+                                    const dLat = (customer.lat - homeBase.lat) * Math.PI / 180;
+                                    const dLng = (customer.lng - homeBase.lng) * Math.PI / 180;
+                                    const a2 = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(homeBase.lat * Math.PI / 180) * Math.cos(customer.lat * Math.PI / 180) * Math.sin(dLng/2) * Math.sin(dLng/2);
+                                    const dist = R * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
+                                    return (
+                                      <span style={{
+                                        fontSize: '10px', padding: '2px 7px',
+                                        background: 'rgba(236, 72, 153, 0.15)', border: '1px solid rgba(236, 72, 153, 0.3)',
+                                        borderRadius: '4px', color: '#f472b6'
+                                      }}>
+                                        {dist.toFixed(1)} mi
+                                      </span>
+                                    );
+                                  })()}
                                   {customer.scheduledDate && new Date(customer.scheduledDate) >= new Date(new Date().toDateString()) && (
                                     <span style={{
                                       fontSize: '10px', padding: '2px 7px',
