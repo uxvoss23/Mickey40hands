@@ -11235,13 +11235,8 @@ const createJob = async () => {
                           setShowNewCustomerForm(false);
 
                           const panelCount = newCustomerData.panels;
-                          setNewCustomerData({
-                            firstName: '', lastName: '', phone: '', email: '',
-                            address: '', city: '', state: '', zip: '',
-                            addJob: false, panels: '0', notes: '',
-                            _lat: null, _lng: null, _geocodeStatus: null,
-                            _suggestions: [], _showSuggestions: false
-                          });
+                          const savedPhone = newCustomerData.phone;
+                          const savedEmail = newCustomerData.email;
 
                           if (lat && lng && mapInstanceRef.current) {
                             mapInstanceRef.current.setView([lat, lng], 14);
@@ -11250,12 +11245,20 @@ const createJob = async () => {
                           if (wantsJob && savedCustomer) {
                             openJobPopupForCustomer({
                               ...savedCustomer, name: fullName,
-                              phone: quickAddData.phone, email: quickAddData.email,
-                              address: quickAddData.address,
+                              phone: savedPhone, email: savedEmail,
+                              address: fullAddr,
                               panelCount: parseInt(panelCount) || 0,
                               lat: lat, lng: lng
                             });
                           }
+
+                          setNewCustomerData({
+                            firstName: '', lastName: '', phone: '', email: '',
+                            address: '', city: '', state: '', zip: '',
+                            addJob: false, panels: '0', notes: '',
+                            _lat: null, _lng: null, _geocodeStatus: null,
+                            _suggestions: [], _showSuggestions: false
+                          });
                         } catch (err) {
                           console.error('Failed to create customer:', err);
                           alert('Failed to create customer: ' + err.message);
