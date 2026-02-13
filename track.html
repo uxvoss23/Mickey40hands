@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Technician Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.15);
+      border-radius: 20px;
+      padding: 32px 28px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    .title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: #f1f5f9;
+    }
+    .subtitle {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+    .status-indicator {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      transition: all 0.3s;
+    }
+    .status-indicator.inactive {
+      background: rgba(100, 116, 139, 0.2);
+      border: 3px solid rgba(100, 116, 139, 0.3);
+    }
+    .status-indicator.active {
+      background: rgba(34, 197, 94, 0.2);
+      border: 3px solid rgba(34, 197, 94, 0.5);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .status-indicator.error {
+      background: rgba(239, 68, 68, 0.2);
+      border: 3px solid rgba(239, 68, 68, 0.4);
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.3); }
+      50% { box-shadow: 0 0 0 12px rgba(34, 197, 94, 0); }
+    }
+    .status-text {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .status-detail {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-family: 'Inter', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-start {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white;
+    }
+    .btn-start:hover { transform: scale(1.02); }
+    .btn-stop {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+    }
+    .btn-stop:hover { transform: scale(1.02); }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      font-size: 13px;
+    }
+    .info-label { color: #64748b; }
+    .info-value { color: #e2e8f0; font-weight: 600; }
+    .tech-select {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 10px;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    .tech-select:focus {
+      border-color: rgba(139, 92, 246, 0.5);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Live Location Tracking</div>
+    <div class="subtitle">Share your location so the office can track your route in real time</div>
+
+    <input type="text" id="techName" class="tech-select" placeholder="Enter your name (e.g. Chance T)" value="">
+
+    <div id="statusIndicator" class="status-indicator inactive">
+      <span>📍</span>
+    </div>
+
+    <div id="statusText" class="status-text" style="color: #64748b;">Not sharing location</div>
+    <div id="statusDetail" class="status-detail">Tap Start to begin sharing</div>
+
+    <div id="infoPanel" style="margin-bottom: 20px; display: none;">
+      <div class="info-row">
+        <span class="info-label">Latitude</span>
+        <span class="info-value" id="latValue">--</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Longitude</span>
+        <span class="info-value" id="lngValue">--</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Speed</span>
+        <span class="info-value" id="speedValue">--</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Last Update</span>
+        <span class="info-value" id="lastUpdate">--</span>
+      </div>
+    </div>
+
+    <button id="toggleBtn" class="btn btn-start" onclick="toggleTracking()">
+      Start Sharing Location
+    </button>
+  </div>
+
+  <script>
+    let watchId = null;
+    let isTracking = false;
+    let sendInterval = null;
+    let lastPosition = null;
+
+    function toggleTracking() {
+      if (isTracking) {
+        stopTracking();
+      } else {
+        startTracking();
+      }
+    }
+
+    function startTracking() {
+      const techName = document.getElementById('techName').value.trim();
+      if (!techName) {
+        document.getElementById('techName').style.borderColor = 'rgba(239, 68, 68, 0.6)';
+        document.getElementById('techName').setAttribute('placeholder', 'Please enter your name first');
+        return;
+      }
+
+      if (!navigator.geolocation) {
+        showError('Geolocation is not supported by your browser');
+        return;
+      }
+
+      document.getElementById('techName').disabled = true;
+
+      watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          lastPosition = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            speed: position.coords.speed,
+            heading: position.coords.heading,
+            accuracy: position.coords.accuracy,
+            timestamp: Date.now()
+          };
+          updateDisplay(lastPosition);
+          sendLocation(lastPosition);
+        },
+        (error) => {
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              showError('Location access denied. Please enable location permissions.');
+              break;
+            case error.POSITION_UNAVAILABLE:
+              showError('Location unavailable. Please check GPS.');
+              break;
+            case error.TIMEOUT:
+              showError('Location request timed out.');
+              break;
+          }
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 5000,
+          timeout: 15000
+        }
+      );
+
+      sendInterval = setInterval(() => {
+        if (lastPosition) {
+          sendLocation(lastPosition);
+        }
+      }, 5000);
+
+      isTracking = true;
+      document.getElementById('toggleBtn').textContent = 'Stop Sharing';
+      document.getElementById('toggleBtn').className = 'btn btn-stop';
+      document.getElementById('statusIndicator').className = 'status-indicator active';
+      document.getElementById('statusIndicator').innerHTML = '<span>🚛</span>';
+      document.getElementById('statusText').textContent = 'Sharing location...';
+      document.getElementById('statusText').style.color = '#22c55e';
+      document.getElementById('statusDetail').textContent = 'Your location is visible on the office map';
+      document.getElementById('infoPanel').style.display = 'block';
+    }
+
+    function stopTracking() {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+      if (sendInterval) {
+        clearInterval(sendInterval);
+        sendInterval = null;
+      }
+
+      const techName = document.getElementById('techName').value.trim();
+      fetch('/api/technician/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ technician: techName, active: false })
+      }).catch(() => {});
+
+      isTracking = false;
+      document.getElementById('techName').disabled = false;
+      document.getElementById('toggleBtn').textContent = 'Start Sharing Location';
+      document.getElementById('toggleBtn').className = 'btn btn-start';
+      document.getElementById('statusIndicator').className = 'status-indicator inactive';
+      document.getElementById('statusIndicator').innerHTML = '<span>📍</span>';
+      document.getElementById('statusText').textContent = 'Not sharing location';
+      document.getElementById('statusText').style.color = '#64748b';
+      document.getElementById('statusDetail').textContent = 'Tap Start to begin sharing';
+      document.getElementById('infoPanel').style.display = 'none';
+    }
+
+    function updateDisplay(pos) {
+      document.getElementById('latValue').textContent = pos.lat.toFixed(6);
+      document.getElementById('lngValue').textContent = pos.lng.toFixed(6);
+      const speedMph = pos.speed ? (pos.speed * 2.237).toFixed(1) + ' mph' : 'Stationary';
+      document.getElementById('speedValue').textContent = speedMph;
+      document.getElementById('lastUpdate').textContent = new Date(pos.timestamp).toLocaleTimeString();
+    }
+
+    function sendLocation(pos) {
+      const techName = document.getElementById('techName').value.trim();
+      fetch('/api/technician/location', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          technician: techName,
+          lat: pos.lat,
+          lng: pos.lng,
+          speed: pos.speed,
+          heading: pos.heading,
+          accuracy: pos.accuracy,
+          timestamp: pos.timestamp,
+          active: true
+        })
+      }).catch(err => console.warn('Failed to send location:', err));
+    }
+
+    function showError(msg) {
+      document.getElementById('statusIndicator').className = 'status-indicator error';
+      document.getElementById('statusIndicator').innerHTML = '<span>⚠️</span>';
+      document.getElementById('statusText').textContent = 'Error';
+      document.getElementById('statusText').style.color = '#ef4444';
+      document.getElementById('statusDetail').textContent = msg;
+      stopTracking();
+    }
+
+    const savedName = localStorage.getItem('technicianName');
+    if (savedName) document.getElementById('techName').value = savedName;
+    document.getElementById('techName').addEventListener('change', function() {
+      localStorage.setItem('technicianName', this.value);
+    });
+  </script>
+</body>
+</html>

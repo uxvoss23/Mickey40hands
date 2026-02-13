@@ -18,6 +18,7 @@ A single-page web application for customer relationship management with map-base
   - `server/routes/routes.js` - Routes & route stops API
   - `server/routes/lists.js` - Saved lists API
   - `server/routes/export.js` - CSV/JSON export endpoints
+  - `track.html` - Mobile-friendly technician GPS tracking page (served at /track)
 
 ## Database Schema
 - **customers** - Core customer data with indexed fields (status, city, state, zip, panels, last_service_date)
@@ -121,6 +122,10 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Dashboard is the first tab users see on load — clean overview before diving into map/database
 - 2026-02-13: Replaced spread-out filter toolbar in Database view with compact settings icon that opens filter panel
 - 2026-02-13: Top search bar hidden on Dashboard and Database views (both have their own search)
+- 2026-02-13: Live technician GPS tracking: /track page for technicians to share location from phone
+- 2026-02-13: Real-time truck marker on map with green pulsing indicator, speed display, and technician name
+- 2026-02-13: Server in-memory technician location store with auto-cleanup after 60s inactive
+- 2026-02-13: Map defaults to today's route (focusedDay set to today) instead of showing all week's routes
 - 2026-02-11: Added column visibility controls: hide columns via X button on headers, restore via Column Manager panel
 - 2026-02-11: Column visibility saved to localStorage - persists across sessions as 'saved view'
 - 2026-02-11: Removed per-column filter inputs from database table header

@@ -108,6 +108,10 @@
       0%, 100% { transform: translateX(-50%) scale(1); }
       50% { transform: translateX(-50%) scale(1.05); }
     }
+    @keyframes techPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+      50% { box-shadow: 0 0 0 14px rgba(34, 197, 94, 0); }
+    }
     
     .leaflet-tooltip {
       background: rgba(10, 14, 39, 0.98) !important;
@@ -559,7 +563,7 @@
         const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d;
       });
       const [showNeedScheduling, setShowNeedScheduling] = useState(false); // Toggle unscheduled overlay
-      const [focusedDay, setFocusedDay] = useState(null); // null = show all routes for week, Date = show only that day's route
+      const [focusedDay, setFocusedDay] = useState((() => { const d = new Date(); d.setHours(0,0,0,0); return d; })()); // Default to today's route
       const [visibleStartHour, setVisibleStartHour] = useState(8); // 8am default
       const [visibleEndHour, setVisibleEndHour] = useState(17); // 5pm default
       const [filterWeekStart, setFilterWeekStart] = useState(() => {
@@ -768,6 +772,8 @@
       const routeLinesRef = useRef([]);
       const fileInputRef = useRef(null);
       const markersMapRef = useRef(new Map());
+      const techMarkerLayersRef = useRef({});
+      const [activeTechnicians, setActiveTechnicians] = useState({});
 
       // Pricing Tiers
       const PRICING_TIERS = {
@@ -1564,12 +1570,85 @@
       // Update map when switching back to map view
       useEffect(() => {
         if (currentView === 'map' && mapInstanceRef.current) {
-          // Small delay to ensure map container is visible
           setTimeout(() => {
             mapInstanceRef.current.invalidateSize();
           }, 100);
         }
       }, [currentView]);
+
+      // Live technician tracking - poll every 5 seconds
+      useEffect(() => {
+        const pollTechLocations = async () => {
+          try {
+            const res = await fetch('/api/technician/location');
+            const data = await res.json();
+            setActiveTechnicians(data.technicians || {});
+          } catch (e) {}
+        };
+        pollTechLocations();
+        const interval = setInterval(pollTechLocations, 5000);
+        return () => clearInterval(interval);
+      }, []);
+
+      // Render technician markers on map
+      useEffect(() => {
+        if (!mapInstanceRef.current || !window.L) return;
+        const L = window.L;
+        const map = mapInstanceRef.current;
+
+        Object.keys(techMarkerLayersRef.current).forEach(name => {
+          if (!activeTechnicians[name]) {
+            map.removeLayer(techMarkerLayersRef.current[name]);
+            delete techMarkerLayersRef.current[name];
+          }
+        });
+
+        Object.entries(activeTechnicians).forEach(([name, data]) => {
+          if (!data.lat || !data.lng) return;
+          
+          const speedMph = data.speed ? (data.speed * 2.237).toFixed(0) : '0';
+          const headingDeg = data.heading || 0;
+          const ageSeconds = Math.floor((Date.now() - data.lastSeen) / 1000);
+          const isStale = ageSeconds > 30;
+
+          const truckIcon = L.divIcon({
+            className: 'tech-marker',
+            html: `<div style="position: relative; width: 44px; height: 44px;">
+              <div style="
+                width: 44px; height: 44px; border-radius: 50%;
+                background: ${isStale ? 'rgba(100, 116, 139, 0.8)' : 'rgba(34, 197, 94, 0.9)'};
+                border: 3px solid ${isStale ? '#64748b' : '#22c55e'};
+                display: flex; align-items: center; justify-content: center;
+                font-size: 22px; box-shadow: 0 0 12px ${isStale ? 'rgba(100,116,139,0.3)' : 'rgba(34,197,94,0.5)'};
+                ${!isStale ? 'animation: techPulse 2s ease-in-out infinite;' : ''}
+              ">🚛</div>
+              <div style="
+                position: absolute; top: -22px; left: 50%; transform: translateX(-50%);
+                background: rgba(15, 23, 42, 0.9); color: #e2e8f0;
+                padding: 2px 8px; border-radius: 8px; font-size: 11px; font-weight: 700;
+                white-space: nowrap; border: 1px solid ${isStale ? 'rgba(100,116,139,0.3)' : 'rgba(34,197,94,0.4)'};
+                font-family: Inter, sans-serif;
+              ">${name} ${speedMph > 0 ? '· ' + speedMph + ' mph' : ''}</div>
+            </div>`,
+            iconSize: [44, 44],
+            iconAnchor: [22, 22]
+          });
+
+          if (techMarkerLayersRef.current[name]) {
+            techMarkerLayersRef.current[name].setLatLng([data.lat, data.lng]);
+            techMarkerLayersRef.current[name].setIcon(truckIcon);
+          } else {
+            const marker = L.marker([data.lat, data.lng], { icon: truckIcon, zIndexOffset: 10000 });
+            marker.bindPopup(`<div style="font-family: Inter, sans-serif; padding: 4px;">
+              <strong>${name}</strong><br/>
+              Speed: ${speedMph} mph<br/>
+              Last seen: ${ageSeconds}s ago
+            </div>`);
+            marker.addTo(map);
+            techMarkerLayersRef.current[name] = marker;
+          }
+        });
+      }, [activeTechnicians]);
       
       // Handle map clicks for radius mode
       useEffect(() => {
@@ -5735,7 +5814,7 @@ const createJob = async () => {
                           {todaysJobs.slice(0, 8).map((c, i) => (
                             <div
                               key={c.id || i}
-                              onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                              onClick={() => { setProfileCustomer(c); setShowCustomerProfile(true); }}
                               style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 padding: '10px 12px', background: 'rgba(30, 41, 59, 0.5)',
@@ -5785,7 +5864,7 @@ const createJob = async () => {
                           {unscheduledCustomers.slice(0, 10).map((c, i) => (
                             <div
                               key={c.id || i}
-                              onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                              onClick={() => { setProfileCustomer(c); setShowCustomerProfile(true); }}
                               style={{
                                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                 padding: '8px 12px', background: 'rgba(239, 68, 68, 0.05)',
@@ -5829,7 +5908,7 @@ const createJob = async () => {
                         {recentCustomers.map((c, i) => (
                           <div
                             key={c.id || i}
-                            onClick={() => { setProfileCustomer(c); setShowProfileModal(true); }}
+                            onClick={() => { setProfileCustomer(c); setShowCustomerProfile(true); }}
                             style={{
                               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                               padding: '8px 12px', background: 'rgba(30, 41, 59, 0.4)',

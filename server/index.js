@@ -11,6 +11,9 @@ const exportRouter = require('./routes/export');
 const app = express();
 const PORT = 5000;
 
+const technicianLocations = {};
+
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -43,8 +46,44 @@ app.use(express.static(path.join(__dirname, '..'), {
   }
 }));
 
+app.post('/api/technician/location', (req, res) => {
+  const { technician, lat, lng, speed, heading, accuracy, timestamp, active } = req.body;
+  if (!technician) return res.status(400).json({ error: 'Technician name required' });
+  
+  if (active === false) {
+    delete technicianLocations[technician];
+    return res.json({ ok: true, removed: true });
+  }
+  
+  technicianLocations[technician] = {
+    technician,
+    lat, lng, speed, heading, accuracy,
+    timestamp: timestamp || Date.now(),
+    lastSeen: Date.now(),
+    active: true
+  };
+  res.json({ ok: true });
+});
+
+app.get('/api/technician/location', (req, res) => {
+  const now = Date.now();
+  const activeTechs = {};
+  for (const [name, data] of Object.entries(technicianLocations)) {
+    if (now - data.lastSeen < 60000) {
+      activeTechs[name] = data;
+    } else {
+      delete technicianLocations[name];
+    }
+  }
+  res.json({ technicians: activeTechs });
+});
+
 app.get('/intake', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'intake.html'));
+});
+
+app.get('/track', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'track.html'));
 });
 
 app.use((req, res, next) => {
