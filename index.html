@@ -2531,7 +2531,7 @@
           });
 
           // Filter to scheduled customers (with day info), always include unscheduled for sidebar
-          results = results.filter(c => scheduledIds.has(c.id) || (c.status || '').toLowerCase() === 'unscheduled');
+          results = results.filter(c => scheduledIds.has(c.id));
           results = results.map(c => {
             const info = dayInfoMap.get(c.id);
             return info ? { ...c, ...info } : { ...c, _needsScheduling: true };
@@ -7707,10 +7707,13 @@ const createJob = async () => {
                               <span style={{ fontSize: '10px', color: '#94a3b8' }}>{showNext2Weeks ? '▲' : '▼'}</span>
                             </button>
                             {showNext2Weeks && (() => {
-                              const today = new Date(); today.setHours(0,0,0,0);
+                              const weekDays = getWeekDays(scheduledViewWeekStart);
+                              const weekEndDate = new Date(weekDays[weekDays.length - 1]);
+                              weekEndDate.setDate(weekEndDate.getDate() + 1);
+                              weekEndDate.setHours(0,0,0,0);
                               const next14 = [];
                               for (let i = 0; i < 14; i++) {
-                                const d = new Date(today);
+                                const d = new Date(weekEndDate);
                                 d.setDate(d.getDate() + i);
                                 next14.push(d);
                               }
@@ -7755,7 +7758,7 @@ const createJob = async () => {
 
                           {/* Section D: Unrouted Jobs */}
                           {(() => {
-                            const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' || (!c.scheduledDate && !c.nextServiceDate));
+                            const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
                             return (
                               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
