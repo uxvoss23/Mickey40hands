@@ -849,11 +849,13 @@
         }, 500);
       }, []);
 
-      // Save data
+      const savedRoutesInitialized = React.useRef(false);
       useEffect(() => {
-        if (savedRoutes.length > 0) {
-          localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
+        if (!savedRoutesInitialized.current) {
+          savedRoutesInitialized.current = true;
+          return;
         }
+        localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
       }, [savedRoutes]);
 
       // Update calculated price when panel count or tier changes
