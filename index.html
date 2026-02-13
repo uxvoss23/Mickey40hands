@@ -1159,7 +1159,7 @@
                 jobId: j.id,
                 jobDescription: j.job_description || '',
                 status: j.status || '',
-                date: j.completed_date || j.created_at || '',
+                date: j.completed_date || j.scheduled_date || j.next_service_date || j.created_at || '',
                 amount: parseFloat(j.amount) || 0,
                 tip: parseFloat(j.tip) || 0,
                 panelCount: j.panel_count || 0,
@@ -9466,7 +9466,7 @@ const createJob = async () => {
                     <div style={{ marginBottom: '24px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
                         <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
-                          📋 Job History
+                          📋 Jobs
                         </h3>
                         <button
                           onClick={() => {
@@ -9482,18 +9482,21 @@ const createJob = async () => {
                           + Add Job
                         </button>
                       </div>
-                      {(profileCustomer.serviceHistory && profileCustomer.serviceHistory.length > 0) ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                          {[...profileCustomer.serviceHistory].sort((a, b) => {
-                            const da = a.date ? new Date(a.date).getTime() : 0;
-                            const db = b.date ? new Date(b.date).getTime() : 0;
-                            return db - da;
-                          }).map((job, idx) => (
+                      {(() => {
+                        const allJobs = profileCustomer.serviceHistory || [];
+                        const upcomingJobs = allJobs.filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled');
+                        const pastJobs = allJobs.filter(j => !j.status || j.status.toLowerCase() === 'completed' || j.status.toLowerCase() === 'cancelled');
+                        const sortByDate = (a, b) => {
+                          const da = a.date ? new Date(a.date).getTime() : 0;
+                          const db = b.date ? new Date(b.date).getTime() : 0;
+                          return db - da;
+                        };
+                        const renderJobCard = (job, idx, sectionType) => (
                             <div key={idx} style={{
                               padding: '16px',
                               background: 'rgba(30, 41, 59, 0.5)',
                               borderRadius: '12px',
-                              border: '1px solid rgba(139, 92, 246, 0.2)'
+                              border: sectionType === 'upcoming' ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid rgba(139, 92, 246, 0.2)'
                             }}>
                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '8px' }}>
                                 <div>
@@ -9502,16 +9505,13 @@ const createJob = async () => {
                                       {job.jobDescription || 'Service'}
                                     </span>
                                     {job.status && (
-                                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, background: job.status.toLowerCase() === 'completed' ? 'rgba(34,197,94,0.2)' : job.status.toLowerCase() === 'scheduled' ? 'rgba(251,191,36,0.2)' : 'rgba(100,116,139,0.2)', color: job.status.toLowerCase() === 'completed' ? '#22c55e' : job.status.toLowerCase() === 'scheduled' ? '#fbbf24' : '#94a3b8' }}>
+                                      <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: '4px', fontWeight: 600, background: job.status.toLowerCase() === 'completed' ? 'rgba(34,197,94,0.2)' : job.status.toLowerCase() === 'scheduled' ? 'rgba(251,191,36,0.2)' : 'rgba(239,68,68,0.2)', color: job.status.toLowerCase() === 'completed' ? '#22c55e' : job.status.toLowerCase() === 'scheduled' ? '#fbbf24' : '#ef4444' }}>
                                         {job.status}
                                       </span>
                                     )}
-                                    {idx === 0 && (
-                                      <span style={{ fontSize: '9px', padding: '2px 6px', borderRadius: '4px', background: 'rgba(59,130,246,0.2)', color: '#60a5fa', fontWeight: 600 }}>MOST RECENT</span>
-                                    )}
                                   </div>
                                   <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                                    📅 {job.date ? new Date(job.date).toLocaleDateString() : 'Unknown date'}
+                                    📅 {job.date ? new Date(job.date).toLocaleDateString() : 'No date set'}
                                   </div>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'start', gap: '10px' }}>
@@ -9628,13 +9628,37 @@ const createJob = async () => {
                                 </div>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: 'rgba(30, 41, 59, 0.3)', borderRadius: '12px' }}>
-                          No job history yet
-                        </div>
-                      )}
+                        );
+                        return (
+                          <React.Fragment>
+                            {upcomingJobs.length > 0 && (
+                              <div style={{ marginBottom: '20px' }}>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#fbbf24', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Upcoming Jobs ({upcomingJobs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                  {[...upcomingJobs].sort(sortByDate).map((job, idx) => renderJobCard(job, idx, 'upcoming'))}
+                                </div>
+                              </div>
+                            )}
+                            {pastJobs.length > 0 && (
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: 700, color: '#94a3b8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                  Job History ({pastJobs.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                  {[...pastJobs].sort(sortByDate).map((job, idx) => renderJobCard(job, idx, 'history'))}
+                                </div>
+                              </div>
+                            )}
+                            {upcomingJobs.length === 0 && pastJobs.length === 0 && (
+                              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', background: 'rgba(30, 41, 59, 0.3)', borderRadius: '12px' }}>
+                                No jobs yet
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })()}
                     </div>
 
                     {/* General Customer Notes Section */}
@@ -11527,7 +11551,8 @@ const createJob = async () => {
                               technician: quickJobData.technician,
                               is_recurring: quickJobData.isRecurring,
                               recurrence_interval: quickJobData.recurrenceInterval,
-                              next_service_date: quickJobData.nextServiceDate
+                              next_service_date: quickJobData.nextServiceDate,
+                              scheduled_date: quickJobData.nextServiceDate
                             };
 
                             if (!isEditing) {
