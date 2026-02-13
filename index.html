@@ -7705,6 +7705,9 @@ const createJob = async () => {
                                 onClick={() => {
                                   const d = new Date(); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0);
                                   setScheduledViewWeekStart(d);
+                                  setScheduledMapView('week');
+                                  const today = new Date(); today.setHours(0,0,0,0);
+                                  setFocusedDays([today]);
                                 }}
                                 style={{ padding: '2px 8px', fontSize: '10px', background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.25)', borderRadius: '4px', color: '#fbbf24', cursor: 'pointer', fontWeight: 600 }}
                               >Today</button>
