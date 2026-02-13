@@ -172,4 +172,7 @@ A single-page web application for customer relationship management with map-base
 - 2026-02-13: Multiple upcoming jobs per customer: each job has its own editable service date in profile
 - 2026-02-13: Next Service Date in profile is now read-only, auto-derived from nearest upcoming job
 - 2026-02-13: Job edit/create/delete all recalculate customer status and next_service_date from all jobs
+- 2026-02-13: Unsaved route warning: navigating away from Route Planner with unsaved changes shows warning modal
+- 2026-02-13: Warning offers "Go Back & Save Route" or "Leave Without Saving" options
+- 2026-02-13: Route dirty flag tracked: set on customer schedule/reorder, cleared on Save Route or Clear Day
 - 2026-02-11: Removed Google Sheets connection panel, auto-sync, write-back, and all related code (~80KB removed)

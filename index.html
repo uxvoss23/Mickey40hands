@@ -534,6 +534,8 @@
       const [mapBounds, setMapBounds] = useState(null);
       const [route, setRoute] = useState([]); // Keep for backward compatibility
       const [routesByDay, setRoutesByDay] = useState({}); // New: routes organized by day
+      const [unsavedRouteChanges, setUnsavedRouteChanges] = useState(false);
+      const [pendingViewChange, setPendingViewChange] = useState(null);
       const [suggestedCustomers, setSuggestedCustomers] = useState([]);
       const [savedRoutes, setSavedRoutes] = useState([]);
       const [failedCustomers, setFailedCustomers] = useState([]);
@@ -2903,6 +2905,7 @@
         
         setRoute(newRoute);
         setDraggedIndex(null);
+        setUnsavedRouteChanges(true);
       };
 
       // Save route (handles both new and edit modes)
@@ -2999,6 +3002,7 @@
 
         setShowSaveModal(false);
         setRouteName('');
+        setUnsavedRouteChanges(false);
 
         // Clear routesByDay for this date so stale data doesn't accumulate
         setRoutesByDay(prev => ({
@@ -3214,6 +3218,8 @@
           scheduledTime: timeSlot,
           status: 'scheduled'
         });
+
+        setUnsavedRouteChanges(true);
       };
 
       // Mass email
@@ -5235,6 +5241,26 @@ const createJob = async () => {
         handleFileUpload(e.dataTransfer.files);
       };
 
+      const navigateToView = (view) => {
+        if (unsavedRouteChanges && currentView === 'map' && view !== 'map') {
+          setPendingViewChange(view);
+          return;
+        }
+        setCurrentView(view);
+      };
+
+      const confirmDiscardRoute = () => {
+        setUnsavedRouteChanges(false);
+        if (pendingViewChange) {
+          setCurrentView(pendingViewChange);
+          setPendingViewChange(null);
+        }
+      };
+
+      const cancelDiscardRoute = () => {
+        setPendingViewChange(null);
+      };
+
       const zoomToCustomer = (customer) => {
         if (mapInstanceRef.current) {
           mapInstanceRef.current.setView([customer.lat, customer.lng], 15);
@@ -5638,16 +5664,16 @@ const createJob = async () => {
             {/* View Tabs and Search */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', paddingTop: '4px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                <button className={`tab-button ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => setCurrentView('dashboard')}>
+                <button className={`tab-button ${currentView === 'dashboard' ? 'active' : ''}`} onClick={() => navigateToView('dashboard')}>
                   📊 Dashboard
                 </button>
-                <button className={`tab-button ${currentView === 'map' ? 'active' : ''}`} onClick={() => setCurrentView('map')}>
+                <button className={`tab-button ${currentView === 'map' ? 'active' : ''}`} onClick={() => navigateToView('map')}>
                   🗺️ Map
                 </button>
-                <button className={`tab-button ${currentView === 'saved' ? 'active' : ''}`} onClick={() => setCurrentView('saved')}>
+                <button className={`tab-button ${currentView === 'saved' ? 'active' : ''}`} onClick={() => navigateToView('saved')}>
                   📁 Saved Routes ({savedRoutes.length})
                 </button>
-                <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => setCurrentView('pipeline')}>
+                <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => navigateToView('pipeline')}>
                   📋 Database ({customers.length})
                 </button>
 
@@ -6710,6 +6736,7 @@ const createJob = async () => {
                                   // Clear old route state (backward compatibility)
                                   setRoute([]);
                                   setSuggestedCustomers([]);
+                                  setUnsavedRouteChanges(false);
                                 }}
                                 style={{
                                 background: 'rgba(239, 68, 68, 0.1)',
@@ -12280,6 +12307,49 @@ onClick={exitRadiusMode}
                   >
                     💾 Save List
                   </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Unsaved Route Warning Modal */}
+          {pendingViewChange && (
+            <div className="modal" onClick={cancelDiscardRoute}>
+              <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+                <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>⚠️</div>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: '0 0 12px 0' }}>Unsaved Route Changes</h2>
+                  <p style={{ color: '#94a3b8', fontSize: '14px', lineHeight: '1.6', margin: '0 0 24px 0' }}>
+                    You have customers added to today's route that haven't been saved yet. 
+                    If you leave now, your route changes won't be lost from the schedule, but the route won't be saved as a named route.
+                  </p>
+                  <p style={{ color: '#f59e0b', fontSize: '13px', fontWeight: 600, margin: '0 0 24px 0' }}>
+                    Use the 💾 Save Route button to save your route before leaving.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    <button
+                      onClick={cancelDiscardRoute}
+                      className="button-primary"
+                      style={{ padding: '10px 24px', fontSize: '14px' }}
+                    >
+                      Go Back & Save Route
+                    </button>
+                    <button
+                      onClick={confirmDiscardRoute}
+                      style={{
+                        padding: '10px 24px',
+                        fontSize: '14px',
+                        background: 'rgba(239, 68, 68, 0.15)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '12px',
+                        color: '#f87171',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      Leave Without Saving
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
