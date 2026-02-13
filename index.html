@@ -2364,14 +2364,17 @@
               offset: [0, -10]  // Slight offset above pin
             });
             
-            // Click = add to route instantly (or show day picker if unscheduled + multi-day)
             marker.on('click', (e) => {
               L.DomEvent.stopPropagation(e);
               marker.closePopup();
-              if (customer._needsScheduling && focusedDays.length > 1 && statusFilter === 'scheduled') {
-                window.dispatchEvent(new CustomEvent('showDayPicker', { detail: { customerId: customer.id } }));
+              if (statusFilter === 'scheduled') {
+                if (customer._needsScheduling && focusedDays.length > 1) {
+                  window.dispatchEvent(new CustomEvent('showDayPicker', { detail: { customerId: customer.id } }));
+                } else {
+                  handleCustomerClick(customer);
+                }
               } else {
-                handleCustomerClick(customer);
+                setSelectedCustomer(customer);
               }
             });
             
