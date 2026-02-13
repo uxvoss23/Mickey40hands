@@ -94,12 +94,40 @@ app.use((req, res, next) => {
   }
 });
 
+const pool = require('./db/pool');
+
+const updateScheduledStatuses = async () => {
+  try {
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    const cutoffDate = thirtyDaysFromNow.toISOString().split('T')[0];
+    
+    const flipped = await pool.query(`
+      UPDATE customers SET status = 'scheduled'
+      WHERE is_recurring = true
+        AND next_service_date != '' AND next_service_date IS NOT NULL
+        AND next_service_date <= $1
+        AND (status = '' OR status IS NULL)
+      RETURNING id, full_name, next_service_date
+    `, [cutoffDate]);
+    
+    if (flipped.rows.length > 0) {
+      console.log(`30-day check: flipped ${flipped.rows.length} recurring customers to 'scheduled'`);
+    }
+  } catch (err) {
+    console.error('Error in 30-day schedule check:', err);
+  }
+};
+
 const start = async () => {
   try {
     await migrate();
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
+    
+    await updateScheduledStatuses();
+    setInterval(updateScheduledStatuses, 6 * 60 * 60 * 1000);
   } catch (err) {
     console.error('Failed to start server:', err);
     process.exit(1);

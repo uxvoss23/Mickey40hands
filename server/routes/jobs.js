@@ -163,7 +163,7 @@ router.patch('/:id', async (req, res) => {
         const completedDateStr = updatedJob.completed_date;
 
         await pool.query(
-          `UPDATE customers SET last_service_date = $1 WHERE id = $2`,
+          `UPDATE customers SET last_service_date = $1, status = '' WHERE id = $2`,
           [completedDateStr, updatedJob.customer_id]
         );
 
@@ -188,6 +188,9 @@ router.patch('/:id', async (req, res) => {
             }
             
             const nextDateStr = nextDate.toISOString().split('T')[0];
+            
+            const daysUntilNext = Math.floor((new Date(nextDateStr) - new Date()) / (1000 * 60 * 60 * 24));
+            const autoStatus = daysUntilNext <= 30 ? 'scheduled' : '';
 
             const nextJobResult = await pool.query(`
               INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
@@ -216,11 +219,11 @@ router.patch('/:id', async (req, res) => {
             nextJob = nextJobResult.rows[0];
 
             await pool.query(
-              `UPDATE customers SET status = 'scheduled', scheduled_date = $1, next_service_date = $1, last_service_date = $2 WHERE id = $3`,
-              [nextDateStr, completedDateStr, updatedJob.customer_id]
+              `UPDATE customers SET status = $1, scheduled_date = $2, next_service_date = $2 WHERE id = $3`,
+              [autoStatus, nextDateStr, updatedJob.customer_id]
             );
 
-            console.log(`Auto-scheduled next recurring job #${nextJob.id} for customer ${updatedJob.customer_id} on ${nextDateStr}`);
+            console.log(`Auto-scheduled next recurring job #${nextJob.id} for customer ${updatedJob.customer_id} on ${nextDateStr} (status: ${autoStatus || 'none'})`);
           }
         }
       } catch (autoErr) {
