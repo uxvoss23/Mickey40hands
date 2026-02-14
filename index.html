@@ -11021,12 +11021,24 @@ const createJob = async () => {
                         )}
 
                         {isExpanded && (
-                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '500px', overflowY: 'auto' }} className="scrollbar-custom">
+                        <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '0px', maxHeight: '500px', overflowY: 'auto' }} className="scrollbar-custom">
                           {savedRoute.customers.map((customer, index) => {
                             const timeSlot = customer.scheduledTime || '';
+                            const prevPoint = index === 0 ? homeBase : savedRoute.customers[index - 1];
+                            const legDist = (prevPoint && prevPoint.lat && prevPoint.lng && customer.lat && customer.lng)
+                              ? calculateDistance(prevPoint.lat, prevPoint.lng, customer.lat, customer.lng) : null;
                             return (
+                            <React.Fragment key={customer.id}>
+                            {legDist !== null && (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0', justifyContent: 'center' }}>
+                                <div style={{ flex: 1, height: '1px', background: 'rgba(139, 92, 246, 0.15)' }}></div>
+                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  {index === 0 ? '🏠' : '↓'} {legDist.toFixed(1)} mi
+                                </span>
+                                <div style={{ flex: 1, height: '1px', background: 'rgba(139, 92, 246, 0.15)' }}></div>
+                              </div>
+                            )}
                             <div
-                              key={customer.id}
                               style={{
                                 padding: '10px',
                                 background: 'rgba(15, 23, 42, 0.4)',
@@ -11153,8 +11165,23 @@ const createJob = async () => {
                                 )}
                               </div>
                             </div>
+                            </React.Fragment>
                             );
                           })}
+                          {(() => {
+                            const lastCustomer = savedRoute.customers[savedRoute.customers.length - 1];
+                            const returnDist = (homeBase && lastCustomer && lastCustomer.lat && lastCustomer.lng)
+                              ? calculateDistance(lastCustomer.lat, lastCustomer.lng, homeBase.lat, homeBase.lng) : null;
+                            return returnDist !== null ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 0', justifyContent: 'center' }}>
+                                <div style={{ flex: 1, height: '1px', background: 'rgba(139, 92, 246, 0.15)' }}></div>
+                                <span style={{ fontSize: '9px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                  🏠 {returnDist.toFixed(1)} mi
+                                </span>
+                                <div style={{ flex: 1, height: '1px', background: 'rgba(139, 92, 246, 0.15)' }}></div>
+                              </div>
+                            ) : null;
+                          })()}
                         </div>
                         )}
                           </>
