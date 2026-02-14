@@ -6591,7 +6591,7 @@ const createJob = async () => {
                         const displayDate = focusedDays.length > 0 ? focusedDays[0] : (() => { const t = new Date(); t.setHours(0,0,0,0); return t; })();
                         const displayStr = displayDate.toDateString();
                         const isToday = displayStr === new Date().toDateString();
-                        const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === displayStr);
+                        const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === displayStr);
                         const dayStops = dayRoutes.flatMap(r => r.customers || []);
                         const dayRevenue = dayStops.reduce((sum, c) => {
                           const custMatch = customers.find(cu => cu.id === c.id);
@@ -6614,6 +6614,7 @@ const createJob = async () => {
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                               <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#fbbf24' }}>
                                 {isToday ? "Today's Route" : displayDate.toLocaleDateString('en-US', { weekday: 'long' }) + "'s Route"}
+                                {dayRoutes.some(r => r.sentToTech) && <span style={{ color: '#22c55e', fontSize: '11px', marginLeft: '6px' }}>✓ Sent</span>}
                               </h3>
                               <span style={{ fontSize: '10px', color: '#94a3b8' }}>{displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                             </div>
@@ -6721,22 +6722,22 @@ const createJob = async () => {
                           return dist;
                         };
                         const weekStops = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.reduce((sum, r) => sum + (r.customers || []).length, 0);
                         }, 0);
                         const weekRevenue = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => {
                             const custMatch = customers.find(cu => cu.id === c.id);
                             return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
                           }, 0);
                         }, 0);
                         const weekMiles = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
                         }, 0);
                         const daysWithRoutes = weekDays.filter(date => {
-                          return savedRoutes.some(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          return savedRoutes.some(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
                         }).length;
                         return (
                           <div style={{ padding: '12px', borderBottom: '1px solid rgba(234, 179, 8, 0.15)' }}>
@@ -6769,7 +6770,7 @@ const createJob = async () => {
                   {/* All View - Read-only route summary with Edit in Route Planner button */}
                   {statusFilter !== 'scheduled' && (() => {
                     const dateKey = selectedDate.toDateString();
-                    const dayRoutes = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === dateKey);
+                    const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === dateKey);
                     if (dayRoutes.length === 0) return null;
                     return (
                       <div style={{ marginBottom: '12px', padding: '12px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '10px' }}>
