@@ -44,6 +44,7 @@ function buildRouteEmailHTML(routeData) {
     const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from prev`;
     const notes = stop.customerNotes || stop.notes || '';
     const mapsLink = encodeURIComponent(stop.address || '');
+    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsLink}`;
 
     return `
       <!-- Stop ${i + 1} -->
@@ -65,7 +66,7 @@ function buildRouteEmailHTML(routeData) {
                     </tr>
                     <tr>
                       <td style="padding-top: 4px;">
-                        <a href="https://maps.google.com/?q=${mapsLink}" style="color: #64748b; font-size: 13px; text-decoration: none;">${stop.address}</a>
+                        <a href="${mapsUrl}" style="color: #3b82f6; font-size: 13px; text-decoration: underline;" target="_blank">📍 ${stop.address}</a>
                       </td>
                     </tr>
                     ${phoneList ? `<tr><td style="padding-top: 3px;"><a href="tel:${(stop.phone || '').replace(/[^0-9+]/g, '')}" style="color: #64748b; font-size: 13px; text-decoration: none;">📞 ${phoneList}</a></td></tr>` : ''}
