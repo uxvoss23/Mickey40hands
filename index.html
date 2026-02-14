@@ -878,13 +878,12 @@
                         jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
                         isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
                         scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
-                        customerNotes: activeJob.notes || c.customerNotes || '',
-                        notes: activeJob.notes || ''
+                        jobNotes: activeJob.notes || ''
                       };
                     }
                   }
                 } catch (e) {}
-                return { ...c, customerNotes: c.customerNotes || '', notes: '' };
+                return c;
               }));
               return { ...route, customers: enrichedCustomers };
             }));
@@ -3008,13 +3007,12 @@
                   jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
                   isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
                   scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
-                  customerNotes: activeJob.notes || c.customerNotes || '',
-                  notes: activeJob.notes || ''
+                  jobNotes: activeJob.notes || ''
                 };
               }
             }
           } catch (e) {}
-          return { ...c, customerNotes: c.customerNotes || '', notes: '' };
+          return c;
         }));
 
         let routeTotalDistance = 0;
@@ -3176,13 +3174,12 @@
                     jobDescription: activeJob.job_description || activeJob.jobDescription || enriched.jobDescription || enriched.job_description || '',
                     isRecurring: activeJob.is_recurring || activeJob.isRecurring || enriched.isRecurring || false,
                     scheduledTime: enriched.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
-                    customerNotes: activeJob.notes || enriched.customerNotes || '',
-                    notes: activeJob.notes || ''
+                    jobNotes: activeJob.notes || ''
                   };
                 }
               }
             } catch (e) {}
-            return { ...enriched, customerNotes: enriched.customerNotes || '', notes: '' };
+            return enriched;
           }));
 
           if (routeCustomers.length === 0) continue;
@@ -3622,8 +3619,8 @@
                   isRecurring: c.isRecurring || c.recurring,
                   lastServiceDate: c.lastServiceDate,
                   amountPaid: c.amountPaid,
-                  customerNotes: c.customerNotes || '',
-                  notes: c.customerNotes || '',
+                  customerNotes: c.customerNotes || c.customer_notes || '',
+                  jobNotes: c.jobNotes || '',
                   serviceType: c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning'),
                   customerType: c.customerType || c.customer_type || 'residential',
                   distanceFromPrevious: c.distanceFromPrevious,
@@ -11147,8 +11144,7 @@ const createJob = async () => {
                                       <button onClick={() => { setEditingCustomerNotes(null); setEditedNotes(''); }}
                                         style={{ padding: '3px 8px', background: 'rgba(100,116,139,0.2)', border: '1px solid rgba(100,116,139,0.3)', borderRadius: '4px', color: '#94a3b8', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
                                       <button onClick={() => {
-                                        setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, customerNotes: editedNotes, notes: editedNotes } : c) } : r));
-                                        setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, notes: editedNotes } : c));
+                                        setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, jobNotes: editedNotes } : c) } : r));
                                         apiFetch('/jobs?customer_id=' + customer.id).then(data => {
                                           if (data && data.jobs) {
                                             const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
@@ -11167,10 +11163,10 @@ const createJob = async () => {
                                   </div>
                                 ) : (
                                   <div 
-                                    onClick={() => { setEditingCustomerNotes({ routeId: savedRoute.id, customerId: customer.id }); setEditedNotes(customer.customerNotes || customer.notes || ''); }}
+                                    onClick={() => { setEditingCustomerNotes({ routeId: savedRoute.id, customerId: customer.id }); setEditedNotes(customer.jobNotes || ''); }}
                                     style={{ padding: '4px 6px', background: 'rgba(139,92,246,0.08)', borderRadius: '4px', fontSize: '10px', color: '#c4b5fd', cursor: 'pointer', lineHeight: '1.4' }}
                                   >
-                                    📝 {customer.customerNotes || customer.notes || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>Add notes...</span>}
+                                    📝 {customer.jobNotes || <span style={{ fontStyle: 'italic', opacity: 0.5 }}>Add job notes...</span>}
                                   </div>
                                 )}
                               </div>
@@ -12524,7 +12520,7 @@ const createJob = async () => {
                               ...r,
                               customers: (r.customers || []).map(c =>
                                 c.id === quickAddJobPopup.customerId
-                                  ? { ...c, customerNotes: combinedNotes, notes: combinedNotes }
+                                  ? { ...c, jobNotes: combinedNotes }
                                   : c
                               )
                             })));

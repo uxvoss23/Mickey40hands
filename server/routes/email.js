@@ -44,7 +44,8 @@ function buildRouteEmailHTML(routeData) {
     const amount = stop.amountPaid ? `$${parseFloat(stop.amountPaid).toFixed(2)}` : '$0.00';
     const time = stop.scheduledTime ? new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
     const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from prev`;
-    const notes = stop.customerNotes || stop.notes || '';
+    const customerNotes = stop.customerNotes || '';
+    const jobNotes = stop.jobNotes || '';
     const mapsLink = encodeURIComponent(stop.address || '');
     const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapsLink}`;
 
@@ -94,7 +95,8 @@ function buildRouteEmailHTML(routeData) {
                         </tr></table>
                       </td>
                     </tr>
-                    ${notes ? `<tr><td style="padding-top: 6px;"><div style="color: #92400e; font-size: 12px; padding: 6px 10px; background: #fffbeb; border-radius: 6px; border-left: 3px solid #f59e0b;">📝 ${notes}</div></td></tr>` : ''}
+                    ${customerNotes ? `<tr><td style="padding-top: 6px;"><div style="color: #1e40af; font-size: 12px; padding: 6px 10px; background: #eff6ff; border-radius: 6px; border-left: 3px solid #3b82f6;">👤 ${customerNotes}</div></td></tr>` : ''}
+                    ${jobNotes ? `<tr><td style="padding-top: 4px;"><div style="color: #92400e; font-size: 12px; padding: 6px 10px; background: #fffbeb; border-radius: 6px; border-left: 3px solid #f59e0b;">📝 ${jobNotes}</div></td></tr>` : ''}
                   </table>
                 </td>
               </tr>
