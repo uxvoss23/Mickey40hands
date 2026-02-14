@@ -860,16 +860,24 @@
           });
           setSavedViewDays(savedDays);
 
-          const enrichRoutesWithJobPrices = async () => {
+          const enrichRoutesWithJobData = async () => {
             const enriched = await Promise.all(parsedRoutes.map(async (route) => {
               if (!route.customers || route.customers.length === 0) return route;
               const enrichedCustomers = await Promise.all(route.customers.map(async (c) => {
-                if (c.jobPrice) return c;
                 try {
                   const data = await apiFetch('/jobs?customer_id=' + c.id);
                   if (data && data.jobs && data.jobs.length > 0) {
                     const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-                    return { ...c, jobPrice: parseFloat(activeJob.price) || 0 };
+                    return { 
+                      ...c, 
+                      jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
+                      panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                      totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                      amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
+                      jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
+                      isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
+                      scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
+                    };
                   }
                 } catch (e) {}
                 return c;
@@ -878,7 +886,7 @@
             }));
             setSavedRoutes(enriched);
           };
-          enrichRoutesWithJobPrices();
+          enrichRoutesWithJobData();
         }
         setTimeout(async () => {
           const count = await loadFromDatabase();
@@ -2983,12 +2991,20 @@
         }));
 
         const routeCustomers = await Promise.all(routeCustomersRaw.map(async (c) => {
-          if (c.jobPrice) return c;
           try {
             const data = await apiFetch('/jobs?customer_id=' + c.id);
             if (data && data.jobs && data.jobs.length > 0) {
               const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-              return { ...c, jobPrice: parseFloat(activeJob.price) || 0 };
+              return { 
+                ...c, 
+                jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
+                panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
+                jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
+                isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
+                scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
+              };
             }
           } catch (e) {}
           return c;
@@ -3140,12 +3156,20 @@
               customerNotes: c.notes || c.customerNotes || '',
               distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
             };
-            if (enriched.jobPrice) return enriched;
             try {
               const data = await apiFetch('/jobs?customer_id=' + c.id);
               if (data && data.jobs && data.jobs.length > 0) {
                 const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-                return { ...enriched, jobPrice: parseFloat(activeJob.price) || 0 };
+                return { 
+                  ...enriched, 
+                  jobPrice: parseFloat(activeJob.price) || enriched.jobPrice || 0,
+                  panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
+                  totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
+                  amountPaid: parseFloat(activeJob.price) || enriched.amountPaid || 0,
+                  jobDescription: activeJob.job_description || activeJob.jobDescription || enriched.jobDescription || enriched.job_description || '',
+                  isRecurring: activeJob.is_recurring || activeJob.isRecurring || enriched.isRecurring || false,
+                  scheduledTime: enriched.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
+                };
               }
             } catch (e) {}
             return enriched;
