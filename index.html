@@ -10230,9 +10230,12 @@ const createJob = async () => {
                                                   const hasScheduled = remainingActive.some(j => j.scheduled_date || j.next_service_date);
                                                   newStatus = hasScheduled ? 'scheduled' : 'unscheduled';
                                                 }
+                                                const completedJobs = remainingJobs.filter(j => j.completed_date || j.scheduled_date);
+                                                const jobDates = completedJobs.map(j => j.completed_date || j.scheduled_date).filter(Boolean).sort((a, b) => new Date(b) - new Date(a));
+                                                const newLastServiceDate = jobDates.length > 0 ? jobDates[0] : '';
                                                 await apiFetch(`/customers/${profileCustomer.id}`, {
                                                   method: 'PATCH',
-                                                  body: JSON.stringify({ status: newStatus })
+                                                  body: JSON.stringify({ status: newStatus, last_service_date: newLastServiceDate })
                                                 });
                                                 await loadFromDatabase();
                                                 setJobRefreshKey(k => k + 1);
