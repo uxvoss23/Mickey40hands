@@ -39,37 +39,61 @@ function buildRouteEmailHTML(routeData) {
   const stopsHTML = stops.map((stop, i) => {
     const phoneList = [stop.phone, ...(stop.secondaryPhones || [])].filter(Boolean).join(', ');
     const panels = stop.panelCount || stop.totalPanels || 'N/A';
-    const recurring = (stop.isRecurring || stop.recurring) ? 'Yes' : 'No';
-    const lastService = stop.lastServiceDate || 'N/A';
     const amount = stop.amountPaid ? `$${parseFloat(stop.amountPaid).toFixed(2)}` : '$0.00';
     const time = stop.scheduledTime ? new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-    const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi`;
+    const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from prev`;
     const notes = stop.customerNotes || stop.notes || '';
+    const mapsLink = encodeURIComponent(stop.address || '');
 
     return `
-      <tr style="border-bottom: 1px solid #e2e8f0;">
-        <td style="padding: 14px 12px; text-align: center; font-weight: 700; color: #6366f1; font-size: 16px; width: 40px;">
-          ${i + 1}
-        </td>
-        <td style="padding: 14px 12px;">
-          <div style="font-weight: 600; color: #1e293b; font-size: 14px; margin-bottom: 2px;">${stop.name}</div>
-          <div style="color: #64748b; font-size: 12px;">${stop.address}</div>
-          ${phoneList ? `<div style="color: #64748b; font-size: 12px; margin-top: 2px;">📞 ${phoneList}</div>` : ''}
-          ${notes ? `<div style="color: #f59e0b; font-size: 12px; margin-top: 4px; padding: 4px 8px; background: #fffbeb; border-radius: 4px; border-left: 3px solid #f59e0b;">📝 ${notes}</div>` : ''}
-        </td>
-        <td style="padding: 14px 12px; text-align: center; color: #6366f1; font-weight: 600; font-size: 13px; white-space: nowrap;">
-          ${time}
-        </td>
-        <td style="padding: 14px 12px; text-align: center; color: #64748b; font-size: 12px; white-space: nowrap;">
-          ${distance}
-        </td>
-        <td style="padding: 14px 12px; text-align: center; font-size: 12px;">
-          <span style="color: #64748b;">${panels} panels</span>
-        </td>
-        <td style="padding: 14px 12px; text-align: center; font-weight: 600; color: #059669; font-size: 13px; white-space: nowrap;">
-          ${amount}
-        </td>
-      </tr>`;
+      <!-- Stop ${i + 1} -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 8px;">
+        <tr>
+          <td style="padding: 0;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden;">
+              <tr>
+                <td style="background: #6366f1; width: 44px; text-align: center; vertical-align: top; padding: 14px 0;">
+                  <span style="color: #ffffff; font-size: 18px; font-weight: 700;">${i + 1}</span>
+                </td>
+                <td style="padding: 12px 14px;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td>
+                        <span style="font-weight: 700; color: #1e293b; font-size: 15px;">${stop.name}</span>
+                        ${time ? `<span style="color: #6366f1; font-weight: 600; font-size: 13px;"> &bull; ${time}</span>` : ''}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-top: 4px;">
+                        <a href="https://maps.google.com/?q=${mapsLink}" style="color: #64748b; font-size: 13px; text-decoration: none;">${stop.address}</a>
+                      </td>
+                    </tr>
+                    ${phoneList ? `<tr><td style="padding-top: 3px;"><a href="tel:${(stop.phone || '').replace(/[^0-9+]/g, '')}" style="color: #64748b; font-size: 13px; text-decoration: none;">📞 ${phoneList}</a></td></tr>` : ''}
+                    <tr>
+                      <td style="padding-top: 6px;">
+                        <table cellpadding="0" cellspacing="0"><tr>
+                          <td style="background: #f1f5f9; border-radius: 4px; padding: 3px 8px; margin-right: 6px;">
+                            <span style="color: #64748b; font-size: 11px;">${panels} panels</span>
+                          </td>
+                          <td style="width: 6px;"></td>
+                          <td style="background: #f1f5f9; border-radius: 4px; padding: 3px 8px;">
+                            <span style="color: #64748b; font-size: 11px;">${distance}</span>
+                          </td>
+                          <td style="width: 6px;"></td>
+                          <td style="background: #f0fdf4; border-radius: 4px; padding: 3px 8px;">
+                            <span style="color: #059669; font-size: 11px; font-weight: 600;">${amount}</span>
+                          </td>
+                        </tr></table>
+                      </td>
+                    </tr>
+                    ${notes ? `<tr><td style="padding-top: 6px;"><div style="color: #92400e; font-size: 12px; padding: 6px 10px; background: #fffbeb; border-radius: 6px; border-left: 3px solid #f59e0b;">📝 ${notes}</div></td></tr>` : ''}
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>`;
   }).join('');
 
   return `
@@ -78,105 +102,115 @@ function buildRouteEmailHTML(routeData) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @media screen and (max-width: 600px) {
+      .outer-wrap { padding: 8px !important; }
+    }
+  </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <div style="max-width: 700px; margin: 0 auto; padding: 20px;">
-    
-    <!-- Header -->
-    <div style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); border-radius: 16px 16px 0 0; padding: 32px 28px; text-align: center;">
-      <h1 style="color: #ffffff; margin: 0 0 4px 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">
-        ☀️ Sunton Solutions
-      </h1>
-      <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 13px; letter-spacing: 1px; text-transform: uppercase;">
-        Solar Panel Cleaning
-      </p>
-    </div>
-
-    <!-- Route Info Bar -->
-    <div style="background: #ffffff; padding: 20px 28px; border-bottom: 2px solid #e2e8f0;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <h2 style="margin: 0 0 4px 0; color: #1e293b; font-size: 18px; font-weight: 700;">
-            ${routeName}
-          </h2>
-          <p style="margin: 0; color: #6366f1; font-size: 14px; font-weight: 500;">
-            📅 ${formattedDate}
-          </p>
-        </div>
-        <div style="text-align: right;">
-          <div style="background: #f0fdf4; color: #059669; padding: 8px 16px; border-radius: 24px; font-weight: 700; font-size: 18px; display: inline-block;">
-            ${stops.length} Stops
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Stats Row -->
-    <div style="background: #ffffff; padding: 16px 28px; border-bottom: 2px solid #e2e8f0;">
-      <!--[if mso]>
-      <table width="100%" cellpadding="0" cellspacing="0"><tr>
-      <td width="25%" valign="top">
-      <![endif]-->
-      <div style="display: inline-block; width: 24%; text-align: center; vertical-align: top; padding: 8px 0;">
-        <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Revenue</div>
-        <div style="color: #059669; font-size: 20px; font-weight: 700;">$${(totalRevenue || 0).toFixed(2)}</div>
-      </div>
-      <!--[if mso]></td><td width="25%" valign="top"><![endif]-->
-      <div style="display: inline-block; width: 24%; text-align: center; vertical-align: top; padding: 8px 0;">
-        <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Total Miles</div>
-        <div style="color: #1e293b; font-size: 20px; font-weight: 700;">${(totalMiles || 0).toFixed(1)}</div>
-      </div>
-      <!--[if mso]></td><td width="25%" valign="top"><![endif]-->
-      <div style="display: inline-block; width: 24%; text-align: center; vertical-align: top; padding: 8px 0;">
-        <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Drive to 1st</div>
-        <div style="color: #1e293b; font-size: 20px; font-weight: 700;">${(driveToFirst || 0).toFixed(1)} mi</div>
-      </div>
-      <!--[if mso]></td><td width="25%" valign="top"><![endif]-->
-      <div style="display: inline-block; width: 24%; text-align: center; vertical-align: top; padding: 8px 0;">
-        <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Avg Between</div>
-        <div style="color: #1e293b; font-size: 20px; font-weight: 700;">${(avgDistance || 0).toFixed(1)} mi</div>
-      </div>
-      <!--[if mso]></td></tr></table><![endif]-->
-    </div>
-
-    <!-- Stops Table -->
-    <div style="background: #ffffff; border-radius: 0 0 16px 16px; overflow: hidden;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
-        <thead>
-          <tr style="background: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-            <th style="padding: 12px; text-align: center; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; width: 40px;">#</th>
-            <th style="padding: 12px; text-align: left; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Customer</th>
-            <th style="padding: 12px; text-align: center; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Time</th>
-            <th style="padding: 12px; text-align: center; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Distance</th>
-            <th style="padding: 12px; text-align: center; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Panels</th>
-            <th style="padding: 12px; text-align: center; color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;">Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${stopsHTML}
-        </tbody>
-      </table>
-
-      <!-- Footer Summary -->
-      <div style="padding: 20px 28px; background: #f8fafc; border-top: 2px solid #e2e8f0;">
-        <table width="100%" cellpadding="0" cellspacing="0">
+<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-text-size-adjust: 100%;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9;">
+    <tr>
+      <td align="center" class="outer-wrap" style="padding: 16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+          
+          <!-- Header -->
           <tr>
-            <td style="color: #64748b; font-size: 12px;">Drive home from last stop:</td>
-            <td style="text-align: right; color: #1e293b; font-weight: 600; font-size: 13px;">${(driveFromLast || 0).toFixed(1)} miles</td>
+            <td style="background: #4f46e5; border-radius: 16px 16px 0 0; padding: 28px 20px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0 0 4px 0; font-size: 22px; font-weight: 700;">
+                ☀️ Sunton Solutions
+              </h1>
+              <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;">
+                Solar Panel Cleaning
+              </p>
+            </td>
           </tr>
+
+          <!-- Route Info -->
           <tr>
-            <td style="padding-top: 8px; color: #1e293b; font-size: 14px; font-weight: 700;">Total Revenue:</td>
-            <td style="padding-top: 8px; text-align: right; color: #059669; font-weight: 700; font-size: 18px;">$${(totalRevenue || 0).toFixed(2)}</td>
+            <td style="background: #ffffff; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    <h2 style="margin: 0 0 4px 0; color: #1e293b; font-size: 17px; font-weight: 700;">${routeName}</h2>
+                    <p style="margin: 0; color: #6366f1; font-size: 13px; font-weight: 500;">📅 ${formattedDate}</p>
+                  </td>
+                  <td style="text-align: right; vertical-align: top;">
+                    <span style="background: #f0fdf4; color: #059669; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 15px;">${stops.length} Stops</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
           </tr>
+
+          <!-- Stats Grid (2x2) -->
+          <tr>
+            <td style="background: #ffffff; padding: 12px 16px; border-bottom: 2px solid #e2e8f0;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="50%" style="text-align: center; padding: 8px 4px;">
+                    <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Revenue</div>
+                    <div style="color: #059669; font-size: 20px; font-weight: 700;">$${(totalRevenue || 0).toFixed(2)}</div>
+                  </td>
+                  <td width="50%" style="text-align: center; padding: 8px 4px;">
+                    <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Total Miles</div>
+                    <div style="color: #1e293b; font-size: 20px; font-weight: 700;">${(totalMiles || 0).toFixed(1)}</div>
+                  </td>
+                </tr>
+                <tr>
+                  <td width="50%" style="text-align: center; padding: 8px 4px;">
+                    <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Drive to 1st</div>
+                    <div style="color: #1e293b; font-size: 18px; font-weight: 700;">${(driveToFirst || 0).toFixed(1)} mi</div>
+                  </td>
+                  <td width="50%" style="text-align: center; padding: 8px 4px;">
+                    <div style="color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Drive Home</div>
+                    <div style="color: #1e293b; font-size: 18px; font-weight: 700;">${(driveFromLast || 0).toFixed(1)} mi</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Stops (Card Layout) -->
+          <tr>
+            <td style="padding: 12px 12px 4px 12px; background: #f1f5f9;">
+              ${stopsHTML}
+            </td>
+          </tr>
+
+          <!-- Footer Summary -->
+          <tr>
+            <td style="padding: 0 12px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+                <tr>
+                  <td style="padding: 14px 16px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="color: #1e293b; font-size: 15px; font-weight: 700;">Total Revenue</td>
+                        <td style="text-align: right; color: #059669; font-weight: 700; font-size: 20px;">$${(totalRevenue || 0).toFixed(2)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding-top: 6px; color: #64748b; font-size: 12px;">Total driving distance</td>
+                        <td style="padding-top: 6px; text-align: right; color: #64748b; font-size: 12px;">${(totalMiles || 0).toFixed(1)} miles</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="text-align: center; padding: 16px; color: #94a3b8; font-size: 11px;">
+              Sent from Sunton Solutions CRM
+            </td>
+          </tr>
+
         </table>
-      </div>
-    </div>
-
-    <!-- Footer -->
-    <div style="text-align: center; padding: 20px; color: #94a3b8; font-size: 11px;">
-      Sent from Sunton Solutions CRM
-    </div>
-  </div>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
 }
