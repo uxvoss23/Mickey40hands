@@ -3531,10 +3531,41 @@
         ));
 
         const totalRevenue = routeCustomers.reduce((sum, c) => sum + (parseFloat(c.amountPaid) || 0), 0);
-        const totalMiles = routeCustomers[routeCustomers.length - 1]?.cumulativeDistance || 0;
-        const avgDistance = routeCustomers.length > 1 ? totalMiles / (routeCustomers.length - 1) : 0;
-        const driveToFirst = routeCustomers[0]?.distanceFromHome || 0;
-        const driveFromLast = routeCustomers[routeCustomers.length - 1]?.distanceToHome || 0;
+        
+        const HOME_BASE = homeBase || { lat: 32.8866, lng: -97.3368 };
+        const stopsWithCoords = routeCustomers.filter(c => c.lat && c.lng);
+        let totalMiles = savedRoute.totalDistance || 0;
+        let driveToFirst = 0;
+        let driveFromLast = 0;
+        
+        if (stopsWithCoords.length > 0) {
+          driveToFirst = calculateDistance(HOME_BASE.lat, HOME_BASE.lng, stopsWithCoords[0].lat, stopsWithCoords[0].lng);
+          driveFromLast = calculateDistance(stopsWithCoords[stopsWithCoords.length - 1].lat, stopsWithCoords[stopsWithCoords.length - 1].lng, HOME_BASE.lat, HOME_BASE.lng);
+          
+          if (!totalMiles) {
+            totalMiles = driveToFirst;
+            for (let i = 0; i < stopsWithCoords.length - 1; i++) {
+              totalMiles += calculateDistance(stopsWithCoords[i].lat, stopsWithCoords[i].lng, stopsWithCoords[i+1].lat, stopsWithCoords[i+1].lng);
+            }
+            totalMiles += driveFromLast;
+          }
+          
+          for (let i = 0; i < routeCustomers.length; i++) {
+            if (!routeCustomers[i].lat || !routeCustomers[i].lng) continue;
+            routeCustomers[i].distanceFromHome = calculateDistance(HOME_BASE.lat, HOME_BASE.lng, routeCustomers[i].lat, routeCustomers[i].lng);
+            routeCustomers[i].distanceToHome = calculateDistance(routeCustomers[i].lat, routeCustomers[i].lng, HOME_BASE.lat, HOME_BASE.lng);
+            if (i === 0) {
+              routeCustomers[i].distanceFromPrevious = driveToFirst;
+            } else {
+              const prev = routeCustomers[i - 1];
+              routeCustomers[i].distanceFromPrevious = (prev.lat && prev.lng) 
+                ? calculateDistance(prev.lat, prev.lng, routeCustomers[i].lat, routeCustomers[i].lng) 
+                : 0;
+            }
+          }
+        }
+        
+        const avgDistance = stopsWithCoords.length > 1 ? (totalMiles - driveToFirst - driveFromLast) / (stopsWithCoords.length - 1) : 0;
 
         setSendingEmail(true);
         try {

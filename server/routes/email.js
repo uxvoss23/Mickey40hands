@@ -43,7 +43,7 @@ function buildRouteEmailHTML(routeData) {
     const lastService = stop.lastServiceDate || 'N/A';
     const amount = stop.amountPaid ? `$${parseFloat(stop.amountPaid).toFixed(2)}` : '$0.00';
     const time = stop.scheduledTime ? new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
-    const distance = i === 0 ? 'Start' : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi`;
+    const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi`;
     const notes = stop.customerNotes || stop.notes || '';
 
     return `
