@@ -3634,12 +3634,12 @@
           if (response.success) {
             setError(null);
             setSavedRoutes(prev => prev.map(r =>
-              r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
+              r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today, sentAt: new Date().toISOString() } : r
             ));
             try {
               await apiFetch(`/routes/${savedRoute.id}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ sent_to_tech: true, sent_date: today })
+                body: JSON.stringify({ sent_to_tech: true, sent_date: today, sent_at: new Date().toISOString() })
               });
             } catch (e) { console.error('Failed to persist sent status:', e); }
             alert('Route email sent successfully to ' + techEmail + '!');
@@ -5866,7 +5866,10 @@ const createJob = async () => {
                   🗺️ Map
                 </button>
                 <button className={`tab-button ${currentView === 'saved' ? 'active' : ''}`} onClick={() => navigateToView('saved')}>
-                  📁 Saved Routes ({savedRoutes.length})
+                  📁 Saved Routes ({savedRoutes.filter(r => !r.sentToTech).length})
+                </button>
+                <button className={`tab-button ${currentView === 'history' ? 'active' : ''}`} onClick={() => navigateToView('history')}>
+                  📜 Route History ({savedRoutes.filter(r => r.sentToTech).length})
                 </button>
                 <button className={`tab-button ${currentView === 'pipeline' ? 'active' : ''}`} onClick={() => navigateToView('pipeline')}>
                   📋 Database ({customers.length})
@@ -10829,15 +10832,16 @@ const createJob = async () => {
                   </div>
                 </div>
                 
-                {savedRoutes.length === 0 ? (
+                {savedRoutes.filter(r => !r.sentToTech).length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
                     <div style={{ fontSize: '64px', marginBottom: '16px' }}>📁</div>
-                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No saved routes yet</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No saved routes</div>
                     <div style={{ fontSize: '14px' }}>Build a route on the Map tab and save it!</div>
                   </div>
                 ) : (
                   <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     {savedRoutes
+                      .filter(r => !r.sentToTech)
                       .sort((a, b) => new Date(a.scheduledDate || a.date) - new Date(b.scheduledDate || b.date))
                       .map((savedRoute) => {
                         const schedDate = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate) : null;
@@ -11203,6 +11207,123 @@ const createJob = async () => {
                           </>
                           );
                         })()}
+                      </div>
+                        );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 📜 Route History View */}
+            {currentView === 'history' && (
+              <div style={{ 
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                overflow: 'auto',
+                padding: '24px'
+              }} className="scrollbar-custom">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>📜 Route History</h2>
+                  <span style={{ fontSize: '12px', color: '#64748b' }}>Routes that have been sent to the technician</span>
+                </div>
+                
+                {savedRoutes.filter(r => r.sentToTech).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
+                    <div style={{ fontSize: '64px', marginBottom: '16px' }}>📜</div>
+                    <div style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>No route history yet</div>
+                    <div style={{ fontSize: '14px' }}>Routes will appear here after being sent to the technician.</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    {savedRoutes
+                      .filter(r => r.sentToTech)
+                      .sort((a, b) => new Date(b.scheduledDate || b.date) - new Date(a.scheduledDate || a.date))
+                      .map((savedRoute) => {
+                        const schedDate = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate) : null;
+                        const dayLabel = schedDate ? schedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unscheduled';
+                        const totalMiles = (() => {
+                          let total = 0;
+                          const stops = savedRoute.customers || [];
+                          if (homeBase && stops.length > 0 && stops[0].lat && stops[0].lng) {
+                            total += calculateDistance(homeBase.lat, homeBase.lng, stops[0].lat, stops[0].lng);
+                          }
+                          for (let i = 0; i < stops.length - 1; i++) {
+                            if (stops[i].lat && stops[i].lng && stops[i+1].lat && stops[i+1].lng) {
+                              total += calculateDistance(stops[i].lat, stops[i].lng, stops[i+1].lat, stops[i+1].lng);
+                            }
+                          }
+                          if (homeBase && stops.length > 0) {
+                            const last = stops[stops.length - 1];
+                            if (last.lat && last.lng) total += calculateDistance(last.lat, last.lng, homeBase.lat, homeBase.lng);
+                          }
+                          return total;
+                        })();
+                        return (
+                      <div key={savedRoute.id} className="glass-card" style={{ 
+                        padding: '0', 
+                        width: '280px',
+                        minWidth: '260px',
+                        flex: '0 0 280px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        opacity: 0.85
+                      }}>
+                        <div style={{ 
+                          padding: '12px 14px',
+                          background: 'rgba(34, 197, 94, 0.12)',
+                          borderBottom: '1px solid rgba(34, 197, 94, 0.2)'
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                            <span style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>{savedRoute.name}</span>
+                            <span style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '10px', color: '#22c55e', fontWeight: 600 }}>✓ Sent</span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>📅 {dayLabel}</span>
+                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>👥 {savedRoute.customers.length} stops</span>
+                            {totalMiles > 0 && <span style={{ fontSize: '11px', color: '#94a3b8' }}>🚗 {totalMiles.toFixed(1)} mi</span>}
+                            {savedRoute.sentAt && <span style={{ fontSize: '10px', color: '#64748b' }}>Sent {new Date(savedRoute.sentAt).toLocaleDateString()}</span>}
+                          </div>
+                        </div>
+
+                        <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto', maxHeight: '300px' }} className="scrollbar-custom">
+                          {savedRoute.customers.map((customer, idx) => {
+                            const timeSlot = customer.scheduledTime || '';
+                            return (
+                              <div key={customer.id} style={{ 
+                                padding: '8px 10px',
+                                background: 'rgba(15, 23, 42, 0.4)',
+                                borderRadius: '6px',
+                                borderLeft: '3px solid rgba(34, 197, 94, 0.4)'
+                              }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#22c55e', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(34, 197, 94, 0.15)', borderRadius: '50%' }}>{idx + 1}</span>
+                                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0' }}>{customer.name}</span>
+                                  {timeSlot && <span style={{ fontSize: '10px', color: '#fbbf24', marginLeft: 'auto' }}>⏰ {timeSlot}</span>}
+                                </div>
+                                <div style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '24px' }}>
+                                  📍 {customer.address}
+                                </div>
+                                {customer.phone && <div style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '24px' }}>📞 {customer.phone}</div>}
+                                {customer.panelCount && (
+                                  <span style={{ fontSize: '9px', padding: '2px 6px', background: 'rgba(251, 191, 36, 0.15)', borderRadius: '3px', color: '#fbbf24', marginLeft: '24px', display: 'inline-block', marginTop: '2px' }}>
+                                    ☀️ {customer.panelCount} panels
+                                  </span>
+                                )}
+                                {customer.customerNotes && (
+                                  <div style={{ fontSize: '10px', color: '#93c5fd', marginLeft: '24px', marginTop: '3px' }}>👤 {customer.customerNotes}</div>
+                                )}
+                                {customer.jobNotes && (
+                                  <div style={{ fontSize: '10px', color: '#fde68a', marginLeft: '24px', marginTop: '2px' }}>📝 {customer.jobNotes}</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                         );
                     })}

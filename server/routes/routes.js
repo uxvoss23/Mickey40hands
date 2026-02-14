@@ -88,7 +88,7 @@ router.patch('/:id', async (req, res) => {
     const params = [];
     let paramIndex = 1;
 
-    const fields = ['name', 'scheduled_date', 'status', 'total_distance', 'sent_to_tech', 'sent_date'];
+    const fields = ['name', 'scheduled_date', 'status', 'total_distance', 'sent_to_tech', 'sent_date', 'sent_at'];
     for (const field of fields) {
       if (updates[field] !== undefined) {
         setClauses.push(`${field} = $${paramIndex}`);
@@ -117,8 +117,10 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const check = await pool.query('SELECT sent_to_tech FROM routes WHERE id = $1', [req.params.id]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Route not found' });
+    if (check.rows[0].sent_to_tech) return res.status(403).json({ error: 'Cannot delete a route that has been sent to the technician' });
     const result = await pool.query('DELETE FROM routes WHERE id = $1 RETURNING *', [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Route not found' });
     res.json({ deleted: true });
   } catch (err) {
     console.error('Error deleting route:', err);
