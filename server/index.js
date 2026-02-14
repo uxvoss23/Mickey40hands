@@ -88,6 +88,10 @@ app.get('/track', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'track.html'));
 });
 
+app.get('/tech-route/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'tech-route.html'));
+});
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) {
     res.sendFile(path.join(__dirname, '..', 'index.html'));
@@ -126,6 +130,7 @@ const applySchemaUpdates = async () => {
   try {
     await pool.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
     await pool.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`);
+    await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`);
   } catch (err) {
     console.error('Schema update warning:', err.message);
   }

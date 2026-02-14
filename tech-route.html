@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Route - Sunton Solutions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .header {
+      background: #4f46e5;
+      color: white;
+      padding: 20px 16px 16px;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; margin-bottom: 2px; }
+    .header .subtitle { font-size: 11px; opacity: 0.8; text-transform: uppercase; letter-spacing: 1px; }
+    .route-info {
+      background: white;
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .route-name { font-size: 17px; font-weight: 700; color: #1e293b; }
+    .route-date { font-size: 13px; color: #6366f1; font-weight: 500; margin-top: 2px; }
+    .progress-bar-wrap {
+      background: white;
+      padding: 10px 16px 14px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .progress-bar {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #22c55e;
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+    .stops-list { padding: 12px; }
+    .stop-card {
+      background: white;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 10px;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .stop-card.completed {
+      opacity: 0.6;
+      border-color: #bbf7d0;
+    }
+    .stop-card.completed .stop-number { background: #22c55e; }
+    .stop-top { display: flex; }
+    .stop-number {
+      background: #6366f1;
+      color: white;
+      min-width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      transition: background 0.3s;
+    }
+    .stop-details { flex: 1; padding: 12px 14px; }
+    .stop-name { font-weight: 700; color: #1e293b; font-size: 15px; }
+    .stop-time { color: #6366f1; font-weight: 600; font-size: 13px; }
+    .stop-service { color: #8b5cf6; font-size: 12px; font-weight: 500; margin-top: 2px; }
+    .stop-address {
+      display: block;
+      color: #3b82f6;
+      font-size: 13px;
+      margin-top: 4px;
+      text-decoration: underline;
+    }
+    .stop-phone {
+      display: inline-block;
+      color: #64748b;
+      font-size: 13px;
+      margin-top: 3px;
+      text-decoration: none;
+    }
+    .stop-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .stop-tag {
+      background: #f1f5f9;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 11px;
+      color: #64748b;
+    }
+    .stop-tag.price { background: #f0fdf4; color: #059669; font-weight: 600; }
+    .stop-notes {
+      font-size: 12px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
+    .stop-notes.customer { color: #1e40af; background: #eff6ff; border-left: 3px solid #3b82f6; }
+    .stop-notes.job { color: #92400e; background: #fffbeb; border-left: 3px solid #f59e0b; }
+    .complete-btn {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 8px 12px 12px;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s;
+    }
+    .complete-btn.active {
+      background: #22c55e;
+      color: white;
+    }
+    .complete-btn.active:active {
+      transform: scale(0.97);
+      background: #16a34a;
+    }
+    .complete-btn.done {
+      background: #f0fdf4;
+      color: #22c55e;
+      pointer-events: none;
+    }
+    .complete-btn.loading {
+      background: #94a3b8;
+      color: white;
+      pointer-events: none;
+    }
+    .all-done {
+      text-align: center;
+      padding: 24px 16px;
+      color: #22c55e;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .loading-screen {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      color: #64748b;
+      font-size: 16px;
+    }
+    .error-screen {
+      text-align: center;
+      padding: 40px 20px;
+      color: #ef4444;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const routeId = window.location.pathname.split('/').pop();
+    let routeData = null;
+    let completedStops = new Set();
+
+    async function loadRoute() {
+      const app = document.getElementById('app');
+      app.innerHTML = '<div class="loading-screen">Loading route...</div>';
+      try {
+        const res = await fetch(`/api/routes/${routeId}/tech-view`);
+        if (!res.ok) throw new Error('Route not found');
+        routeData = await res.json();
+        routeData.stops.forEach(s => {
+          if (s.completed_at) completedStops.add(s.id);
+        });
+        render();
+      } catch (err) {
+        app.innerHTML = `<div class="error-screen">Could not load route. Please check the link and try again.</div>`;
+      }
+    }
+
+    async function markComplete(stopId) {
+      const btn = document.getElementById(`btn-${stopId}`);
+      if (!btn || btn.classList.contains('done') || btn.classList.contains('loading')) return;
+      btn.classList.remove('active');
+      btn.classList.add('loading');
+      btn.textContent = 'Updating...';
+      try {
+        const res = await fetch(`/api/routes/${routeId}/stops/${stopId}/complete`, { method: 'POST' });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed');
+        }
+        completedStops.add(stopId);
+        render();
+      } catch (err) {
+        btn.classList.remove('loading');
+        btn.classList.add('active');
+        btn.textContent = 'Mark Complete';
+        alert('Error: ' + err.message);
+      }
+    }
+
+    function render() {
+      if (!routeData) return;
+      const { route, stops } = routeData;
+      const completed = completedStops.size;
+      const total = stops.length;
+      const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+      const scheduledDate = route.scheduled_date
+        ? new Date(route.scheduled_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+        : '';
+
+      const stopsHTML = stops.map((s, i) => {
+        const isDone = completedStops.has(s.id);
+        const time = s.scheduled_time
+          ? new Date(`2000-01-01T${s.scheduled_time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+          : '';
+        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s.address || '')}`;
+        const phone = s.phone || '';
+        const panels = s.panel_count || 0;
+        const amount = s.amount_paid ? `$${parseFloat(s.amount_paid).toFixed(2)}` : '';
+        const serviceIcon = (s.customer_type || 'residential') === 'commercial' ? '🏢' : '🏠';
+
+        return `
+          <div class="stop-card ${isDone ? 'completed' : ''}">
+            <div class="stop-top">
+              <div class="stop-number">${isDone ? '✓' : i + 1}</div>
+              <div class="stop-details">
+                <div>
+                  <span class="stop-name">${s.full_name || 'Customer'}</span>
+                  ${time ? `<span class="stop-time"> · ${time}</span>` : ''}
+                </div>
+                <div class="stop-service">${serviceIcon} ${(s.customer_type || 'residential') === 'commercial' ? 'Commercial' : 'Residential'} Panel Cleaning</div>
+                <a class="stop-address" href="${mapsUrl}" target="_blank">📍 ${s.address || ''}</a>
+                ${phone ? `<a class="stop-phone" href="tel:${phone.replace(/[^0-9+]/g, '')}">📞 ${phone}</a>` : ''}
+                <div class="stop-tags">
+                  <span class="stop-tag">${panels} panels</span>
+                  ${amount ? `<span class="stop-tag price">${amount}</span>` : ''}
+                </div>
+                ${s.customer_notes ? `<div class="stop-notes customer">👤 ${s.customer_notes}</div>` : ''}
+                ${s.job_notes ? `<div class="stop-notes job">📝 ${s.job_notes}</div>` : ''}
+              </div>
+            </div>
+            ${isDone
+              ? `<button class="complete-btn done" id="btn-${s.id}">✓ Completed</button>`
+              : `<button class="complete-btn active" id="btn-${s.id}" onclick="markComplete(${s.id})">Mark Complete</button>`
+            }
+          </div>`;
+      }).join('');
+
+      document.getElementById('app').innerHTML = `
+        <div class="header">
+          <h1>☀️ Sunton Solutions</h1>
+          <div class="subtitle">Solar Panel Cleaning</div>
+        </div>
+        <div class="route-info">
+          <div class="route-name">${route.name || 'Route'}</div>
+          <div class="route-date">📅 ${scheduledDate}</div>
+        </div>
+        <div class="progress-bar-wrap">
+          <div class="progress-text">${completed} of ${total} stops completed</div>
+          <div class="progress-bar"><div class="progress-fill" style="width: ${pct}%"></div></div>
+        </div>
+        <div class="stops-list">
+          ${stopsHTML}
+        </div>
+        ${completed === total && total > 0 ? '<div class="all-done">🎉 All stops completed!</div>' : ''}
+      `;
+    }
+
+    loadRoute();
+  </script>
+</body>
+</html>

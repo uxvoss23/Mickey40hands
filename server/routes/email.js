@@ -26,8 +26,9 @@ function rateLimit(req, res, next) {
   return next();
 }
 
-function buildRouteEmailHTML(routeData) {
-  const { routeName, scheduledDate, stops, totalRevenue, totalMiles, avgDistance, driveToFirst, driveFromLast } = routeData;
+function buildRouteEmailHTML(routeData, baseUrl) {
+  const { routeName, scheduledDate, stops, totalRevenue, totalMiles, avgDistance, driveToFirst, driveFromLast, routeId } = routeData;
+  const techRouteUrl = routeId && baseUrl ? `${baseUrl}/tech-route/${routeId}` : '';
 
   const formattedDate = new Date(scheduledDate).toLocaleDateString('en-US', {
     weekday: 'long',
@@ -153,6 +154,18 @@ function buildRouteEmailHTML(routeData) {
             </td>
           </tr>
 
+          ${techRouteUrl ? `
+          <!-- Tech Route Link -->
+          <tr>
+            <td style="background: #ffffff; padding: 12px 20px; border-bottom: 1px solid #e2e8f0; text-align: center;">
+              <a href="${techRouteUrl}" target="_blank" style="display: inline-block; background: #22c55e; color: #ffffff; padding: 12px 28px; border-radius: 8px; font-weight: 700; font-size: 15px; text-decoration: none;">
+                📋 Open Route Checklist
+              </a>
+              <p style="margin: 6px 0 0; color: #94a3b8; font-size: 11px;">Tap to mark stops complete as you go</p>
+            </td>
+          </tr>
+          ` : ''}
+
           <!-- Stats Grid (2x2) -->
           <tr>
             <td style="background: #ffffff; padding: 12px 16px; border-bottom: 2px solid #e2e8f0;">
@@ -247,7 +260,10 @@ router.post('/send-route', rateLimit, async (req, res) => {
       return res.status(500).json({ error: 'Email service not configured' });
     }
 
-    const html = buildRouteEmailHTML(routeData);
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+    const html = buildRouteEmailHTML(routeData, baseUrl);
     const subject = `Route: ${routeData.routeName} - ${new Date(routeData.scheduledDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} (${routeData.stops.length} stops)`;
 
     const { data, error } = await resend.emails.send({
