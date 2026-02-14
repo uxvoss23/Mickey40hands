@@ -7115,55 +7115,52 @@ const createJob = async () => {
                             )}
 
                             <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                              <button
-                                onClick={() => {
-                                  if (savedRouteForDay && savedRouteForDay.sentToTech) {
-                                    alert('This route has already been sent to the technician. Reach out to the technician directly to make further changes.');
-                                    return;
-                                  }
-                                  if (savedRouteForDay) {
-                                    setRoutesByDay(prev => ({
-                                      ...prev,
-                                      [dateKey]: savedRouteForDay.customers
-                                    }));
-                                    setEditingSavedRouteId(savedRouteForDay.id);
-                                    setRoutePlannerEditMode(true);
+                              {savedRouteForDay && !savedRouteForDay.sentToTech && (
+                                <button
+                                  onClick={() => {
+                                    if (savedRouteForDay) {
+                                      setRoutesByDay(prev => ({
+                                        ...prev,
+                                        [dateKey]: savedRouteForDay.customers
+                                      }));
+                                      setEditingSavedRouteId(savedRouteForDay.id);
+                                      setRoutePlannerEditMode(true);
 
-                                    setCustomers(prev => {
-                                      const routeCustomerMap = new Map();
-                                      savedRouteForDay.customers.forEach(rc => {
-                                        routeCustomerMap.set(rc.id, rc);
+                                      setCustomers(prev => {
+                                        const routeCustomerMap = new Map();
+                                        savedRouteForDay.customers.forEach(rc => {
+                                          routeCustomerMap.set(rc.id, rc);
+                                        });
+                                        return prev.map(c => {
+                                          const rc = routeCustomerMap.get(c.id);
+                                          if (rc) {
+                                            return {
+                                              ...c,
+                                              scheduledTime: rc.scheduledTime || c.scheduledTime,
+                                              scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                                              status: 'scheduled',
+                                              routeConfirmed: true
+                                            };
+                                          }
+                                          return c;
+                                        });
                                       });
-                                      return prev.map(c => {
-                                        const rc = routeCustomerMap.get(c.id);
-                                        if (rc) {
-                                          return {
-                                            ...c,
-                                            scheduledTime: rc.scheduledTime || c.scheduledTime,
-                                            scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
-                                            status: 'scheduled',
-                                            routeConfirmed: true
-                                          };
-                                        }
-                                        return c;
-                                      });
-                                    });
-                                  }
-                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
-                                }}
-                                className="button-secondary"
-                                style={{
-                                  flex: 1,
-                                  padding: '8px 10px',
-                                  fontSize: '11px',
-                                  justifyContent: 'center'
-                                }}
-                              >
-                                ✏️ Edit Route
-                              </button>
+                                    }
+                                    setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                  }}
+                                  className="button-secondary"
+                                  style={{
+                                    flex: 1,
+                                    padding: '8px 10px',
+                                    fontSize: '11px',
+                                    justifyContent: 'center'
+                                  }}
+                                >
+                                  ✏️ Edit Route
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
-                                  // Start a fresh new route - DON'T clear other routes' customers
                                   setRoutesByDay(prev => ({
                                     ...prev,
                                     [dateKey]: []
@@ -7183,6 +7180,19 @@ const createJob = async () => {
                                 + New Route
                               </button>
                             </div>
+                            {savedRouteForDay && savedRouteForDay.sentToTech && (
+                              <div style={{
+                                padding: '8px 12px',
+                                marginBottom: '12px',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                color: '#86efac'
+                              }}>
+                                ✓ This route has been sent to the technician. To add more jobs for this day, use "+ New Route" above.
+                              </div>
+                            )}
                             
                             <div style={{ 
                               padding: '12px',
