@@ -867,20 +867,24 @@
                 try {
                   const data = await apiFetch('/jobs?customer_id=' + c.id);
                   if (data && data.jobs && data.jobs.length > 0) {
-                    const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-                    return { 
-                      ...c, 
-                      jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
-                      panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                      totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                      amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
-                      jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
-                      isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
-                      scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
-                    };
+                    const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                    if (activeJob) {
+                      return { 
+                        ...c, 
+                        jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
+                        panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                        totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                        amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
+                        jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
+                        isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
+                        scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
+                        customerNotes: activeJob.notes || c.customerNotes || '',
+                        notes: activeJob.notes || ''
+                      };
+                    }
                   }
                 } catch (e) {}
-                return c;
+                return { ...c, customerNotes: c.customerNotes || '', notes: '' };
               }));
               return { ...route, customers: enrichedCustomers };
             }));
@@ -2986,7 +2990,6 @@
 
         const routeCustomersRaw = scheduledForDay.map(c => ({
           ...c,
-          customerNotes: c.notes || c.customerNotes || '',
           distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
         }));
 
@@ -2994,20 +2997,24 @@
           try {
             const data = await apiFetch('/jobs?customer_id=' + c.id);
             if (data && data.jobs && data.jobs.length > 0) {
-              const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-              return { 
-                ...c, 
-                jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
-                panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
-                jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
-                isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
-                scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
-              };
+              const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+              if (activeJob) {
+                return { 
+                  ...c, 
+                  jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
+                  panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                  totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                  amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
+                  jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
+                  isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
+                  scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
+                  customerNotes: activeJob.notes || c.customerNotes || '',
+                  notes: activeJob.notes || ''
+                };
+              }
             }
           } catch (e) {}
-          return c;
+          return { ...c, customerNotes: c.customerNotes || '', notes: '' };
         }));
 
         let routeTotalDistance = 0;
@@ -3153,26 +3160,29 @@
           const routeCustomers = await Promise.all(routeStops.map(async (c) => {
             const enriched = {
               ...c,
-              customerNotes: c.notes || c.customerNotes || '',
               distanceFromHome: homeBase ? calculateDistance(homeBase.lat, homeBase.lng, c.lat, c.lng) : null
             };
             try {
               const data = await apiFetch('/jobs?customer_id=' + c.id);
               if (data && data.jobs && data.jobs.length > 0) {
-                const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled') || data.jobs[0];
-                return { 
-                  ...enriched, 
-                  jobPrice: parseFloat(activeJob.price) || enriched.jobPrice || 0,
-                  panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
-                  totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
-                  amountPaid: parseFloat(activeJob.price) || enriched.amountPaid || 0,
-                  jobDescription: activeJob.job_description || activeJob.jobDescription || enriched.jobDescription || enriched.job_description || '',
-                  isRecurring: activeJob.is_recurring || activeJob.isRecurring || enriched.isRecurring || false,
-                  scheduledTime: enriched.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || ''
-                };
+                const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                if (activeJob) {
+                  return { 
+                    ...enriched, 
+                    jobPrice: parseFloat(activeJob.price) || enriched.jobPrice || 0,
+                    panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
+                    totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || enriched.panelCount || enriched.totalPanels || 0,
+                    amountPaid: parseFloat(activeJob.price) || enriched.amountPaid || 0,
+                    jobDescription: activeJob.job_description || activeJob.jobDescription || enriched.jobDescription || enriched.job_description || '',
+                    isRecurring: activeJob.is_recurring || activeJob.isRecurring || enriched.isRecurring || false,
+                    scheduledTime: enriched.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
+                    customerNotes: activeJob.notes || enriched.customerNotes || '',
+                    notes: activeJob.notes || ''
+                  };
+                }
               }
             } catch (e) {}
-            return enriched;
+            return { ...enriched, customerNotes: enriched.customerNotes || '', notes: '' };
           }));
 
           if (routeCustomers.length === 0) continue;
@@ -3612,8 +3622,8 @@
                   isRecurring: c.isRecurring || c.recurring,
                   lastServiceDate: c.lastServiceDate,
                   amountPaid: c.amountPaid,
-                  customerNotes: c.customerNotes || c.notes || '',
-                  notes: c.notes || '',
+                  customerNotes: c.customerNotes || '',
+                  notes: c.customerNotes || '',
                   serviceType: c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning'),
                   customerType: c.customerType || c.customer_type || 'residential',
                   distanceFromPrevious: c.distanceFromPrevious,
