@@ -6820,38 +6820,53 @@ const createJob = async () => {
                                 ))}
                               </div>
                             )}
-                            {dayRoutes.length > 0 && (
-                              <button
-                                onClick={() => {
-                                  setFocusedDays([displayDate]);
-                                  setSelectedDate(displayDate);
-                                  setRoutePlannerEditMode(true);
-                                  const dayRoute = dayRoutes[0];
-                                  if (dayRoute) {
-                                    setEditingSavedRouteId(dayRoute.id);
-                                    const dateKey = displayDate.toDateString();
-                                    setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
-                                    setCustomers(prev => {
-                                      const routeCustomerMap = new Map();
-                                      dayRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
-                                      return prev.map(c => {
-                                        const rc = routeCustomerMap.get(c.id);
-                                        if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: dayRoute.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
-                                        return c;
-                                      });
-                                    });
-                                    setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
-                                  }
-                                }}
-                                style={{
-                                  width: '100%', marginTop: '8px', padding: '7px', fontSize: '11px', fontWeight: 600,
-                                  background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
-                                  borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
-                                }}
-                              >
-                                ✏️ Edit {isToday ? "Today's" : displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} Route
-                              </button>
-                            )}
+                            {dayRoutes.length > 0 && (() => {
+                              const editableRoutes = dayRoutes.filter(r => !r.sentToTech);
+                              const hasSentRoutes = dayRoutes.some(r => r.sentToTech);
+                              return (
+                                <div>
+                                  {hasSentRoutes && (
+                                    <div style={{
+                                      marginTop: '8px', padding: '6px 10px', fontSize: '10px', color: '#86efac',
+                                      background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)',
+                                      borderRadius: '6px', textAlign: 'center'
+                                    }}>✓ Sent to technician</div>
+                                  )}
+                                  {editableRoutes.length > 0 && (
+                                    <button
+                                      onClick={() => {
+                                        setFocusedDays([displayDate]);
+                                        setSelectedDate(displayDate);
+                                        setRoutePlannerEditMode(true);
+                                        const dayRoute = editableRoutes[0];
+                                        if (dayRoute) {
+                                          setEditingSavedRouteId(dayRoute.id);
+                                          const dateKey = displayDate.toDateString();
+                                          setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
+                                          setCustomers(prev => {
+                                            const routeCustomerMap = new Map();
+                                            dayRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
+                                            return prev.map(c => {
+                                              const rc = routeCustomerMap.get(c.id);
+                                              if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: dayRoute.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
+                                              return c;
+                                            });
+                                          });
+                                          setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                        }
+                                      }}
+                                      style={{
+                                        width: '100%', marginTop: '8px', padding: '7px', fontSize: '11px', fontWeight: 600,
+                                        background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
+                                        borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
+                                      }}
+                                    >
+                                      ✏️ Edit {isToday ? "Today's" : displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} Route
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })()}
@@ -6948,26 +6963,43 @@ const createJob = async () => {
                             {(r.customers || []).length > 5 && <div style={{ fontSize: '9px', color: '#64748b', marginTop: '2px' }}>+{r.customers.length - 5} more</div>}
                           </div>
                         ))}
-                        <button
-                          onClick={() => {
-                            setStatusFilter('scheduled');
-                            setShowNeedScheduling(true);
-                            setFocusedDays([selectedDate]);
-                            const dayRoute = dayRoutes[0];
-                            if (dayRoute) {
-                              setEditingSavedRouteId(dayRoute.id);
-                              setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
-                              setRoutePlannerEditMode(true);
-                            }
-                          }}
-                          style={{
-                            width: '100%', marginTop: '8px', padding: '8px', fontSize: '11px', fontWeight: 600,
-                            background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
-                            borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
-                          }}
-                        >
-                          ✏️ Edit in Route Planner
-                        </button>
+                        {(() => {
+                          const editableRoutes = dayRoutes.filter(r => !r.sentToTech);
+                          const hasSentRoutes = dayRoutes.some(r => r.sentToTech);
+                          return (
+                            <div>
+                              {hasSentRoutes && (
+                                <div style={{
+                                  marginTop: '6px', padding: '6px 10px', fontSize: '10px', color: '#86efac',
+                                  background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)',
+                                  borderRadius: '6px', textAlign: 'center'
+                                }}>✓ Sent to technician</div>
+                              )}
+                              {editableRoutes.length > 0 && (
+                                <button
+                                  onClick={() => {
+                                    setStatusFilter('scheduled');
+                                    setShowNeedScheduling(true);
+                                    setFocusedDays([selectedDate]);
+                                    const dayRoute = editableRoutes[0];
+                                    if (dayRoute) {
+                                      setEditingSavedRouteId(dayRoute.id);
+                                      setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
+                                      setRoutePlannerEditMode(true);
+                                    }
+                                  }}
+                                  style={{
+                                    width: '100%', marginTop: '8px', padding: '8px', fontSize: '11px', fontWeight: 600,
+                                    background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
+                                    borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
+                                  }}
+                                >
+                                  ✏️ Edit in Route Planner
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
