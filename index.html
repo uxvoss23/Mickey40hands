@@ -3468,7 +3468,7 @@
           return;
         }
         
-        const routeCustomers = savedRoute.customers;
+        const routeCustomers = savedRoute.customers.map(c => ({ ...c }));
         const today = new Date().toISOString();
         const todayFormatted = new Date().toLocaleDateString('en-US', {
           year: 'numeric',
