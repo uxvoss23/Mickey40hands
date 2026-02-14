@@ -39,6 +39,8 @@ function buildRouteEmailHTML(routeData) {
   const stopsHTML = stops.map((stop, i) => {
     const phoneList = [stop.phone, ...(stop.secondaryPhones || [])].filter(Boolean).join(', ');
     const panels = stop.panelCount || stop.totalPanels || 'N/A';
+    const serviceType = stop.serviceType || ((stop.customerType || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
+    const serviceIcon = (stop.customerType || 'residential') === 'commercial' ? '🏢' : '🏠';
     const amount = stop.amountPaid ? `$${parseFloat(stop.amountPaid).toFixed(2)}` : '$0.00';
     const time = stop.scheduledTime ? new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }) : '';
     const distance = i === 0 ? `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from HQ` : `${(stop.distanceFromPrevious || 0).toFixed(1)} mi from prev`;
@@ -62,6 +64,11 @@ function buildRouteEmailHTML(routeData) {
                       <td>
                         <span style="font-weight: 700; color: #1e293b; font-size: 15px;">${stop.name}</span>
                         ${time ? `<span style="color: #6366f1; font-weight: 600; font-size: 13px;"> &bull; ${time}</span>` : ''}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding-top: 2px;">
+                        <span style="color: #8b5cf6; font-size: 12px; font-weight: 500;">${serviceIcon} ${serviceType}</span>
                       </td>
                     </tr>
                     <tr>

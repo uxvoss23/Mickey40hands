@@ -3590,6 +3590,8 @@
                   amountPaid: c.amountPaid,
                   customerNotes: c.customerNotes || c.notes || '',
                   notes: c.notes || '',
+                  serviceType: c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning'),
+                  customerType: c.customerType || c.customer_type || 'residential',
                   distanceFromPrevious: c.distanceFromPrevious,
                   distanceFromHome: c.distanceFromHome,
                   distanceToHome: c.distanceToHome,
