@@ -2848,7 +2848,7 @@
           });
           const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
           const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
-          if (savedRouteForDay) {
+          if (savedRouteForDay && !savedRouteForDay.sentToTech) {
             setSavedRoutes(prev => prev.map(r => {
               if (r.id === savedRouteForDay.id) {
                 return { ...r, customers: (r.customers || []).filter(c => c.id !== customer.id) };
@@ -2878,8 +2878,9 @@
             });
 
           let allExistingJobs = [...jobsForDay];
-          if (savedRouteForDay && savedViewDays[dateKey] === true) {
-            const savedJobs = (savedRouteForDay.customers || [])
+          const unsavedSavedRouteForDay = savedRouteForDay && !savedRouteForDay.sentToTech ? savedRouteForDay : null;
+          if (unsavedSavedRouteForDay && savedViewDays[dateKey] === true) {
+            const savedJobs = (unsavedSavedRouteForDay.customers || [])
               .filter(rc => rc.scheduledTime)
               .sort((a, b) => {
                 const [aH, aM] = a.scheduledTime.split(':').map(Number);
@@ -2915,9 +2916,9 @@
             }
           }
 
-          if (savedRouteForDay && savedViewDays[dateKey] === true) {
+          if (unsavedSavedRouteForDay && savedViewDays[dateKey] === true) {
             const routeCustomerMap = new Map();
-            savedRouteForDay.customers.forEach(rc => {
+            unsavedSavedRouteForDay.customers.forEach(rc => {
               routeCustomerMap.set(rc.id, rc);
             });
             const newTime = nextSlot ? nextSlot.time : '08:00';
@@ -2936,7 +2937,7 @@
                 return {
                   ...c,
                   scheduledTime: rc.scheduledTime || c.scheduledTime,
-                  scheduledDate: savedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
+                  scheduledDate: unsavedSavedRouteForDay.scheduledDate || rc.scheduledDate || c.scheduledDate,
                   status: 'scheduled',
                   routeConfirmed: true
                 };
@@ -2946,9 +2947,9 @@
 
             setRoutesByDay(prev => ({
               ...prev,
-              [dateKey]: [...savedRouteForDay.customers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
+              [dateKey]: [...unsavedSavedRouteForDay.customers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
             }));
-            setEditingSavedRouteId(savedRouteForDay.id);
+            setEditingSavedRouteId(unsavedSavedRouteForDay.id);
             setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
             setUnsavedRouteChanges(true);
             setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
