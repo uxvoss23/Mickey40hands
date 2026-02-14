@@ -3427,7 +3427,7 @@
       const handleMassEmail = (customers) => {
         const emails = customers.map(c => c.email).filter(Boolean).join(';');
         if (emails) {
-          window.location.href = `mailto:${emails}`;
+          window.open(`mailto:${emails}`, '_blank');
         } else {
           setError('No email addresses found');
           setTimeout(() => setError(null), 3000);
@@ -3576,7 +3576,7 @@
         body += `Drive Home from Last Job: ${(driveFromLast || 0).toFixed(1)} miles\n\n`;
         body += `ROUTE:\n${routeDetails}`;
 
-        window.location.href = `mailto:seanvoss23@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        window.open(`mailto:seanvoss23@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
       };
 
 
