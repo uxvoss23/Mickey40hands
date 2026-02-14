@@ -88,7 +88,7 @@ router.patch('/:id', async (req, res) => {
     const params = [];
     let paramIndex = 1;
 
-    const fields = ['name', 'scheduled_date', 'status', 'total_distance', 'sent_to_tech', 'sent_date', 'sent_at'];
+    const fields = ['name', 'scheduled_date', 'status', 'total_distance', 'sent_to_tech', 'sent_date', 'sent_at', 'completed_at'];
     for (const field of fields) {
       if (updates[field] !== undefined) {
         setClauses.push(`${field} = $${paramIndex}`);

@@ -3489,70 +3489,25 @@
           if (isInRoute) {
             return {
               ...c,
-              lastServiceDate: scheduledDate,
-              status: '',
-              routeConfirmed: false,
-              confirmedRouteName: null,
-              scheduledDate: null,
-              nextScheduledDate: null,
-              scheduledTime: null,
-              serviceHistory: [
-                ...(c.serviceHistory || []),
-                {
-                  id: `history_${Date.now()}_${Math.random()}`,
-                  date: today,
-                  routeName: savedRoute.name,
-                  customerNotes: c.notes || '',
-                  scheduledDate: savedRoute.scheduledDate,
-                  jobType: c.jobType || 'Panel Cleaning',
-                  cost: c.amountPaid || 0,
-                  panelCount: c.panelCount || c.totalPanels || 0
-                }
-              ]
+              status: 'in progress',
+              routeConfirmed: true,
+              confirmedRouteName: savedRoute.name
             };
           }
           return c;
         }));
         
         routeCustomers.forEach(async (rc) => {
-          const isRecurring = rc.isRecurring || rc.recurring;
-          
-          if (isRecurring) {
-            try {
-              const jobsRes = await apiFetch(`/jobs?customer_id=${rc.id}`);
-              const jobsData = await jobsRes.json();
-              const activeRecurringJob = (jobsData.jobs || []).find(j => 
-                j.is_recurring && j.status !== 'completed' && j.status !== 'cancelled'
-              );
-              if (activeRecurringJob) {
-                const patchRes = await apiFetch(`/jobs/${activeRecurringJob.id}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({ status: 'completed', completed_date: scheduledDate })
-                });
-                const patchData = await patchRes.json();
-                if (patchData.next_job) {
-                  const nextDate = patchData.next_job.scheduled_date;
-                  const daysUntilNext = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
-                  setCustomers(prev => prev.map(c => c.id === rc.id ? {
-                    ...c,
-                    status: daysUntilNext <= 30 ? 'scheduled' : '',
-                    scheduledDate: nextDate,
-                    nextScheduledDate: nextDate
-                  } : c));
-                }
-              }
-            } catch (err) {
-              console.error('Error auto-completing recurring job for', rc.name, err);
-            }
-          } else {
-            propagateCustomerUpdate(rc.id, {
-              lastServiceDate: scheduledDate,
-              status: '',
-              routeConfirmed: false,
-              confirmedRouteName: null,
-              scheduledDate: null,
-              scheduledTime: null
+          propagateCustomerUpdate(rc.id, {
+            status: 'in progress'
+          });
+          try {
+            await apiFetch(`/customers/${rc.id}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status: 'in progress' })
             });
+          } catch (err) {
+            console.error('Error updating customer status to in progress:', err);
           }
         });
 
@@ -3655,6 +3610,143 @@
         }
       };
 
+
+      const completeRoute = async (savedRoute) => {
+        if (!savedRoute || !savedRoute.customers || savedRoute.customers.length === 0) return;
+        if (savedRoute.completedAt) return;
+        
+        if (!window.confirm(`Mark route "${savedRoute.name}" as complete? This will update last service dates and finalize all jobs.`)) return;
+        
+        const routeCustomers = savedRoute.customers;
+        const today = new Date().toISOString();
+        const scheduledDate = savedRoute.scheduledDate || today;
+        
+        setCustomers(prev => prev.map(c => {
+          const isInRoute = routeCustomers.some(rc => rc.id === c.id);
+          if (isInRoute) {
+            return {
+              ...c,
+              lastServiceDate: scheduledDate,
+              status: '',
+              routeConfirmed: false,
+              confirmedRouteName: null,
+              scheduledDate: null,
+              nextScheduledDate: null,
+              scheduledTime: null,
+              serviceHistory: [
+                ...(c.serviceHistory || []),
+                {
+                  id: `history_${Date.now()}_${Math.random()}`,
+                  date: today,
+                  routeName: savedRoute.name,
+                  customerNotes: c.notes || '',
+                  scheduledDate: savedRoute.scheduledDate,
+                  jobType: c.jobType || 'Panel Cleaning',
+                  cost: c.amountPaid || 0,
+                  panelCount: c.panelCount || c.totalPanels || 0
+                }
+              ]
+            };
+          }
+          return c;
+        }));
+        
+        for (const rc of routeCustomers) {
+          const isRecurring = rc.isRecurring || rc.recurring;
+          
+          if (isRecurring) {
+            try {
+              const jobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+              const activeRecurringJob = (jobsData.jobs || []).find(j => 
+                j.is_recurring && j.status !== 'completed' && j.status !== 'cancelled'
+              );
+              if (activeRecurringJob) {
+                const patchData = await apiFetch(`/jobs/${activeRecurringJob.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'completed', completed_date: scheduledDate })
+                });
+                if (patchData.next_job) {
+                  const nextDate = patchData.next_job.scheduled_date;
+                  const daysUntilNext = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
+                  const newStatus = daysUntilNext <= 30 ? 'scheduled' : '';
+                  setCustomers(prev => prev.map(c => c.id === rc.id ? {
+                    ...c,
+                    status: newStatus,
+                    scheduledDate: nextDate,
+                    nextScheduledDate: nextDate,
+                    lastServiceDate: scheduledDate,
+                    routeConfirmed: false,
+                    confirmedRouteName: null,
+                    scheduledTime: null
+                  } : c));
+                  await apiFetch(`/customers/${rc.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ 
+                      status: newStatus, 
+                      last_service_date: scheduledDate,
+                      scheduled_date: nextDate
+                    })
+                  });
+                } else {
+                  setCustomers(prev => prev.map(c => c.id === rc.id ? {
+                    ...c, status: '', lastServiceDate: scheduledDate, routeConfirmed: false,
+                    confirmedRouteName: null, scheduledDate: null, scheduledTime: null
+                  } : c));
+                  await apiFetch(`/customers/${rc.id}`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ status: '', last_service_date: scheduledDate, scheduled_date: null })
+                  });
+                }
+              }
+            } catch (err) {
+              console.error('Error completing recurring job for', rc.name, err);
+            }
+          } else {
+            propagateCustomerUpdate(rc.id, {
+              lastServiceDate: scheduledDate,
+              status: '',
+              routeConfirmed: false,
+              confirmedRouteName: null,
+              scheduledDate: null,
+              scheduledTime: null
+            });
+            try {
+              await apiFetch(`/customers/${rc.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ 
+                  status: '', 
+                  last_service_date: scheduledDate,
+                  scheduled_date: null
+                })
+              });
+              const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+              const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+              for (const j of activeJobs) {
+                await apiFetch(`/jobs/${j.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'completed', completed_date: scheduledDate })
+                });
+              }
+            } catch (err) {
+              console.error('Error completing non-recurring customer:', rc.name, err);
+            }
+          }
+        }
+        
+        const completedAtTimestamp = new Date().toISOString();
+        setSavedRoutes(prev => prev.map(r =>
+          r.id === savedRoute.id ? { ...r, completedAt: completedAtTimestamp } : r
+        ));
+        
+        try {
+          await apiFetch(`/routes/${savedRoute.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: 'completed', completed_at: completedAtTimestamp })
+          });
+        } catch (e) { console.error('Failed to persist route completion:', e); }
+        
+        alert(`Route "${savedRoute.name}" marked as complete!`);
+      };
 
       // Update pipeline customer
       const updatePipelineCustomer = (pipelineId, updates) => {
@@ -6180,7 +6272,7 @@ const createJob = async () => {
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
                               <div style={{ fontSize: '11px', color: '#64748b' }}>{c.city}{c.city && c.state ? ', ' : ''}{c.state}{c.zip ? ' ' + c.zip : ''}</div>
                             </div>
-                            <div style={{ fontSize: '10px', padding: '2px 8px', background: c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.15)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.15)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(100, 116, 139, 0.15)', border: '1px solid ' + (c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.2)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.2)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 116, 139, 0.15)'), borderRadius: '10px', color: c.status === 'unscheduled' ? '#ef4444' : c.status === 'scheduled' ? '#fbbf24' : c.status === 'completed' ? '#22c55e' : '#64748b' }}>
+                            <div style={{ fontSize: '10px', padding: '2px 8px', background: c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.15)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.15)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.15)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(100, 116, 139, 0.15)', border: '1px solid ' + (c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.2)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.2)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.2)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.15)'), borderRadius: '10px', color: c.status === 'unscheduled' ? '#ef4444' : c.status === 'scheduled' ? '#fbbf24' : c.status === 'completed' ? '#22c55e' : c.status === 'in progress' ? '#3b82f6' : '#64748b' }}>
                               {c.status || 'no status'}
                             </div>
                           </div>
@@ -11280,14 +11372,29 @@ const createJob = async () => {
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                             <span style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9' }}>{savedRoute.name}</span>
-                            <span style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '10px', color: '#22c55e', fontWeight: 600 }}>✓ Sent</span>
+                            {savedRoute.completedAt ? (
+                              <span style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '10px', color: '#22c55e', fontWeight: 600 }}>✓ Completed</span>
+                            ) : (
+                              <span style={{ fontSize: '10px', padding: '2px 8px', background: 'rgba(251, 191, 36, 0.2)', borderRadius: '10px', color: '#fbbf24', fontWeight: 600 }}>In Progress</span>
+                            )}
                           </div>
                           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                             <span style={{ fontSize: '11px', color: '#94a3b8' }}>📅 {dayLabel}</span>
                             <span style={{ fontSize: '11px', color: '#94a3b8' }}>👥 {savedRoute.customers.length} stops</span>
                             {totalMiles > 0 && <span style={{ fontSize: '11px', color: '#94a3b8' }}>🚗 {totalMiles.toFixed(1)} mi</span>}
                             {savedRoute.sentAt && <span style={{ fontSize: '10px', color: '#64748b' }}>Sent {new Date(savedRoute.sentAt).toLocaleDateString()}</span>}
+                            {savedRoute.completedAt && <span style={{ fontSize: '10px', color: '#22c55e' }}>Done {new Date(savedRoute.completedAt).toLocaleDateString()}</span>}
                           </div>
+                          {!savedRoute.completedAt && (
+                            <button
+                              onClick={() => completeRoute(savedRoute)}
+                              style={{
+                                marginTop: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: 700,
+                                background: 'rgba(34, 197, 94, 0.2)', border: '1px solid rgba(34, 197, 94, 0.4)',
+                                borderRadius: '6px', color: '#22c55e', cursor: 'pointer', width: '100%'
+                              }}
+                            >✓ Mark Complete</button>
+                          )}
                         </div>
 
                         <div style={{ padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1, overflowY: 'auto', maxHeight: '300px' }} className="scrollbar-custom">
@@ -11748,6 +11855,7 @@ const createJob = async () => {
                                           <option value="">None</option>
                                           <option value="unscheduled">Unscheduled</option>
                                           <option value="scheduled">Scheduled</option>
+                                          <option value="in progress">In Progress</option>
                                         </select>
                                       ) : col.key === 'isRecurring' ? (
                                         <select
@@ -11798,6 +11906,7 @@ const createJob = async () => {
                                       fontWeight: 600,
                                       background: (() => {
                                         const s = (customer.status || '').toLowerCase();
+                                        if (s === 'in progress') return 'rgba(59, 130, 246, 0.2)';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return 'rgba(59, 130, 246, 0.2)';
                                         if (s.includes('unscheduled')) return 'rgba(245, 158, 11, 0.2)';
                                         if (!s) return 'rgba(100, 116, 139, 0.2)';
@@ -11805,6 +11914,7 @@ const createJob = async () => {
                                       })(),
                                       color: (() => {
                                         const s = (customer.status || '').toLowerCase();
+                                        if (s === 'in progress') return '#3b82f6';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return '#3b82f6';
                                         if (s.includes('unscheduled')) return '#f59e0b';
                                         if (!s) return '#94a3b8';
@@ -11812,6 +11922,7 @@ const createJob = async () => {
                                       })(),
                                       border: (() => {
                                         const s = (customer.status || '').toLowerCase();
+                                        if (s === 'in progress') return '1px solid rgba(59, 130, 246, 0.3)';
                                         if (s.includes('scheduled') && !s.includes('unscheduled')) return '1px solid rgba(59, 130, 246, 0.3)';
                                         if (s.includes('unscheduled')) return '1px solid rgba(245, 158, 11, 0.3)';
                                         if (!s) return '1px solid rgba(100, 116, 139, 0.3)';

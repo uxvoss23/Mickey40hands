@@ -121,9 +121,20 @@ const updateScheduledStatuses = async () => {
   }
 };
 
+const applySchemaUpdates = async () => {
+  const pool = require('./db/pool');
+  try {
+    await pool.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS sent_at TIMESTAMP`);
+    await pool.query(`ALTER TABLE routes ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`);
+  } catch (err) {
+    console.error('Schema update warning:', err.message);
+  }
+};
+
 const start = async () => {
   try {
     await migrate();
+    await applySchemaUpdates();
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
