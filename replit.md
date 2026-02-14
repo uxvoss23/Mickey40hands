@@ -52,6 +52,8 @@ The application is a full-stack web application comprising an Express.js backend
     - `Leaflet.heat 0.2.0`: Plugin for heatmap visualization on Leaflet maps.
     - `Babel Standalone`: In-browser JSX transpilation.
     - `Inter font`: From Google Fonts for typography.
+    - `resend`: Email sending service for formatted HTML route emails.
 - **APIs/Services**:
     - `Google Places Autocomplete API`: For address autocompletion and geocoding.
     - `Nominatim API`: Used for initial geocoding (though largely replaced by Google Places for autocomplete, it may still serve for reverse geocoding or specific needs).
+    - `Resend API`: For sending formatted HTML emails (route details to technicians). Free tier limited to sending to the account owner email only (solarcleaning@suntonsolutions.com). To send to other addresses, verify a domain at resend.com/domains. API key stored as RESEND_API_KEY secret.

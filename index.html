@@ -531,6 +531,8 @@
       const [referencePoint, setReferencePoint] = useState(null);
       const [referenceAddress, setReferenceAddress] = useState('');
       const [homeBase, setHomeBase] = useState(null);
+      const [techEmail, setTechEmail] = useState(() => localStorage.getItem('techEmail') || 'solarcleaning@suntonsolutions.com');
+      const [sendingEmail, setSendingEmail] = useState(false);
       const [mapBounds, setMapBounds] = useState(null);
       const [route, setRoute] = useState([]); // Keep for backward compatibility
       const [routesByDay, setRoutesByDay] = useState({}); // New: routes organized by day
@@ -3435,7 +3437,7 @@
       };
       
       // Email route to tech with full details
-      const emailRouteToTech = (savedRoute) => {
+      const emailRouteToTech = async (savedRoute) => {
         if (!savedRoute || !savedRoute.customers || savedRoute.customers.length === 0) {
           setError('No customers in route');
           setTimeout(() => setError(null), 3000);
@@ -3528,55 +3530,61 @@
           r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
         ));
 
-        // Calculate totals
-        const totalRevenue = routeCustomers.reduce((sum, c) => {
-          return sum + (parseFloat(c.amountPaid) || 0);
-        }, 0);
-        
-        // Calculate distances
+        const totalRevenue = routeCustomers.reduce((sum, c) => sum + (parseFloat(c.amountPaid) || 0), 0);
         const totalMiles = routeCustomers[routeCustomers.length - 1]?.cumulativeDistance || 0;
         const avgDistance = routeCustomers.length > 1 ? totalMiles / (routeCustomers.length - 1) : 0;
         const driveToFirst = routeCustomers[0]?.distanceFromHome || 0;
         const driveFromLast = routeCustomers[routeCustomers.length - 1]?.distanceToHome || 0;
-        
-        // Build route details with customer notes
-        const routeDetails = routeCustomers.map((c, i) => {
-          const phoneList = [c.phone, ...(c.secondaryPhones || [])].filter(Boolean).join(', ');
-          const emailList = [c.email, ...(c.secondaryEmails || [])].filter(Boolean).join(', ');
-          
-          let details = `${i + 1}. ${c.name} - ${c.address}
-   Distance from previous: ${i === 0 ? 'Start' : (c.distanceFromPrevious?.toFixed(1) || '0.0') + ' miles'}
-   Phone: ${phoneList || 'N/A'}
-   Email: ${emailList || 'N/A'}
-   Panels: ${c.panelCount || c.totalPanels || 'N/A'}
-   Recurring: ${c.isRecurring || c.recurring ? 'Yes' : 'No'}
-   Last Service: ${c.lastServiceDate || 'N/A'}
-   Amount Paid: $${c.amountPaid || '0.00'}`;
-   
-          if (c.customerNotes || c.notes) {
-            details += `\n   📝 NOTES: ${c.customerNotes || c.notes}`;
-          }
-          
-          return details;
-        }).join('\n\n');
-        
-        const subject = `Route: ${savedRoute.name} (${todayFormatted}) (${routeCustomers.length} jobs)`;
-        
-        let body = `ROUTE: ${savedRoute.name}\n`;
-        body += `Scheduled: ${new Date(savedRoute.scheduledDate).toLocaleDateString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric'
-        })}\n`;
-        body += `Total Revenue: $${(totalRevenue || 0).toFixed(2)}\n`;
-        body += `Total Miles Driven: ${(totalMiles || 0).toFixed(1)} miles\n`;
-        body += `Average Distance Between Jobs: ${(avgDistance || 0).toFixed(1)} miles\n`;
-        body += `Drive to First Job: ${(driveToFirst || 0).toFixed(1)} miles\n`;
-        body += `Drive Home from Last Job: ${(driveFromLast || 0).toFixed(1)} miles\n\n`;
-        body += `ROUTE:\n${routeDetails}`;
 
-        window.open(`mailto:seanvoss23@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`, '_blank');
+        setSendingEmail(true);
+        try {
+          const response = await apiFetch('/email/send-route', {
+            method: 'POST',
+            body: JSON.stringify({
+              to: techEmail,
+              routeData: {
+                routeName: savedRoute.name,
+                scheduledDate: savedRoute.scheduledDate || today,
+                stops: routeCustomers.map(c => ({
+                  name: c.name,
+                  address: c.address,
+                  phone: c.phone,
+                  secondaryPhones: c.secondaryPhones || [],
+                  email: c.email,
+                  secondaryEmails: c.secondaryEmails || [],
+                  scheduledTime: c.scheduledTime,
+                  panelCount: c.panelCount || c.totalPanels,
+                  isRecurring: c.isRecurring || c.recurring,
+                  lastServiceDate: c.lastServiceDate,
+                  amountPaid: c.amountPaid,
+                  customerNotes: c.customerNotes || c.notes || '',
+                  notes: c.notes || '',
+                  distanceFromPrevious: c.distanceFromPrevious,
+                  distanceFromHome: c.distanceFromHome,
+                  distanceToHome: c.distanceToHome,
+                  cumulativeDistance: c.cumulativeDistance
+                })),
+                totalRevenue,
+                totalMiles,
+                avgDistance,
+                driveToFirst,
+                driveFromLast
+              }
+            })
+          });
+          if (response.success) {
+            setError(null);
+            alert('Route email sent successfully to ' + techEmail + '!');
+          } else {
+            throw new Error(response.error || 'Failed to send email');
+          }
+        } catch (err) {
+          console.error('Email send error:', err);
+          setError('Failed to send email: ' + err.message);
+          setTimeout(() => setError(null), 5000);
+        } finally {
+          setSendingEmail(false);
+        }
       };
 
 
@@ -10731,7 +10739,23 @@ const createJob = async () => {
                 overflow: 'auto',
                 padding: '24px'
               }} className="scrollbar-custom">
-                <h2 style={{ fontSize: '20px', fontWeight: 800, marginBottom: '16px' }}>📁 Saved Routes</h2>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+                  <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>📁 Saved Routes</h2>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>📧 Send to:</span>
+                    <input
+                      type="email"
+                      value={techEmail}
+                      onChange={(e) => {
+                        setTechEmail(e.target.value);
+                        localStorage.setItem('techEmail', e.target.value);
+                      }}
+                      className="input-field"
+                      style={{ width: '220px', height: '32px', fontSize: '12px' }}
+                      placeholder="technician@email.com"
+                    />
+                  </div>
+                </div>
                 
                 {savedRoutes.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
@@ -10838,12 +10862,15 @@ const createJob = async () => {
                             >✏️ Edit</button>
                             <button
                               onClick={() => emailRouteToTech(savedRoute)}
+                              disabled={sendingEmail}
                               style={{
                                 padding: '4px 10px', fontSize: '11px', fontWeight: 600,
-                                background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
-                                borderRadius: '5px', color: '#22c55e', cursor: 'pointer'
+                                background: sendingEmail ? 'rgba(34, 197, 94, 0.05)' : 'rgba(34, 197, 94, 0.15)', 
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                borderRadius: '5px', color: '#22c55e', cursor: sendingEmail ? 'not-allowed' : 'pointer',
+                                opacity: sendingEmail ? 0.6 : 1
                               }}
-                            >📧 Send</button>
+                            >{sendingEmail ? '⏳ Sending...' : '📧 Send'}</button>
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {

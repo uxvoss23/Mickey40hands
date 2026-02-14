@@ -7,6 +7,7 @@ const jobsRouter = require('./routes/jobs');
 const routesRouter = require('./routes/routes');
 const listsRouter = require('./routes/lists');
 const exportRouter = require('./routes/export');
+const emailRouter = require('./routes/email');
 
 const app = express();
 const PORT = 5000;
@@ -37,6 +38,7 @@ app.use('/api/jobs', jobsRouter);
 app.use('/api/routes', routesRouter);
 app.use('/api/lists', listsRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/email', emailRouter);
 
 app.use(express.static(path.join(__dirname, '..'), {
   setHeaders: (res, filePath) => {
