@@ -3556,11 +3556,6 @@
           }
         });
 
-        // Mark route as sent
-        setSavedRoutes(prev => prev.map(r =>
-          r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
-        ));
-
         const totalRevenue = routeCustomers.reduce((sum, c) => sum + (parseFloat(c.amountPaid) || 0), 0);
         
         const HOME_BASE = homeBase || { lat: 32.8866, lng: -97.3368 };
@@ -3638,6 +3633,15 @@
           });
           if (response.success) {
             setError(null);
+            setSavedRoutes(prev => prev.map(r =>
+              r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today } : r
+            ));
+            try {
+              await apiFetch(`/routes/${savedRoute.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ sent_to_tech: true, sent_date: today })
+              });
+            } catch (e) { console.error('Failed to persist sent status:', e); }
             alert('Route email sent successfully to ' + techEmail + '!');
           } else {
             throw new Error(response.error || 'Failed to send email');
@@ -10922,23 +10926,29 @@ const createJob = async () => {
                                 setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                 setCurrentView('map');
                               }}
+                              disabled={savedRoute.sentToTech}
                               style={{
                                 padding: '4px 10px', fontSize: '11px', fontWeight: 600,
-                                background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
-                                borderRadius: '5px', color: '#a78bfa', cursor: 'pointer'
+                                background: savedRoute.sentToTech ? 'rgba(100, 116, 139, 0.1)' : 'rgba(139, 92, 246, 0.15)',
+                                border: savedRoute.sentToTech ? '1px solid rgba(100, 116, 139, 0.2)' : '1px solid rgba(139, 92, 246, 0.3)',
+                                borderRadius: '5px',
+                                color: savedRoute.sentToTech ? '#64748b' : '#a78bfa',
+                                cursor: savedRoute.sentToTech ? 'not-allowed' : 'pointer',
+                                opacity: savedRoute.sentToTech ? 0.5 : 1
                               }}
                             >✏️ Edit</button>
                             <button
                               onClick={() => emailRouteToTech(savedRoute)}
-                              disabled={sendingEmail}
+                              disabled={sendingEmail || savedRoute.sentToTech}
                               style={{
                                 padding: '4px 10px', fontSize: '11px', fontWeight: 600,
-                                background: sendingEmail ? 'rgba(34, 197, 94, 0.05)' : 'rgba(34, 197, 94, 0.15)', 
+                                background: savedRoute.sentToTech ? 'rgba(34, 197, 94, 0.05)' : sendingEmail ? 'rgba(34, 197, 94, 0.05)' : 'rgba(34, 197, 94, 0.15)', 
                                 border: '1px solid rgba(34, 197, 94, 0.3)',
-                                borderRadius: '5px', color: '#22c55e', cursor: sendingEmail ? 'not-allowed' : 'pointer',
-                                opacity: sendingEmail ? 0.6 : 1
+                                borderRadius: '5px', color: '#22c55e',
+                                cursor: (sendingEmail || savedRoute.sentToTech) ? 'not-allowed' : 'pointer',
+                                opacity: (sendingEmail || savedRoute.sentToTech) ? 0.5 : 1
                               }}
-                            >{sendingEmail ? '⏳ Sending...' : '📧 Send'}</button>
+                            >{savedRoute.sentToTech ? '✓ Sent' : sendingEmail ? '⏳ Sending...' : '📧 Send'}</button>
                             <button
                               onClick={() => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
