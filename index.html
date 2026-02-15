@@ -2804,6 +2804,16 @@
           setRoutePlannerEditMode(true);
         }
 
+        // Guard: block editing if the currently active route for this day is a sent route
+        if (statusFilter === 'scheduled') {
+          if (editingSavedRouteId) {
+            const editingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+            if (editingRoute && editingRoute.sentToTech) {
+              return;
+            }
+          }
+        }
+
         // Guard: if in route planner, block clicks on pins from OTHER days' routes
         if (statusFilter === 'scheduled') {
           const isOnAnotherDaysRoute = Object.entries(routesByDay).some(([key, stops]) => {
@@ -2830,6 +2840,15 @@
         const isInRoute = isInRoutesByDay || isScheduledForDay;
 
         if (isInRoute) {
+          // Block removal if customer is part of a sent route for this day
+          const sentRouteWithCustomer = savedRoutes.find(r => {
+            if (!r.sentToTech) return false;
+            const rDate = new Date(r.scheduledDate);
+            if (rDate.toDateString() !== dateKey) return false;
+            return (r.customers || []).some(c => c.id === customer.id);
+          });
+          if (sentRouteWithCustomer) return;
+
           // Remove from THIS DAY'S route AND clear scheduling (only if actually scheduled)
           setRoutesByDay(prev => ({
             ...prev,
@@ -2998,6 +3017,10 @@
         if (draggedIndex === null || draggedIndex === index) {
           setDraggedIndex(null);
           return;
+        }
+        if (editingSavedRouteId) {
+          const editingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+          if (editingRoute && editingRoute.sentToTech) { setDraggedIndex(null); return; }
         }
 
         const dateKey = selectedDate.toDateString();
@@ -7345,11 +7368,74 @@ const createJob = async () => {
                         );
                       }
                       
+                      // Check if currently editing/viewing a sent route
+                      const isViewingSentRoute = editingSavedRouteId && savedRoutes.find(r => r.id === editingSavedRouteId)?.sentToTech;
+
                       // EDIT VIEW - Show action buttons (if jobs exist) and timeslots
                       return (
                         <div>
-                          {/* Action Buttons */}
-                          {jobsForDay.length > 0 ? (
+                          {/* Sent Route Read-Only Banner */}
+                          {isViewingSentRoute && (
+                            <div style={{ marginBottom: '12px' }}>
+                              <div style={{
+                                padding: '10px 12px',
+                                background: 'rgba(34, 197, 94, 0.1)',
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                color: '#86efac',
+                                textAlign: 'center',
+                                marginBottom: '8px'
+                              }}>
+                                ✓ This route has been sent to the technician (read-only)
+                              </div>
+                              <button
+                                onClick={() => {
+                                  setEditingSavedRouteId(null);
+                                  setRoutesByDay(prev => ({ ...prev, [dateKey]: [] }));
+                                  setRoutePlannerEditMode(true);
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                                  setUnsavedRouteChanges(true);
+                                  setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
+                                }}
+                                className="button-primary"
+                                style={{
+                                  width: '100%',
+                                  padding: '10px',
+                                  fontSize: '12px',
+                                  fontWeight: 700,
+                                  justifyContent: 'center',
+                                  marginBottom: '8px'
+                                }}
+                              >
+                                + Create New Route for This Day
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
+                                  setEditingSavedRouteId(null);
+                                  setRoutePlannerEditMode(false);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '6px 10px',
+                                  fontSize: '10px',
+                                  fontWeight: 600,
+                                  background: 'rgba(100,116,139,0.15)',
+                                  border: '1px solid rgba(100,116,139,0.3)',
+                                  borderRadius: '6px',
+                                  color: '#94a3b8',
+                                  cursor: 'pointer',
+                                  textAlign: 'center'
+                                }}
+                              >
+                                ↩️ Back to Saved View
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Action Buttons - only show when NOT viewing a sent route */}
+                          {!isViewingSentRoute && jobsForDay.length > 0 ? (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
                               <div style={{ display: 'flex', gap: '6px' }}>
                               <button
@@ -7504,7 +7590,7 @@ const createJob = async () => {
                                 </div>
                               )}
                           </div>
-                          ) : editingSavedRouteId ? (
+                          ) : (!isViewingSentRoute && editingSavedRouteId) ? (
                             <div style={{ marginBottom: '8px' }}>
                               <div style={{ padding: '12px', background: 'rgba(239,68,68,0.08)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)', marginBottom: '8px', textAlign: 'center' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '4px' }}>All stops removed</div>
@@ -7651,7 +7737,7 @@ const createJob = async () => {
                                 onDrop={(e) => {
                                   e.preventDefault();
                                   e.currentTarget.style.background = isBlocked ? 'rgba(239, 68, 68, 0.05)' : 'rgba(30, 41, 59, 0.3)';
-                                  
+                                  if (isViewingSentRoute) return;
                                   const customerData = e.dataTransfer.getData('customer');
                                   if (customerData) {
                                     const customer = JSON.parse(customerData);
@@ -8473,7 +8559,9 @@ const createJob = async () => {
                                       const isToday = date.toDateString() === new Date().toDateString();
                                       const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
                                       const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                                      const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                                       const jobCount = routesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
+                                      const sentCount = sentRoutesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
                                       return (
                                         <div key={idx}
                                           onClick={() => {
@@ -8504,6 +8592,9 @@ const createJob = async () => {
                                           {jobCount > 0 && (
                                             <div style={{ fontSize: '8px', color: '#22c55e', fontWeight: 700 }}>{jobCount}</div>
                                           )}
+                                          {sentCount > 0 && jobCount === 0 && (
+                                            <div style={{ fontSize: '8px', color: '#86efac', fontWeight: 700 }}>✓</div>
+                                          )}
                                         </div>
                                       );
                                     });
@@ -8523,7 +8614,9 @@ const createJob = async () => {
                                 const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
                                 const isPrefMatch = hoveredUnroutedDays.includes(date.getDay());
                                 const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                                const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
                                 const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
+                                const hasSentRoutes = sentRoutesOnDay.length > 0;
                                 return (
                                   <div
                                     key={idx}
@@ -8549,12 +8642,13 @@ const createJob = async () => {
                                       transition: 'all 0.15s'
                                     }}
                                   >
-                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isPrefMatch ? '#22c55e' : jobCount > 0 ? dayColor.color : 'rgba(100, 116, 139, 0.3)', flexShrink: 0 }} />
+                                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isPrefMatch ? '#22c55e' : jobCount > 0 ? dayColor.color : hasSentRoutes ? '#22c55e' : 'rgba(100, 116, 139, 0.3)', flexShrink: 0 }} />
                                     <span style={{ fontSize: '12px', fontWeight: isFocused || isPrefMatch ? 700 : 500, color: isPrefMatch ? '#4ade80' : isFocused ? '#fbbf24' : isToday ? '#93c5fd' : '#e2e8f0', flex: 1 }}>
                                       {dayColor.label} {date.getMonth() + 1}/{date.getDate()}
                                     </span>
                                     {isPrefMatch && <span style={{ fontSize: '9px', color: '#4ade80', fontWeight: 700 }}>PREFERRED</span>}
                                     {isToday && !isPrefMatch && <span style={{ fontSize: '9px', color: '#93c5fd', fontWeight: 600 }}>TODAY</span>}
+                                    {hasSentRoutes && <span style={{ fontSize: '9px', color: '#86efac', fontWeight: 600 }}>✓ SENT</span>}
                                     <span style={{ fontSize: '11px', color: jobCount > 0 ? dayColor.color : '#475569', fontWeight: 600 }}>{jobCount} stop{jobCount !== 1 ? 's' : ''}</span>
                                   </div>
                                 );
