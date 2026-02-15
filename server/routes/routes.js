@@ -141,6 +141,7 @@ router.get('/:id/tech-view', async (req, res) => {
 
     const stops = await pool.query(`
       SELECT rs.id, rs.stop_order, rs.scheduled_time, rs.notes as stop_notes, rs.completed_at,
+             rs.before_photo, rs.after_photo, rs.inspection_notes, rs.recurring_selection,
              c.id as customer_id, c.full_name, c.address, c.phone, c.email, c.city, c.state, c.zip,
              c.panel_count, c.customer_notes, c.notes as job_notes, c.amount_paid,
              c.customer_type, c.is_recurring
@@ -161,6 +162,7 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const { before_photo, after_photo, inspection_notes, recurring_selection } = req.body || {};
 
     const stopResult = await client.query(
       'SELECT rs.*, c.is_recurring FROM route_stops rs JOIN customers c ON rs.customer_id = c.id WHERE rs.id = $1 AND rs.route_id = $2',
@@ -177,7 +179,10 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
       return res.status(400).json({ error: 'Stop already completed' });
     }
 
-    await client.query('UPDATE route_stops SET completed_at = NOW() WHERE id = $1', [stop.id]);
+    await client.query(
+      `UPDATE route_stops SET completed_at = NOW(), before_photo = $1, after_photo = $2, inspection_notes = $3, recurring_selection = $4 WHERE id = $5`,
+      [before_photo || null, after_photo || null, inspection_notes || '', recurring_selection || '', stop.id]
+    );
 
     const routeResult = await client.query('SELECT scheduled_date FROM routes WHERE id = $1', [req.params.id]);
     const scheduledDate = routeResult.rows[0]?.scheduled_date || new Date().toISOString().split('T')[0];
