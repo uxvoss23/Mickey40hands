@@ -436,8 +436,67 @@
       };
       input.click();
     }
-    function removeIssue(i) { modalState.issuePhotos.splice(i, 1); renderModal(); }
-    function setIssueTag(i, tag) { modalState.issuePhotos[i].tag = tag; }
+    const TAG_TO_DAMAGE = { 'Crack': 'Crack', 'Chip': 'Chip', 'Delamination': 'Delamination' };
+    const TAG_TO_SYSTEM = { 'Loose hardware': 'Loose racking / hardware', 'Pest activity': 'Pest activity', 'Roof concern': 'Roof penetration concern' };
+
+    function getActiveIssueTags() {
+      return modalState.issuePhotos.map(p => p.tag).filter(Boolean);
+    }
+
+    function isTagLocked(checkField, checkValue) {
+      const tags = getActiveIssueTags();
+      if (checkField === 'surfaceDamage') {
+        return tags.some(t => TAG_TO_DAMAGE[t] === checkValue);
+      }
+      if (checkField === 'systemChecks') {
+        return tags.some(t => TAG_TO_SYSTEM[t] === checkValue);
+      }
+      return false;
+    }
+
+    function showTagLockWarning(msg) {
+      let el = document.getElementById('tag-lock-warning');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'tag-lock-warning';
+        el.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#991b1b;color:#fecaca;padding:10px 18px;border-radius:8px;font-size:12px;font-weight:600;z-index:100001;box-shadow:0 4px 12px rgba(0,0,0,0.4);text-align:center;max-width:90%;';
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.style.display = 'block';
+      clearTimeout(el._timer);
+      el._timer = setTimeout(() => { el.style.display = 'none'; }, 3000);
+    }
+
+    function syncAllTagSelections() {
+      const tags = getActiveIssueTags();
+      const lockedDamage = tags.map(t => TAG_TO_DAMAGE[t]).filter(Boolean);
+      const lockedSystem = tags.map(t => TAG_TO_SYSTEM[t]).filter(Boolean);
+      if (lockedDamage.length > 0) {
+        const dmgVal = lockedDamage[lockedDamage.length - 1];
+        if (modalState.surfaceDamage !== dmgVal) {
+          modalState.surfaceDamage = dmgVal;
+          if (modalState.otherDamage) modalState.otherDamage = '';
+        }
+      }
+      lockedSystem.forEach(sysVal => {
+        if (!modalState.systemChecks.includes(sysVal)) {
+          modalState.systemChecks.push(sysVal);
+        }
+      });
+    }
+
+    function removeIssue(i) {
+      modalState.issuePhotos.splice(i, 1);
+      syncAllTagSelections();
+      renderModal();
+    }
+
+    function setIssueTag(i, tag) {
+      modalState.issuePhotos[i].tag = tag;
+      syncAllTagSelections();
+      renderModal();
+    }
 
     function getAllPhotos() {
       const photos = [];
@@ -447,6 +506,10 @@
     }
 
     function setRadio(field, value) {
+      if (field === 'surfaceDamage' && isTagLocked('surfaceDamage', modalState.surfaceDamage) && value !== modalState.surfaceDamage) {
+        showTagLockWarning('Cannot change — "' + modalState.surfaceDamage + '" is linked to an issue photo. Remove the photo first.');
+        return;
+      }
       modalState[field] = value;
       document.querySelectorAll('[data-radio-field="' + field + '"]').forEach(row => {
         const isSelected = row.dataset.radioValue === value;
@@ -465,7 +528,13 @@
     function toggleCheck(field, value) {
       const arr = modalState[field];
       const idx = arr.indexOf(value);
-      if (idx >= 0) arr.splice(idx, 1); else { if (field === 'debris' && arr.length >= 2) return; arr.push(value); }
+      if (idx >= 0) {
+        if (isTagLocked(field, value)) {
+          showTagLockWarning('Cannot uncheck — "' + value + '" is linked to an issue photo. Remove the photo first.');
+          return;
+        }
+        arr.splice(idx, 1);
+      } else { if (field === 'debris' && arr.length >= 2) return; arr.push(value); }
       document.querySelectorAll('[data-check-field="' + field + '"]').forEach(row => {
         const isChecked = arr.includes(row.dataset.checkValue);
         row.className = 'check-row' + (isChecked ? ' checked' : '');
@@ -601,12 +670,16 @@
         const label = typeof opt === 'string' ? opt : opt.label;
         const sel = ms[field] === val;
         const ex = extra && extra[val] ? extra[val] : '';
-        return '<div class="radio-row ' + (sel ? 'selected' : '') + '" data-radio-field="' + field + '" data-radio-value="' + val.replace(/"/g, '&quot;') + '" onclick="setRadio(\'' + field + '\',\'' + val.replace(/'/g, "\\'") + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1">' + label + ex + '</div></div>';
+        const locked = isTagLocked(field, val);
+        const lockIcon = locked ? '<span style="margin-left:auto;font-size:10px;opacity:0.7" title="Linked to issue photo">\uD83D\uDD12</span>' : '';
+        return '<div class="radio-row ' + (sel ? 'selected' : '') + '" data-radio-field="' + field + '" data-radio-value="' + val.replace(/"/g, '&quot;') + '" onclick="setRadio(\'' + field + '\',\'' + val.replace(/'/g, "\\'") + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1;display:flex;align-items:center">' + label + ex + lockIcon + '</div></div>';
       }).join('');
 
       const checkHTML = (field, options) => options.map(opt => {
         const chk = ms[field].includes(opt);
-        return '<div class="check-row ' + (chk ? 'checked' : '') + '" data-check-field="' + field + '" data-check-value="' + opt.replace(/"/g, '&quot;') + '" onclick="toggleCheck(\'' + field + '\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div>' + opt + '</div></div>';
+        const locked = isTagLocked(field, opt);
+        const lockIcon = locked ? '<span style="margin-left:auto;font-size:10px;opacity:0.7" title="Linked to issue photo">\uD83D\uDD12</span>' : '';
+        return '<div class="check-row ' + (chk ? 'checked' : '') + '" data-check-field="' + field + '" data-check-value="' + opt.replace(/"/g, '&quot;') + '" onclick="toggleCheck(\'' + field + '\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div style="flex:1;display:flex;align-items:center">' + opt + lockIcon + '</div></div>';
       }).join('');
 
       const recurringOptions = [
