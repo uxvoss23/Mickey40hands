@@ -257,9 +257,10 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
     if (!sd) return [];
     if (typeof sd === 'string') {
       if (sd === 'None') return [{ type: 'None' }];
+      if (sd.includes(',')) return sd.split(',').map(s => ({ type: s.trim() })).filter(d => d.type);
       return [{ type: sd }];
     }
-    if (Array.isArray(sd)) return sd;
+    if (Array.isArray(sd)) return sd.map(d => typeof d === 'object' ? d : { type: d });
     return [];
   };
   const damageItems = normalizeDamage(surfaceDamage);
@@ -320,15 +321,50 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
   const biannualSave = ((parseFloat(fullPrice) * 2) - (parseFloat(biannualPrice) * 2)).toFixed(2);
   const triannualSave = ((parseFloat(fullPrice) * 3) - (parseFloat(triannualPrice) * 3)).toFixed(2);
 
-  const photoGrid = (photoList, maxWidth) => {
+  const photoGrid = (photoList) => {
     if (!photoList || photoList.length === 0) return '';
-    const width = photoList.length === 1 ? '100%' : (photoList.length === 2 ? '48%' : '31%');
-    return photoList.map(p => `
-      <div style="display:inline-block;width:${width};vertical-align:top;padding:4px;">
-        <img src="${p.data}" alt="${p.label}" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;display:block;" />
-        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
-      </div>
-    `).join('');
+    if (photoList.length === 1) {
+      const p = photoList[0];
+      return `
+        <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+          <tr>
+            <td style="padding:4px;text-align:center;">
+              <img src="${p.data}" alt="${p.label}" style="width:100%;max-width:480px;border-radius:12px;display:block;margin:0 auto;" />
+              <div style="font-size:11px;color:#64748b;text-align:center;margin-top:8px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
+            </td>
+          </tr>
+        </table>`;
+    }
+    return `
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+        ${photoList.map((p, i) => {
+          if (i % 2 === 0) {
+            const next = photoList[i + 1];
+            if (next) {
+              return `
+                <tr>
+                  <td class="photo-cell" width="50%" style="padding:4px;text-align:center;vertical-align:top;">
+                    <img src="${p.data}" alt="${p.label}" style="width:100%;border-radius:10px;display:block;" />
+                    <div style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
+                  </td>
+                  <td class="photo-cell" width="50%" style="padding:4px;text-align:center;vertical-align:top;">
+                    <img src="${next.data}" alt="${next.label}" style="width:100%;border-radius:10px;display:block;" />
+                    <div style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${next.label.replace('Issue: ', '')}</div>
+                  </td>
+                </tr>`;
+            } else {
+              return `
+                <tr>
+                  <td colspan="2" style="padding:4px;text-align:center;">
+                    <img src="${p.data}" alt="${p.label}" style="width:100%;max-width:480px;border-radius:10px;display:block;margin:0 auto;" />
+                    <div style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
+                  </td>
+                </tr>`;
+            }
+          }
+          return '';
+        }).join('')}
+      </table>`;
   };
 
   const isEnrolled = recurringStatus && recurringStatus.startsWith('enrolled_');
@@ -439,6 +475,12 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @media only screen and (max-width: 480px) {
+      .photo-cell { display: block !important; width: 100% !important; padding: 4px 0 !important; }
+      .photo-cell img { width: 100% !important; max-width: 100% !important; }
+    }
+  </style>
 </head>
 <body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;">
@@ -481,13 +523,19 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
               </p>
               ${beforePhotos.length > 0 ? `
                 <div style="margin-bottom:8px;">
-                  <div style="background:#fffbeb;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;">
-                    <span style="font-size:20px;margin-right:10px;">📸</span>
-                    <div>
-                      <div style="font-size:14px;font-weight:800;color:#92400e;">Before Cleaning</div>
-                      <div style="font-size:11px;color:#b45309;">Initial condition documented</div>
-                    </div>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+                    <tr>
+                      <td style="background:#fffbeb;border-radius:10px;padding:10px 14px;">
+                        <table cellpadding="0" cellspacing="0"><tr>
+                          <td style="vertical-align:middle;padding-right:10px;"><span style="font-size:20px;">📸</span></td>
+                          <td style="vertical-align:middle;">
+                            <div style="font-size:14px;font-weight:800;color:#92400e;">Before Cleaning</div>
+                            <div style="font-size:11px;color:#b45309;">Initial condition documented</div>
+                          </td>
+                        </tr></table>
+                      </td>
+                    </tr>
+                  </table>
                   ${photoGrid(beforePhotos)}
                 </div>
               ` : ''}
@@ -539,13 +587,19 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
               </p>
               ${afterPhotos.length > 0 ? `
                 <div style="margin-bottom:8px;">
-                  <div style="background:#f0fdf4;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;">
-                    <span style="font-size:20px;margin-right:10px;">✨</span>
-                    <div>
-                      <div style="font-size:14px;font-weight:800;color:#166534;">After Cleaning</div>
-                      <div style="font-size:11px;color:#15803d;">Restored to peak performance</div>
-                    </div>
-                  </div>
+                  <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:10px;">
+                    <tr>
+                      <td style="background:#f0fdf4;border-radius:10px;padding:10px 14px;">
+                        <table cellpadding="0" cellspacing="0"><tr>
+                          <td style="vertical-align:middle;padding-right:10px;"><span style="font-size:20px;">✨</span></td>
+                          <td style="vertical-align:middle;">
+                            <div style="font-size:14px;font-weight:800;color:#166534;">After Cleaning</div>
+                            <div style="font-size:11px;color:#15803d;">Restored to peak performance</div>
+                          </td>
+                        </tr></table>
+                      </td>
+                    </tr>
+                  </table>
                   ${photoGrid(afterPhotos)}
                 </div>
               ` : ''}
