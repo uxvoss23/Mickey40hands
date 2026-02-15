@@ -4000,7 +4000,7 @@
       // Geocode address
 
       // Mark customer verification status
-      const markVerified = (customerId, status) => {
+      const markVerified = async (customerId, status) => {
         setCustomers(prev => {
           const updated = prev.map(c => {
             if (c.id === customerId) {
@@ -4057,7 +4057,7 @@
         const verifyUpdates = status === null
           ? { solarVerified: undefined, verifiedAt: undefined }
           : { solarVerified: status, verifiedAt: new Date().toISOString() };
-        propagateCustomerUpdate(customerId, verifyUpdates);
+        await propagateCustomerUpdate(customerId, verifyUpdates);
 
         // Force map redraw to show updated badge
         setTimeout(() => {
@@ -4408,7 +4408,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       // Mark customer as existing job
-      const handleMarkExisting = () => {
+      const handleMarkExisting = async () => {
         if (!selectedCustomer) return;
 
         // Update the customer with existing job data
@@ -4424,14 +4424,10 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         };
         const updatedCustomer = { ...selectedCustomer, ...jobUpdates };
 
-        // Propagate to all views (savedLists, uploadedFiles, savedRoutes, pipeline)
-        propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
-        // Update selectedCustomer to show updated data
+        const saved = await propagateCustomerUpdate(selectedCustomer.id, jobUpdates);
+        if (!saved) { alert('Failed to save job data. Please try again.'); return; }
         setSelectedCustomer(updatedCustomer);
 
-        // Protect edited fields from sheet sync overwriting them
-
-        // Reset form and close modal
         setExistingJobData({
           totalPanels: '',
           lastServiceDate: '',
@@ -5219,54 +5215,41 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
        * Apply customer property updates across all data stores:
        * savedLists, uploadedFiles, savedRoutes, and pipelineCustomers.
        */
-      const propagateCustomerUpdate = (customerId, updates) => {
-        // Update savedLists (triggers customers rebuild via useEffect)
+      const propagateCustomerUpdate = async (customerId, updates) => {
+        try {
+          await apiFetch(`/customers/${customerId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
+          });
+        } catch (dbErr) {
+          console.error('Failed to save customer update to database:', dbErr);
+          return false;
+        }
         setSavedLists(prev => prev.map(list => ({
           ...list,
           customers: list.customers.map(c =>
             c.id === customerId ? { ...c, ...updates } : c
           )
         })));
-
-        // Update uploadedFiles
         setUploadedFiles(prev => prev.map(file => ({
           ...file,
           customers: file.customers.map(c =>
             c.id === customerId ? { ...c, ...updates } : c
           )
         })));
-
-        // Update savedRoutes
         setSavedRoutes(prev => prev.map(route => ({
           ...route,
           customers: (route.customers || []).map(c =>
             c.id === customerId ? { ...c, ...updates } : c
           )
         })));
-
-        // Update pipelineCustomers (legacy)
         setPipelineCustomers(prev => prev.map(c =>
           c.id === customerId ? { ...c, ...updates } : c
         ));
-
-// Update profileCustomer if it's currently open
         if (profileCustomer && profileCustomer.id === customerId) {
           setProfileCustomer(prev => ({ ...prev, ...updates }));
         }
-
-        // Also save to database
-        try {
-          apiFetch(`/customers/${customerId}`, {
-            method: 'PATCH',
-            body: JSON.stringify(updates)
-          }).then(() => {
-            console.log(`💾 Saved update for customer ${customerId} to database`);
-          }).catch(dbErr => {
-            console.error('Failed to save customer update to database:', dbErr);
-          });
-        } catch (dbErr) {
-          console.error('Failed to save customer update to database:', dbErr);
-        }
+        return true;
       };
 
 /**
@@ -5535,10 +5518,9 @@ const createJob = async () => {
             customerData = newCustomer;
             customerId = newCustomer.id;
             
-            // Add to customers and save to database
-            setCustomers(prev => [...prev, newCustomer]);
+            // Save to database first, then add to local state
             try {
-              await apiFetch('/customers', {
+              const savedCust = await apiFetch('/customers', {
                 method: 'POST',
                 body: JSON.stringify({
                   name: newCustomer.firstname + ' ' + newCustomer.lastname,
@@ -5553,7 +5535,16 @@ const createJob = async () => {
                   status: newCustomer.status
                 })
               });
-            } catch(err) { console.error('Failed to save new customer to DB:', err); }
+              if (savedCust && savedCust.id) {
+                customerId = savedCust.id;
+                newCustomer.id = savedCust.id;
+              }
+            } catch(err) {
+              console.error('Failed to save new customer to DB:', err);
+              alert('Failed to create customer. Please try again.');
+              return;
+            }
+            setCustomers(prev => [...prev, newCustomer]);
           } else {
             // Find existing customer
             customerData = customers.find(c => c.id === customerId);
@@ -5660,15 +5651,14 @@ const createJob = async () => {
                 ? { ...c, status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime }
                 : c
             ));
-            propagateCustomerUpdate(customerId, { status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime });
+            await propagateCustomerUpdate(customerId, { status: 'scheduled', scheduledDate: jobForm.scheduledDate, scheduledTime: jobForm.scheduledTime });
           } else {
-            // No date/time - remains unscheduled
             setCustomers(prev => prev.map(c => 
               c.id === customerId 
                 ? { ...c, status: 'unscheduled' }
                 : c
             ));
-            propagateCustomerUpdate(customerId, { status: 'unscheduled' });
+            await propagateCustomerUpdate(customerId, { status: 'unscheduled' });
           }
 
           // Close modal and reset form
@@ -9573,17 +9563,18 @@ const createJob = async () => {
                               </div>
                               <select
                                 value={selectedCustomer.status || ''}
-                                onChange={(e) => {
+                                onChange={async (e) => {
                                   const newStatus = e.target.value;
                                   if (newStatus === 'unscheduled' && !customerHasOpenJobs(selectedCustomer)) {
                                     alert('Cannot set to Unscheduled — this customer has no open jobs. Add a job first.');
                                     return;
                                   }
+                                  const saved = await propagateCustomerUpdate(selectedCustomer.id, { status: newStatus });
+                                  if (!saved) return;
                                   setCustomers(prev => prev.map(c =>
                                     c.id === selectedCustomer.id ? { ...c, status: newStatus } : c
                                   ));
                                   setSelectedCustomer(prev => ({ ...prev, status: newStatus }));
-                                  propagateCustomerUpdate(selectedCustomer.id, { status: newStatus });
                                 }}
                                 style={{
                                   width: '100%',
@@ -10342,9 +10333,7 @@ const createJob = async () => {
                           type="text"
                           value={profileCustomer.name || ''}
                           onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, name: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { name: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                            setProfileCustomer(prev => ({ ...prev, name: e.target.value }));
                           }}
                           style={{
                             margin: 0,
@@ -10360,16 +10349,14 @@ const createJob = async () => {
                             transition: 'border-color 0.2s'
                           }}
                           onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          onBlur={async (e) => { e.target.style.borderColor = 'transparent'; await propagateCustomerUpdate(profileCustomer.id, { name: profileCustomer.name }); }}
                           placeholder="Customer Name"
                         />
                         <input
                           type="text"
                           value={profileCustomer.address || ''}
                           onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, address: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { address: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                            setProfileCustomer(prev => ({ ...prev, address: e.target.value }));
                           }}
                           style={{
                             fontSize: '12px',
@@ -10384,7 +10371,7 @@ const createJob = async () => {
                             transition: 'border-color 0.2s'
                           }}
                           onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                          onBlur={(e) => e.target.style.borderColor = 'transparent'}
+                          onBlur={async (e) => { e.target.style.borderColor = 'transparent'; await propagateCustomerUpdate(profileCustomer.id, { address: profileCustomer.address }); }}
                           placeholder="Address"
                         />
                       </div>
@@ -10422,10 +10409,9 @@ const createJob = async () => {
                           type="email"
                           value={profileCustomer.email || ''}
                           onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, email: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { email: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                            setProfileCustomer(prev => ({ ...prev, email: e.target.value }));
                           }}
+                          onBlur={async () => { await propagateCustomerUpdate(profileCustomer.id, { email: profileCustomer.email }); }}
                           style={{
                             width: '100%',
                             padding: '4px 8px',
@@ -10447,10 +10433,9 @@ const createJob = async () => {
                           type="tel"
                           value={profileCustomer.phone || ''}
                           onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, phone: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { phone: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                            setProfileCustomer(prev => ({ ...prev, phone: e.target.value }));
                           }}
+                          onBlur={async () => { await propagateCustomerUpdate(profileCustomer.id, { phone: profileCustomer.phone }); }}
                           style={{
                             width: '100%',
                             padding: '4px 8px',
@@ -10474,10 +10459,9 @@ const createJob = async () => {
                             type="number"
                             value={profileCustomer.panelCount || profileCustomer.totalPanels || ''}
                             onChange={(e) => {
-                              const updatedCustomer = { ...profileCustomer, panelCount: e.target.value, totalPanels: e.target.value };
-                              propagateCustomerUpdate(profileCustomer.id, { panelCount: e.target.value, totalPanels: e.target.value });
-                              setProfileCustomer(updatedCustomer);
+                              setProfileCustomer(prev => ({ ...prev, panelCount: e.target.value, totalPanels: e.target.value }));
                             }}
+                            onBlur={async () => { await propagateCustomerUpdate(profileCustomer.id, { panelCount: profileCustomer.panelCount, totalPanels: profileCustomer.totalPanels }); }}
                             style={{
                               width: '100%',
                               padding: '4px 8px',
@@ -10499,15 +10483,15 @@ const createJob = async () => {
                         </div>
                         <select
                           value={profileCustomer.status || ''}
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const newStatus = e.target.value;
                             if (newStatus === 'unscheduled' && !customerHasOpenJobs(profileCustomer)) {
                               alert('Cannot set to Unscheduled — this customer has no open jobs. Add a job first.');
                               return;
                             }
-                            const updatedCustomer = { ...profileCustomer, status: newStatus };
-                            propagateCustomerUpdate(profileCustomer.id, { status: newStatus });
-                            setProfileCustomer(updatedCustomer);
+                            const saved = await propagateCustomerUpdate(profileCustomer.id, { status: newStatus });
+                            if (!saved) return;
+                            setProfileCustomer(prev => ({ ...prev, status: newStatus }));
                           }}
                           style={{
                             width: '100%',
@@ -10534,10 +10518,10 @@ const createJob = async () => {
                         </div>
                         <select
                           value={profileCustomer.customerType || 'residential'}
-                          onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, customerType: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { customerType: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                          onChange={async (e) => {
+                            const saved = await propagateCustomerUpdate(profileCustomer.id, { customerType: e.target.value });
+                            if (!saved) return;
+                            setProfileCustomer(prev => ({ ...prev, customerType: e.target.value }));
                           }}
                           style={{
                             width: '100%', padding: '6px 8px',
@@ -10558,10 +10542,10 @@ const createJob = async () => {
                         <input
                           type="date"
                           value={profileCustomer.lastServiceDate || ''}
-                          onChange={(e) => {
-                            const updatedCustomer = { ...profileCustomer, lastServiceDate: e.target.value };
-                            propagateCustomerUpdate(profileCustomer.id, { lastServiceDate: e.target.value });
-                            setProfileCustomer(updatedCustomer);
+                          onChange={async (e) => {
+                            const saved = await propagateCustomerUpdate(profileCustomer.id, { lastServiceDate: e.target.value });
+                            if (!saved) return;
+                            setProfileCustomer(prev => ({ ...prev, lastServiceDate: e.target.value }));
                           }}
                           style={{
                             width: '100%',
@@ -10684,7 +10668,7 @@ const createJob = async () => {
                                                 method: 'PATCH',
                                                 body: JSON.stringify(customerPatch)
                                               });
-                                              propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: nearestDate, status: customerPatch.status });
+                                              await propagateCustomerUpdate(profileCustomer.id, { nextServiceDate: nearestDate, status: customerPatch.status });
                                               setProfileCustomer(prev => ({...prev, nextServiceDate: nearestDate, status: customerPatch.status, serviceHistory: allJobs}));
                                             } catch (err) { console.error('Failed to update job date:', err); }
                                           }
@@ -10907,20 +10891,15 @@ const createJob = async () => {
                           }}
                         />
                         <button
-                          onClick={() => {
+                          onClick={async () => {
                             if (!newCustomerNote.trim()) return;
                             const newNotes = (profileCustomer.customerNotes || '') +
                               (profileCustomer.customerNotes ? '\n' : '') +
                               `[${new Date().toLocaleDateString()}] ${newCustomerNote}`;
-                            const updatedCustomer = {
-                              ...profileCustomer,
-                              customerNotes: newNotes
-                            };
-                            // Propagate to all views
-                            propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
-                            setProfileCustomer(updatedCustomer);
+                            const saved = await propagateCustomerUpdate(profileCustomer.id, { customerNotes: newNotes });
+                            if (!saved) { alert('Failed to save note. Please try again.'); return; }
+                            setProfileCustomer(prev => ({ ...prev, customerNotes: newNotes }));
                             setNewCustomerNote('');
-                            // Protect from sheet sync overwriting notes
                           }}
                           disabled={!newCustomerNote.trim()}
                           style={{
@@ -11695,21 +11674,21 @@ const createJob = async () => {
                                       const newTime = e.target.value;
                                       try {
                                         await apiFetch(`/customers/${customer.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: newTime }) });
+                                        setSavedRoutes(prev => prev.map(r => {
+                                          if (r.id === savedRoute.id) {
+                                            return { ...r, customers: r.customers.map(c =>
+                                              c.id === customer.id ? { ...c, scheduledTime: newTime } : c
+                                            )};
+                                          }
+                                          return r;
+                                        }));
+                                        setCustomers(prev => prev.map(c =>
+                                          c.id === customer.id ? { ...c, scheduledTime: newTime } : c
+                                        ));
+                                        setPipelineCustomers(prev => prev.map(c =>
+                                          c.id === customer.id ? { ...c, scheduledTime: newTime } : c
+                                        ));
                                       } catch (err) { console.error('Failed to update time:', err); }
-                                      setSavedRoutes(prev => prev.map(r => {
-                                        if (r.id === savedRoute.id) {
-                                          return { ...r, customers: r.customers.map(c =>
-                                            c.id === customer.id ? { ...c, scheduledTime: newTime } : c
-                                          )};
-                                        }
-                                        return r;
-                                      }));
-                                      setCustomers(prev => prev.map(c =>
-                                        c.id === customer.id ? { ...c, scheduledTime: newTime } : c
-                                      ));
-                                      setPipelineCustomers(prev => prev.map(c =>
-                                        c.id === customer.id ? { ...c, scheduledTime: newTime } : c
-                                      ));
                                     }}
                                     style={{
                                       padding: '3px 6px', fontSize: '11px', fontWeight: 600,
@@ -11763,11 +11742,12 @@ const createJob = async () => {
                                               });
                                             }
                                           }
+                                          setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, jobNotes: editedNotes } : c) } : r));
+                                          setEditingCustomerNotes(null); setEditedNotes('');
                                         } catch (e) {
                                           console.error('Failed to sync notes to job:', e);
+                                          alert('Failed to save notes. Please try again.');
                                         }
-                                        setSavedRoutes(prev => prev.map(r => r.id === savedRoute.id ? { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, jobNotes: editedNotes } : c) } : r));
-                                        setEditingCustomerNotes(null); setEditedNotes('');
                                       }}
                                         style={{ padding: '3px 8px', background: 'rgba(34,197,94,0.2)', border: '1px solid rgba(34,197,94,0.3)', borderRadius: '4px', color: '#22c55e', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>Save</button>
                                     </div>
@@ -12337,7 +12317,7 @@ const createJob = async () => {
                                 setEditingCellValue(String(cellValue || ''));
                               };
 
-                              const confirmEdit = () => {
+                              const confirmEdit = async () => {
                                 const fieldKey = col.key === 'panelCount' ? 'panelCount' : col.key;
                                 let updateVal = editingCellValue;
                                 if (col.key === 'isRecurring') {
@@ -12353,7 +12333,8 @@ const createJob = async () => {
                                 const updates = {};
                                 updates[fieldKey] = updateVal;
                                 if (fieldKey === 'panelCount') updates.totalPanels = updateVal;
-                                propagateCustomerUpdate(customer.id, updates);
+                                const saved = await propagateCustomerUpdate(customer.id, updates);
+                                if (!saved) { alert('Failed to save. Please try again.'); }
                                 setEditingCell(null);
                               };
 
