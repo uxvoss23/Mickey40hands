@@ -497,6 +497,8 @@
       const [hoveredPrefDay, setHoveredPrefDay] = useState(null);
       const [hoveredPrefTime, setHoveredPrefTime] = useState(null);
       const [hoveredUnroutedDays, setHoveredUnroutedDays] = useState([]);
+      const [hoveredUnroutedCustomer, setHoveredUnroutedCustomer] = useState(null);
+      const hoveredUnroutedTimer = React.useRef(null);
       const [hoveredRouteDay, setHoveredRouteDay] = useState(null);
       const [dayPickerPopup, setDayPickerPopup] = useState(null);
       const [verifyingCustomer, setVerifyingCustomer] = useState(false);
@@ -9075,9 +9077,31 @@ const createJob = async () => {
                                   {unroutedCustomers.length === 0 ? (
                                     <div style={{ textAlign: 'center', padding: '20px 0', color: '#475569', fontSize: '11px' }}>All jobs are routed</div>
                                   ) : (
-                                    unroutedCustomers.map(customer => (
+                                    unroutedCustomers.map(customer => {
+                                      const jobType = customer.jobDescription || customer.job_description || ((customer.customerType || customer.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
+                                      const panels = parseInt(customer.panelCount || customer.totalPanels || 0) || 0;
+                                      const price = parseFloat(customer.jobPrice || customer.amountPaid || 0) || 0;
+                                      return (
                                       <div
                                         key={customer.id}
+                                        style={{ position: 'relative' }}
+                                        onMouseEnter={(e) => {
+                                          clearTimeout(hoveredUnroutedTimer.current);
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setHoveredUnroutedCustomer({ customer, x: rect.left, y: rect.top, cardWidth: rect.width });
+                                          const days = parsePrefDays(customer.preferredDate);
+                                          setHoveredUnroutedDays(days);
+                                          setHoveredCustomer(customer);
+                                        }}
+                                        onMouseLeave={() => {
+                                          hoveredUnroutedTimer.current = setTimeout(() => {
+                                            setHoveredUnroutedCustomer(null);
+                                          }, 200);
+                                          setHoveredUnroutedDays([]);
+                                          setHoveredCustomer(null);
+                                        }}
+                                      >
+                                      <div
                                         onClick={() => {
                                           if (!routePlannerEditMode) {
                                             setRoutePlannerEditMode(true);
@@ -9096,20 +9120,9 @@ const createJob = async () => {
                                         style={{
                                           display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px',
                                           borderRadius: '8px', cursor: 'pointer', marginBottom: '3px',
-                                          background: 'rgba(100, 116, 139, 0.08)',
+                                          background: hoveredUnroutedCustomer?.customer?.id === customer.id ? 'rgba(100, 116, 139, 0.15)' : 'rgba(100, 116, 139, 0.08)',
                                           border: '1px solid rgba(100, 116, 139, 0.15)',
                                           transition: 'all 0.15s'
-                                        }}
-                                        onMouseOver={(e) => {
-                                          e.currentTarget.style.background = 'rgba(100, 116, 139, 0.15)';
-                                          const days = parsePrefDays(customer.preferredDate);
-                                          setHoveredUnroutedDays(days);
-                                          setHoveredCustomer(customer);
-                                        }}
-                                        onMouseOut={(e) => {
-                                          e.currentTarget.style.background = 'rgba(100, 116, 139, 0.08)';
-                                          setHoveredUnroutedDays([]);
-                                          setHoveredCustomer(null);
                                         }}
                                       >
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b', flexShrink: 0 }} />
@@ -9138,7 +9151,73 @@ const createJob = async () => {
                                           }}
                                         >📋</button>
                                       </div>
-                                    ))
+
+                                      {hoveredUnroutedCustomer?.customer?.id === customer.id && ReactDOM.createPortal(
+                                        <div
+                                          onMouseEnter={() => clearTimeout(hoveredUnroutedTimer.current)}
+                                          onMouseLeave={() => {
+                                            setHoveredUnroutedCustomer(null);
+                                            setHoveredUnroutedDays([]);
+                                            setHoveredCustomer(null);
+                                          }}
+                                          style={{
+                                            position: 'fixed',
+                                            left: Math.max(10, hoveredUnroutedCustomer.x - 220) + 'px',
+                                            top: Math.max(10, Math.min(hoveredUnroutedCustomer.y, window.innerHeight - 320)) + 'px',
+                                            zIndex: 99999,
+                                            width: '210px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+                                            border: '1px solid rgba(139, 92, 246, 0.4)', borderRadius: '10px',
+                                            padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                                            fontFamily: "'Inter', sans-serif"
+                                          }}
+                                        >
+                                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>{customer.name}</div>
+                                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                            {customer.address}
+                                          </div>
+
+                                          <div style={{ padding: '6px 8px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '6px', marginBottom: '8px' }}>
+                                            <div style={{ fontSize: '8px', color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Job Details</div>
+                                            <div style={{ fontSize: '10px', color: '#e2e8f0', fontWeight: 600, marginBottom: '3px' }}>{jobType}</div>
+                                            {jobType.toLowerCase().includes('panel') && panels > 0 && <div style={{ fontSize: '9px', color: '#fbbf24', marginBottom: '2px' }}>☀️ {panels} panels</div>}
+                                            {price > 0 && <div style={{ fontSize: '9px', color: '#22c55e' }}>💵 ${price.toFixed(2)}</div>}
+                                          </div>
+
+                                          {(customer.preferredDate || customer.preferredTimeWindow) && (
+                                            <div style={{ padding: '6px 8px', background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.2)', borderRadius: '6px', marginBottom: '8px' }}>
+                                              <div style={{ fontSize: '8px', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>Preferred Schedule</div>
+                                              {customer.preferredDate && <div style={{ fontSize: '10px', color: '#e2e8f0', marginBottom: '2px' }}>📅 {customer.preferredDate}</div>}
+                                              {customer.preferredTimeWindow && <div style={{ fontSize: '10px', color: '#e2e8f0' }}>🕐 {customer.preferredTimeWindow}</div>}
+                                            </div>
+                                          )}
+
+                                          {customer.lastServiceDate && (
+                                            <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '8px' }}>
+                                              Last service: {new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                                            </div>
+                                          )}
+
+                                          <div style={{ display: 'flex', gap: '4px' }}>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); setHoveredUnroutedCustomer(null); }}
+                                              style={{ flex: 1, background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', color: 'white', border: 'none', padding: '6px', borderRadius: '5px', fontWeight: 600, fontSize: '10px', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
+                                            >👤 View Profile</button>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setProfileCustomer(customer);
+                                                setShowCustomerProfile(true);
+                                                setHoveredUnroutedCustomer(null);
+                                              }}
+                                              style={{ flex: 1, background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '6px', borderRadius: '5px', fontWeight: 600, fontSize: '10px', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
+                                            >📋 View Job</button>
+                                          </div>
+                                        </div>,
+                                        document.body
+                                      )}
+                                      </div>
+                                    );})
+                                  )
                                   )}
                                 </div>
                               </div>
