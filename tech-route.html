@@ -349,6 +349,7 @@
       otherDebris: '',
       surfaceDamage: [],
       systemChecks: [],
+      urgentChecks: [],
       otherSystemCheck: '',
       inspectionNotes: '',
       recommendedFreq: '',
@@ -375,7 +376,7 @@
       activeModal = stopId;
       modalState = {
         slotPhotos: {}, issuePhotos: [], buildupLevel: '', debris: [], otherDebris: '',
-        surfaceDamage: [], systemChecks: [], otherSystemCheck: '',
+        surfaceDamage: [], systemChecks: [], urgentChecks: [], otherSystemCheck: '',
         inspectionNotes: '', recommendedFreq: '', recurringSelection: ''
       };
       renderModal();
@@ -567,12 +568,19 @@
       if (field === 'systemChecks') {
         const otherBox = document.getElementById('other-system-input');
         if (otherBox) otherBox.style.display = arr.includes('Other') ? 'block' : 'none';
+        modalState.urgentChecks = modalState.urgentChecks.filter(u => arr.includes(u));
       }
       if (field === 'debris') {
         const otherBox = document.getElementById('other-debris-input');
         if (otherBox) otherBox.style.display = arr.includes('Other') ? 'block' : 'none';
       }
       updateValidation();
+    }
+
+    function toggleUrgent(value) {
+      const idx = modalState.urgentChecks.indexOf(value);
+      if (idx >= 0) { modalState.urgentChecks.splice(idx, 1); } else { modalState.urgentChecks.push(value); }
+      renderModal();
     }
 
     function updateNotes() {
@@ -639,6 +647,7 @@
               debris: modalState.debris.map(d => d === 'Other' ? 'Other: ' + (modalState.otherDebris || '').trim() : d),
               surface_damage: modalState.surfaceDamage,
               system_checks: modalState.systemChecks.map(c => c === 'Other' ? 'Other: ' + (modalState.otherSystemCheck || '').trim() : c),
+              urgent_checks: modalState.urgentChecks,
               recommended_frequency: modalState.recommendedFreq,
               issue_tags: modalState.issuePhotos.map(p => p.tag).filter(Boolean)
             }
@@ -788,7 +797,13 @@
               <div class="section-title"><span class="st-icon">\ud83d\udd0d</span> Visual Inspection</div>
               <div class="modal-section">
                 <div class="modal-label">System Condition <span class="required">Select all that apply</span></div>
-                <div class="check-group">${checkHTML('systemChecks', SYSTEM_CHECKS)}</div>
+                <div class="check-group">${SYSTEM_CHECKS.map(opt => {
+                  const chk = ms.systemChecks.includes(opt);
+                  const isUrgent = ms.urgentChecks.includes(opt);
+                  const isIssue = opt !== 'No visible issues' && opt !== 'Other';
+                  const urgentBtn = chk && isIssue ? '<span onclick="event.stopPropagation();toggleUrgent(\'' + opt.replace(/'/g, "\\'") + '\')" style="margin-left:auto;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;cursor:pointer;' + (isUrgent ? 'background:#dc2626;color:#fff;' : 'background:#fee2e2;color:#dc2626;') + '">' + (isUrgent ? '🚨 URGENT' : 'Flag urgent') + '</span>' : '';
+                  return '<div class="check-row ' + (chk ? 'checked' : '') + '" style="' + (isUrgent ? 'border:1.5px solid #dc2626;background:#fef2f2;' : '') + '" data-check-field="systemChecks" data-check-value="' + opt.replace(/"/g, '&quot;') + '" onclick="toggleCheck(\'systemChecks\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '✓' : '') + '</div><div style="flex:1;display:flex;align-items:center;gap:6px">' + opt + urgentBtn + '</div></div>';
+                }).join('')}</div>
                 <div id="other-system-input" style="display:${ms.systemChecks.includes('Other') ? 'block' : 'none'};margin-top:6px">
                   <input type="text" id="other-system-text" placeholder="Describe the issue..." value="${ms.otherSystemCheck.replace(/"/g, '&quot;')}" oninput="updateNotes()" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b">
                 </div>

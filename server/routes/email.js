@@ -241,7 +241,7 @@ function buildRouteEmailHTML(routeData, baseUrl) {
 
 function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
   const { customerName, address, serviceDate, panelCount, servicePrice, pricePerPanel,
-          buildupLevel, debris, surfaceDamage, systemChecks, inspectionNotes,
+          buildupLevel, debris, surfaceDamage, systemChecks, urgentChecks, inspectionNotes,
           recommendedFrequency, recurringStatus, photos } = data;
 
   const firstName = (customerName || 'there').split(' ')[0];
@@ -568,6 +568,7 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
               ` : `
                 <p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.6;">During our inspection, our technician noted the following items for your awareness:</p>
                 ${(() => {
+                  const urgentList = urgentChecks || [];
                   const issueExplanations = {
                     'Loose racking / hardware': 'Loose mounts can shift panels out of alignment and expose your roof to potential water damage over time.',
                     'Pest activity': 'Birds and rodents nesting under panels can chew wiring and block airflow, reducing performance and creating fire risk.',
@@ -578,6 +579,18 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                   return systemIssues.map(issue => {
                     const cleanIssue = issue.startsWith('Other: ') ? issue.replace('Other: ', '').trim() : issue;
                     const explanation = issueExplanations[issue] || '';
+                    const isUrgent = urgentList.includes(issue);
+                    if (isUrgent) {
+                      return `
+                      <div style="background:#fef2f2;border:2px solid #dc2626;border-left:5px solid #dc2626;border-radius:0 10px 10px 0;padding:16px;margin-bottom:10px;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                          <span style="background:#dc2626;color:#fff;font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:0.5px;">Urgent</span>
+                          <span style="color:#991b1b;font-size:14px;font-weight:700;">${cleanIssue}</span>
+                        </div>
+                        ${explanation ? `<div style="color:#7f1d1d;font-size:12px;line-height:1.5;margin-top:6px;">${explanation}</div>` : ''}
+                        <div style="color:#dc2626;font-size:12px;font-weight:600;margin-top:8px;padding-top:8px;border-top:1px solid #fecaca;">We recommend addressing this as soon as possible to protect your system and your home.</div>
+                      </div>`;
+                    }
                     return `
                     <div style="background:#fef2f2;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;">
                       <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${cleanIssue}</div>
