@@ -873,7 +873,7 @@
                 id: `db-${r.id}`,
                 dbRouteId: r.id,
                 name: r.name || '',
-                scheduledDate: r.scheduled_date || '',
+                scheduledDate: r.scheduled_date ? r.scheduled_date.substring(0, 10) : '',
                 sentToTech: true,
                 status: r.status || 'sent',
                 totalDistance: r.total_distance || 0,
@@ -1137,12 +1137,7 @@
       useEffect(() => {
         const geocodeHomeBase = async () => {
           try {
-            // Use CORS proxy for local file access
-            const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(HOME_BASE_ADDRESS)}&limit=1`;
-            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
-            
-            const response = await fetch(proxyUrl);
-            const data = await response.json();
+            const data = await apiFetch(`/geocode?q=${encodeURIComponent(HOME_BASE_ADDRESS)}`);
             if (data && data.length > 0) {
               setHomeBase({ lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) });
             }
@@ -1382,7 +1377,7 @@
                 technician: j.technician || '',
                 recurrenceInterval: j.recurrence_interval || '',
                 nextServiceDate: j.next_service_date || '',
-                scheduledDate: j.scheduled_date || ''
+                scheduledDate: j.scheduled_date ? j.scheduled_date.substring(0, 10) : ''
               }));
               dbJobs.sort((a, b) => {
                 const da = a.date ? new Date(a.date).getTime() : 0;
@@ -1576,12 +1571,7 @@
           // Remove emojis from address
           const cleanAddress = address.replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim();
           
-          // Use CORS proxy for local file access
-          const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanAddress)}&limit=1`;
-          const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(nominatimUrl)}`;
-          
-          const response = await fetch(proxyUrl);
-          const data = await response.json();
+          const data = await apiFetch(`/geocode?q=${encodeURIComponent(cleanAddress)}`);
           if (data && data.length > 0) {
             return { 
               lat: parseFloat(data[0].lat), 
@@ -4866,15 +4856,9 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
             }
           }
           
-          // If no permits found from any endpoint, try CORS proxy
+          // If no permits found from any endpoint, skip silently
           if (permits.length === 0 && lastError) {
-            try {
-              const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(endpoints[0])}`;
-              const response = await fetch(proxyUrl);
-              permits = await response.json();
-            } catch (proxyError) {
-              console.log('CORS proxy also failed:', proxyError.message);
-            }
+            console.log('No permits data available from any endpoint');
           }
           
           // Look for solar-related permits
@@ -5413,7 +5397,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               pricingTier: c.pricing_tier,
               preferredDate: c.preferred_date || '',
               preferredTimeWindow: c.preferred_time_window || '',
-              scheduledDate: c.scheduled_date || '',
+              scheduledDate: c.scheduled_date ? c.scheduled_date.substring(0, 10) : '',
               scheduledTime: c.scheduled_time || '',
               solarVerified: c.solar_verified,
               isRecurring: c.is_recurring,
@@ -10755,7 +10739,7 @@ const createJob = async () => {
                                                         status: (refreshed.status || '').toLowerCase(),
                                                         lastServiceDate: refreshed.last_service_date || '',
                                                         nextServiceDate: refreshed.next_service_date || '',
-                                                        scheduledDate: refreshed.scheduled_date || '',
+                                                        scheduledDate: refreshed.scheduled_date ? refreshed.scheduled_date.substring(0, 10) : '',
                                                         scheduledTime: refreshed.scheduled_time || '',
                                                         activeJobCount: refreshed.active_job_count || 0,
                                                         totalJobCount: refreshed.total_job_count || 0,

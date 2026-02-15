@@ -33,6 +33,22 @@ app.get('/api/config/maps-key', (req, res) => {
   res.json({ key });
 });
 
+app.get('/api/geocode', async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: 'Missing query parameter q' });
+  try {
+    const nominatimUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
+    const response = await fetch(nominatimUrl, {
+      headers: { 'User-Agent': 'GalacticNavCRM/1.0' }
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Geocode proxy error:', error);
+    res.status(500).json({ error: 'Geocoding failed' });
+  }
+});
+
 app.use('/api/customers', customersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/routes', routesRouter);

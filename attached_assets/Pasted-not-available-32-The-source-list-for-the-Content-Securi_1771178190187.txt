@@ -1,0 +1,106 @@
+not available
+﻿
+32
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+
+32
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+32
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+5
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+5
+The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?
+5
+The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.
+a3c7af2ab4301ff9.js:14 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+a3c7af2ab4301ff9.js:14 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+a3c7af2ab4301ff9.js:14 [LaunchDarkly] LaunchDarkly client initialized
+a3c7af2ab4301ff9.js:14 [Coframe] Replit Enterprise watcher loaded
+read.js:2530 READ - Host validation failed: 
+Object
+a3c7af2ab4301ff9.js:14 [ai-chat] Creating connection with chat proxy enabled
+chunk-mgcl-IX2O3QQC.js:16 @import rules are not allowed here. See https://github.com/WICG/construct-stylesheets/issues/119#issuecomment-588352418.
+a3c7af2ab4301ff9.js:14 Cache data may be lost when replacing the connectorContext field of a CurrentUser object.
+
+This could cause additional (usually avoidable) network requests to fetch data that were otherwise cached.
+
+To address this problem (which is not a bug in Apollo Client), either ensure all objects of type CurrentUserConnectorContext have an ID or a custom merge function, or define a custom merge function for the CurrentUser.connectorContext field, so InMemoryCache can safely merge these objects:
+
+  existing: {"__typename":"CurrentUserConnectorContext","openIntClientToken":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiY3VzdG9tZXIiLCJleHAiOjE3NzE0MzIyOTAuMjM0LCJzdWIiOiJvcmdfMzFLcDB1RkR5S2hnbkk3QWdudXM3UnJEdmxSL3UtNTQ2MjYyNDMiLCJjdXN0b21lcl9pZCI6InUtNTQ2MjYyNDMiLCJvcmdfaWQiOiJvcmdfMzFLcDB1RkR5S2hnbkk3QWdudXM3UnJEdmxSIiwiaWF0IjoxNzcxMTczMDkwfQ.AZyGol0RDxDPIVh0rkanQljzZMc6wYhybTU1xpein1M","connectorWhitelist":["GITHUB","LINEAR","SPOTIFY","NOTION","ONEDRIVE","OUTLOOK","SHAREPOINT","DROPBOX","ASANA","ASHBY","SPROUTSOCIAL","CLICKUP","HUBSPOT","BOX","DISCORD","GOOGLE_CALENDAR","GOOGLE_DRIVE","GOOGLE_SHEET","GOOGLE_DOCS","GOOGLE_MAIL","YOUTUBE","JIRA","CONFLUENCE","TWILIO","TODOIST","SENDGRID","WORKATO","RESEND","AGENTMAIL","SALESFORCE","ZENDESK","MOBILE_MAPS","ELEVENLABS","STRIPE"],"connections":[],"connectorConfigs":[{"__ref":"ConnectorConfig:ccfg_slack_01KH7W1T1D6TGP3BJGNQ2N9PEH"},{"__ref":"ConnectorConfig:ccfg_elevenlabs_01KG0GEQNFW9Z6F2NYP4C2VHM9"},{"__ref":"ConnectorConfig:ccfg_revenuecat_01KED80FZSMH99H5
+  incoming: {"__typename":"CurrentUserConnectorContext","openIntClientToken":"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiY3VzdG9tZXIiLCJleHAiOjE3NzE0MzIyOTAuMjk4LCJzdWIiOiJvcmdfMzFLcDB1RkR5S2hnbkk3QWdudXM3UnJEdmxSL3UtNTQ2MjYyNDMiLCJjdXN0b21lcl9pZCI6InUtNTQ2MjYyNDMiLCJvcmdfaWQiOiJvcmdfMzFLcDB1RkR5S2hnbkk3QWdudXM3UnJEdmxSIiwiaWF0IjoxNzcxMTczMDkwfQ.uoI0-POHqeNKhn3383mPq3RcXnj4cUp7jt46M3Z38hg","connections":[],"connectorConfigs":[{"__ref":"ConnectorConfig:ccfg_slack_01KH7W1T1D6TGP3BJGNQ2N9PEH"},{"__ref":"ConnectorConfig:ccfg_elevenlabs_01KG0GEQNFW9Z6F2NYP4C2VHM9"},{"__ref":"ConnectorConfig:ccfg_revenuecat_01KED80FZSMH99H5FHQWSX7D4M"},{"__ref":"ConnectorConfig:ccfg_jira_8D0B4B1730F64429A4FC3ACB88"},{"__ref":"ConnectorConfig:ccfg_todoist_01KAA8VY083TZ1EY7KWEZ5T7BA"},{"__ref":"ConnectorConfig:ccfg_custom-mcp_01KA0HS19DC94BXQ85NR5AGBEE"},{"__ref":"ConnectorConfig:ccfg_bitbucket-source-control_01K9QXBE3YDC15G2RX1BJ4RCH1"},{"__ref":"ConnectorConfig:ccfg_gitlab-source-control_01K95FM0TZS5EBR9VDMTXMJP0N"},{"__ref":"Con
+
+For more information about these options, please refer to the documentation:
+
+  * Ensuring entity objects have IDs: https://go.apollo.dev/c/generating-unique-identifiers
+  * Defining custom merge functions: https://go.apollo.dev/c/merging-non-normalized-objects
+content.js:2524 Host is not supported
+content.js:2526 Host is not valid or supported
+content.js:2526 Host is not in insights whitelist
+Mickey40hands:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+11
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'ambient-light-sensor'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'battery'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'layout-animations'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'legacy-image-formats'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'navigation-override'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'oversized-images'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'publickey-credentials'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'speaker-selection'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'unoptimized-images'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'unsized-media'.
+9954129c7dd6dc22.js:2 Unrecognized feature: 'pointer-lock'.
+9954129c7dd6dc22.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+9954129c7dd6dc22.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+chunk-mgcl-NBELAE6D.js:24 
+          Element couldn't be matched through strict ignore pattern!
+         
+ 
+Object
+ null
+chunk-mgcl-QBJCKU7W.js:11 getCSSMatchers, optimalSelect: Generated selector didn't match element: .useView-module__etopAW__view.index-module__OxCPea__root ol > li:nth-child(2) p, Complete: html.replit-ui-theme-root.notranslate[lang="en"][translate="no"][style="app-region\:\ unset\;\ --cf-show\:\ 1\;"] > body > div#__next > div.useView-module__etopAW__view._sdz_surface-bg._sdz_surface.AppLayout-module__ITDMnq__root._sdz_default._sdz_switch-theme[data-cy][style="--AppLayout--header-height\:0px\;--AppLayout--sidebar-width\:0px\;--AppLayout--sidebar-width-open\:240px"] > div.AppLayout-module__ITDMnq__content > div.useView-module__etopAW__view.replEnvironmentDesktop-module__rxGmJG__surface.Surface-module__PJzHbG__surfaceRoot > div.useView-module__etopAW__view._sdz_surface-bg.Workspace-module__bV5fda__contentContainer > div.useView-module__etopAW__view._sdz_surface-bg.index-module__mWTpga__root[style="--index--z-index\:\ 3\;\ --index--x\:\ 6px\;\ --index--y\:\ 40px\;\ --index--width\:\ 300px\;\ --index--height\:\ 871px\;"] > div.useView-module__etopAW__view.index-module__-XHOOa__root[style="--useView--grow\:\ 1\;\ --useView--shrink\:\ 1\;\ --index--transition-duration\:\ 180ms\;"] > div.useView-module__etopAW__view.index-module__-XHOOa__content[style="--useView--grow\:\ 1\;\ --useView--shrink\:\ 1\;"] > div.useView-module__etopAW__view.index-module__OxCPea__root > div.useView-module__etopAW__view.Feed-module__lsKhoG__feed[style="--useView--align\:\ center\;\ --useView--grow\:\ 1\;\ --useView--shrink\:\ 1\;"] > div.useView-module__etopAW__view.AutoScroller-module__ZCuA_W__root[style="--AutoScroller--first-child-margin\:\ 0\;\ --AutoScroller--scroll-height\:\ 448px\;"] > div.useView-module__etopAW__view.AutoScroller-module__ZCuA_W__scroll[style="--useView--grow\:\ 1\;\ --useView--shrink\:\ 1\;\ --useView--pr\:\ 4px\;\ --useView--pl\:\ 4px\;\ --useView--pt\:\ 6px\;\ --useView--pb\:\ 14px\;"] > div.useView-module__etopAW__view.AutoScroller-module__ZCuA_W__content[style="--useView--grow\:\ 1\;"] > div.useView-module__etopAW__view > div.useView-module__etopAW__view.ExpandableFeedContent-module__Y1wS9q__container.ExpandableFeedContent-module__Y1wS9q__expanded.ExpandableFeedContent-module__Y1wS9q__disableFade > div.useView-module__etopAW__view.ExpandableFeedContent-module__Y1wS9q__inner > div.useView-module__etopAW__view.EventContainer-module__PvCvrW__eventContainer > div.useView-module__etopAW__view.index-module__FzfM4q__root[style="--useView--justify\:\ space-between\;"] > div.useView-module__etopAW__view.index-module__FzfM4q__inner > div.useView-module__etopAW__view.index-module__FzfM4q__content[style="--useView--gap\:\ 8px\;"] > div.rendered-markdown > div.Markdown-module__KWqogW__markdownTheme > ol > li > p > strong
+/public/sounds/Achie…t_Bell_Replit.wav:1 
+ Failed to load resource: net::ERR_CACHE_OPERATION_NOT_SUPPORTED
+a3c7af2ab4301ff9.js:14 [Coframe] Mutation callback infinite loop protection triggered, disconnecting mutation observer 
+Object
+3
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'ambient-light-sensor'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'battery'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'execution-while-not-rendered'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'layout-animations'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'legacy-image-formats'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'navigation-override'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'oversized-images'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'publickey-credentials'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'speaker-selection'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'unoptimized-images'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Unrecognized feature: 'unsized-media'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Allow attribute will take precedence over 'allowfullscreen'.
+workspace_iframe.htm…2F&id=%3Ar3j6%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+(index):1 Access to fetch at 'https://api.allorigins.win/raw?url=https%3A%2F%2Fnominatim.openstreetmap.or…520Air%2520Trail%252C%2520Fort%2520Worth%252C%2520TX%252076131%26limit%3D1' from origin 'https://6500e03b-00a6-4150-ba8a-0ac33720e4d4-00-15nk4man99t0t.kirk.replit.dev' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.allorigins.win/r…76131%26limit%3D1:1 
+ Failed to load resource: net::ERR_FAILED
+react-dom.production.min.js:23 The specified value "2026-02-18T06:00:00.000Z" does not conform to the required format, "yyyy-MM-dd".
+6500e03b-00a6-4150-b…dev/api/routes/13:1 
+ Failed to load resource: the server responded with a status of 403 (Forbidden)
+﻿
