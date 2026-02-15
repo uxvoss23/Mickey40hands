@@ -512,6 +512,7 @@
       const [radiusMode, setRadiusMode] = useState(false);
       const [awaitingMapClick, setAwaitingMapClick] = useState(false);
       const [showSaveModal, setShowSaveModal] = useState(false);
+      const [saveModalDateKey, setSaveModalDateKey] = useState(null);
       const [showSaveListModal, setShowSaveListModal] = useState(false);
       const [showFilterPanel, setShowFilterPanel] = useState(true);
       const [showExistingJobModal, setShowExistingJobModal] = useState(false);
@@ -986,7 +987,16 @@
           return;
         }
         const unsentRoutes = savedRoutes.filter(r => !r.sentToTech);
-        localStorage.setItem('savedRoutes', JSON.stringify(unsentRoutes));
+        const dedupMap = new Map();
+        for (const r of unsentRoutes) {
+          const dk = r.scheduledDate ? new Date(r.scheduledDate).toDateString() : r.id;
+          const existing = dedupMap.get(dk);
+          if (!existing || (r.customers || []).length > (existing.customers || []).length) {
+            dedupMap.set(dk, r);
+          }
+        }
+        const dedupedUnsent = Array.from(dedupMap.values());
+        localStorage.setItem('savedRoutes', JSON.stringify(dedupedUnsent));
       }, [savedRoutes]);
 
       const refreshRouteStopStatus = async () => {
@@ -3226,9 +3236,10 @@
 
         setRouteSaving(true);
         try {
-          const dateKey = selectedDate.toDateString();
+          const dateKey = saveModalDateKey || selectedDate.toDateString();
+          const saveDate = saveModalDateKey ? new Date(saveModalDateKey) : selectedDate;
           const dayRoute = routesByDay[dateKey] || [];
-          const routeDateStr = selectedDate.toISOString().split('T')[0];
+          const routeDateStr = saveDate.toISOString().split('T')[0];
 
           const dedupedIds = new Set();
           const dedupedRoute = [];
@@ -3238,7 +3249,7 @@
               const latest = customers.find(c => c.id === rc.id) || rc;
               dedupedRoute.push({
                 ...latest,
-                scheduledDate: latest.scheduledDate || selectedDate.toISOString(),
+                scheduledDate: latest.scheduledDate || saveDate.toISOString(),
                 scheduledTime: latest.scheduledTime || rc.scheduledTime || '08:00'
               });
             }
@@ -3311,15 +3322,19 @@
             status: 'scheduled',
             routeConfirmed: true,
             confirmedRouteName: routeName,
-            confirmedRouteDate: selectedDate.toISOString()
+            confirmedRouteDate: saveDate.toISOString()
           };
           const routeIds = new Set(routeCustomers.map(c => c.id));
 
-          const effectiveEditingId = editingSavedRouteId || editingRouteIdByDay[dateKey];
+          let effectiveEditingId = editingSavedRouteId || editingRouteIdByDay[dateKey];
+          if (!effectiveEditingId) {
+            const existingUnsent = savedRoutes.find(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dateKey);
+            if (existingUnsent) effectiveEditingId = existingUnsent.id;
+          }
           if (effectiveEditingId) {
             setSavedRoutes(prev => prev.map(r => {
               if (r.id === effectiveEditingId) {
-                return { ...r, name: routeName, scheduledDate: selectedDate.toISOString(), customers: routeCustomers, totalDistance: routeTotalDistance };
+                return { ...r, name: routeName, scheduledDate: saveDate.toISOString(), customers: routeCustomers, totalDistance: routeTotalDistance };
               }
               return r;
             }));
@@ -3329,14 +3344,19 @@
               id: Date.now().toString(),
               name: routeName,
               date: new Date().toISOString(),
-              scheduledDate: selectedDate.toISOString(),
+              scheduledDate: saveDate.toISOString(),
               customers: routeCustomers,
               totalDistance: routeTotalDistance,
               confirmed: true,
               sentToTech: false,
               sentDate: null
             };
-            setSavedRoutes(prev => [...prev, newRoute]);
+            setSavedRoutes(prev => {
+              const withoutDupes = prev.filter(r => !(
+                !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dateKey
+              ));
+              return [...withoutDupes, newRoute];
+            });
           }
 
           setCustomers(prev => prev.map(c => routeIds.has(c.id) ? { ...c, ...scheduleUpdates } : c));
@@ -3350,6 +3370,7 @@
           });
 
           setShowSaveModal(false);
+          setSaveModalDateKey(null);
           setRouteName('');
           setRoutePlannerEditMode(false);
           setUnsavedRouteDays(prev => {
@@ -7381,7 +7402,6 @@ const createJob = async () => {
                       // Get jobs from saved route OR from customers state (fallback)
                       let jobsForDay = [];
                       if (inSavedView && savedRouteForDay && savedRouteForDay.customers) {
-                        // Use customers from saved route (source of truth for saved view)
                         jobsForDay = [...savedRouteForDay.customers].sort((a, b) => {
                           if (!a.scheduledTime || !b.scheduledTime) return 0;
                           const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
@@ -7389,7 +7409,6 @@ const createJob = async () => {
                           return (aHour * 60 + aMin) - (bHour * 60 + bMin);
                         });
                       } else {
-                        // Use routesByDay as source of truth for edit view
                         const dayRouteIds = new Set((routesByDay[dateKey] || []).map(r => r.id));
                         jobsForDay = customers
                           .filter(c => {
@@ -7405,6 +7424,12 @@ const createJob = async () => {
                             return (aHour * 60 + aMin) - (bHour * 60 + bMin);
                           });
                       }
+                      const seenJobIds = new Set();
+                      jobsForDay = jobsForDay.filter(j => {
+                        if (seenJobIds.has(j.id)) return false;
+                        seenJobIds.add(j.id);
+                        return true;
+                      });
 
                       // SAVED VIEW - Show compact list (only if in saved mode and has routes)
                       if (inSavedView && savedRoutesForDay.length > 0) {
@@ -7693,6 +7718,7 @@ const createJob = async () => {
                                     const existingRoute = savedRoutes.find(r => r.id === editingRouteForDay);
                                     if (existingRoute) setRouteName(existingRoute.name);
                                   }
+                                  setSaveModalDateKey(dateKey);
                                   setShowSaveModal(true);
                                 }}
                                 className="button-primary"
@@ -14067,7 +14093,7 @@ onClick={exitRadiusMode}
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{(editingSavedRouteId || editingRouteIdByDay[selectedDate.toDateString()]) ? 'Update Route' : 'Save Route'}</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dk)) ? 'Update Route' : 'Save Route'; })()}</h2>
                   <button
                     onClick={() => setShowSaveModal(false)}
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '24px' }}
@@ -14100,7 +14126,7 @@ onClick={exitRadiusMode}
                   marginBottom: '24px'
                 }}>
                   <div style={{ marginBottom: '12px' }}>
-                    📅 <strong>Scheduled:</strong> {selectedDate.toLocaleDateString('en-US', { 
+                    📅 <strong>Scheduled:</strong> {(saveModalDateKey ? new Date(saveModalDateKey) : selectedDate).toLocaleDateString('en-US', { 
                       weekday: 'long',
                       month: 'long', 
                       day: 'numeric',
@@ -14141,7 +14167,7 @@ onClick={exitRadiusMode}
                       onClick={handleSaveRoute}
                       style={{ flex: 1, justifyContent: 'center' }}
                     >
-                      {(editingSavedRouteId || editingRouteIdByDay[selectedDate.toDateString()]) ? '💾 Update Route' : '💾 Save This Day'}
+                      {(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dk)) ? '💾 Update Route' : '💾 Save This Day'; })()}
                     </button>
                   </div>
                   {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 && (
