@@ -120,6 +120,11 @@ router.delete('/:id', async (req, res) => {
     const check = await pool.query('SELECT sent_to_tech FROM routes WHERE id = $1', [req.params.id]);
     if (check.rows.length === 0) return res.status(404).json({ error: 'Route not found' });
     if (check.rows[0].sent_to_tech) return res.status(403).json({ error: 'Cannot delete a route that has been sent to the technician' });
+    const stops = await pool.query('SELECT customer_id FROM route_stops WHERE route_id = $1', [req.params.id]);
+    for (const stop of stops.rows) {
+      await pool.query(`UPDATE customers SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE id = $1 AND (status = 'scheduled' OR status = 'in progress')`, [stop.customer_id]);
+      await pool.query(`UPDATE jobs SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE customer_id = $1 AND status IN ('scheduled', 'in progress')`, [stop.customer_id]);
+    }
     const result = await pool.query('DELETE FROM routes WHERE id = $1 RETURNING *', [req.params.id]);
     res.json({ deleted: true });
   } catch (err) {
