@@ -899,9 +899,9 @@
             console.error('Failed to load routes from database:', e);
           }
 
-          if (!localStorage.getItem('routeLogicV3')) {
+          if (!localStorage.getItem('routeLogicV4')) {
             localStorage.removeItem('savedRoutes');
-            localStorage.setItem('routeLogicV3', 'true');
+            localStorage.setItem('routeLogicV4', 'true');
             console.log('One-time cleanup: cleared old route data from localStorage');
           }
 
@@ -3062,10 +3062,13 @@
               return c;
             }));
 
-            setRoutesByDay(prev => ({
-              ...prev,
-              [dateKey]: [...unsavedSavedRouteForDay.customers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
-            }));
+            setRoutesByDay(prev => {
+              const existingCustomers = (unsavedSavedRouteForDay.customers || []).filter(c => c.id !== customer.id);
+              return {
+                ...prev,
+                [dateKey]: [...existingCustomers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
+              };
+            });
             setEditingSavedRouteId(unsavedSavedRouteForDay.id, dateKey);
             setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
             setUnsavedRouteChanges(true);
@@ -3333,8 +3336,16 @@
 
           const dayDate = new Date(dayKey);
 
-          // Use routesByDay as source of truth, enrich with latest customer data
-          const routeStops = dayRoute.map(rc => {
+          const dedupedRoute = [];
+          const seenIds = new Set();
+          for (const rc of dayRoute) {
+            if (!seenIds.has(rc.id)) {
+              seenIds.add(rc.id);
+              dedupedRoute.push(rc);
+            }
+          }
+
+          const routeStops = dedupedRoute.map(rc => {
             const latestCustomer = customers.find(c => c.id === rc.id) || rc;
             return {
               ...latestCustomer,
