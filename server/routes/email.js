@@ -269,27 +269,6 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
   const systemIssues = (systemChecks || []).filter(c => c !== 'No visible issues');
   const noSystemIssues = systemChecks && systemChecks.includes('No visible issues') && systemIssues.length === 0;
 
-  const calcGrade = () => {
-    let score = 10;
-    const buildupPenalty = { 'Light': 0, 'Moderate': -1, 'Heavy': -3 };
-    score += buildupPenalty[buildupLevel] || 0;
-    const nonNoneDamage = damageItems.filter(d => d.type !== 'None');
-    nonNoneDamage.forEach(d => {
-      score -= 1;
-      if ((d.count || 1) > 1) score -= 0.5 * ((d.count || 1) - 1);
-    });
-    score -= systemIssues.length;
-    score = Math.max(0, Math.round(score));
-    const gradeMap = { 10: 'A+', 9: 'A+', 8: 'A', 7: 'A-', 6: 'B+', 5: 'B', 4: 'B-', 3: 'C+', 2: 'C', 1: 'C-', 0: 'D' };
-    return gradeMap[score] || 'D';
-  };
-  const grade = calcGrade();
-  const gradeColor = grade.startsWith('A') ? '#16a34a' : grade.startsWith('B') ? '#d97706' : grade.startsWith('C') ? '#ea580c' : '#dc2626';
-  const gradeBgLight = grade.startsWith('A') ? '#f0fdf4' : grade.startsWith('B') ? '#fffbeb' : grade.startsWith('C') ? '#fff7ed' : '#fef2f2';
-  const gradeBgDark = grade.startsWith('A') ? '#dcfce7' : grade.startsWith('B') ? '#fef3c7' : grade.startsWith('C') ? '#ffedd5' : '#fee2e2';
-  const gradeDescriptions = { 'A+': 'Excellent condition \u2014 your panels are performing great', 'A': 'Excellent condition \u2014 your panels are performing great', 'A-': 'Very good \u2014 minor attention areas noted', 'B+': 'Good condition \u2014 regular maintenance recommended', 'B': 'Good condition \u2014 regular maintenance recommended', 'B-': 'Fair condition \u2014 some items need attention', 'C+': 'Below average \u2014 maintenance strongly recommended', 'C': 'Below average \u2014 maintenance strongly recommended', 'C-': 'Needs attention \u2014 several issues found', 'D': 'Needs attention \u2014 several issues found' };
-  const gradeDescription = gradeDescriptions[grade] || 'Needs attention \u2014 several issues found';
-
   const damageNarrative = (() => {
     if (damageIsNone) return ' The good news is that no surface damage was found on any of your panels.';
     const items = damageItems.filter(d => d.type !== 'None');
@@ -320,8 +299,15 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
   };
   const buildupDesc = buildupNarrative[buildupLevel] || 'some buildup on your panels';
 
-  const debrisDesc = debris && debris.length > 0 ?
-    ` The primary contaminants were ${debris.join(' and ').toLowerCase()}.` : '';
+  const cleanDebris = (debris || []).map(d => d.startsWith('Other: ') ? d.replace('Other: ', '').trim() : d).filter(Boolean);
+  const debrisDesc = cleanDebris.length > 0 ? (() => {
+    const items = cleanDebris.map(d => d.toLowerCase());
+    let joined;
+    if (items.length === 1) joined = items[0];
+    else if (items.length === 2) joined = items.join(' and ');
+    else joined = items.slice(0, -1).join(', ') + ', and ' + items[items.length - 1];
+    return ` The primary contaminants were ${joined}.`;
+  })() : '';
 
   const price = parseFloat(servicePrice) || 0;
   const ppp = parseFloat(pricePerPanel) || 9;
@@ -483,21 +469,6 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
             </td>
           </tr>
 
-          <!-- Panel Health Grade -->
-          <tr>
-            <td style="background:#ffffff;padding:0 24px 20px;">
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="background:linear-gradient(135deg,${gradeBgLight},${gradeBgDark});border:2px solid ${gradeColor}30;border-radius:16px;padding:24px;text-align:center;">
-                    <div style="font-size:11px;color:${gradeColor};text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Panel Health Grade</div>
-                    <div style="font-size:56px;font-weight:900;color:${gradeColor};line-height:1;">${grade}</div>
-                    <div style="font-size:13px;color:#64748b;margin-top:8px;font-weight:500;">${gradeDescription}</div>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
           <!-- Section 1: What We Found -->
           <tr>
             <td style="background:#ffffff;padding:8px 24px 20px;">
@@ -547,10 +518,10 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                   </td>
                 </tr>
               </table>
-              ${debris && debris.length > 0 ? `
+              ${cleanDebris.length > 0 ? `
                 <div style="margin-top:10px;">
                   <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px;">Contaminants Removed</div>
-                  ${debris.map(d => `<span style="display:inline-block;background:#f1f5f9;color:#475569;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin:2px 4px 2px 0;">${d}</span>`).join('')}
+                  ${cleanDebris.map(d => `<span style="display:inline-block;background:#f1f5f9;color:#475569;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin:2px 4px 2px 0;">${d}</span>`).join('')}
                 </div>
               ` : ''}
             </td>
@@ -564,7 +535,7 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                 <p style="margin:0;color:#64748b;font-size:12px;">Results after professional cleaning</p>
               </div>
               <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
-                Your panels have been thoroughly cleaned using our professional deionized water system. All ${buildupLevel ? buildupLevel.toLowerCase() + ' ' : ''}buildup${debris && debris.length > 0 ? ', ' + debris.join(', ').toLowerCase() + ',' : ''} and debris has been carefully removed to restore optimal sunlight absorption and maximize your energy production.
+                Your panels have been thoroughly cleaned using our professional deionized water system. All ${buildupLevel ? buildupLevel.toLowerCase() + ' ' : ''}buildup${cleanDebris.length > 0 ? (() => { const d = cleanDebris.map(x => x.toLowerCase()); const joined = d.length === 1 ? d[0] : d.length === 2 ? d.join(' and ') : d.slice(0,-1).join(', ') + ', and ' + d[d.length-1]; return ', including ' + joined + ','; })() : ''} has been carefully removed to restore optimal sunlight absorption and maximize your energy production.
               </p>
               ${afterPhotos.length > 0 ? `
                 <div style="margin-bottom:8px;">
@@ -596,11 +567,13 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                 </div>
               ` : `
                 <p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.6;">During our inspection, our technician noted the following items for your awareness:</p>
-                ${systemIssues.map(issue => `
+                ${systemIssues.map(issue => {
+                  const cleanIssue = issue.startsWith('Other: ') ? issue.replace('Other: ', '').trim() : issue;
+                  return `
                   <div style="background:#fef2f2;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;">
-                    <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${issue}</div>
-                  </div>
-                `).join('')}
+                    <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${cleanIssue}</div>
+                  </div>`;
+                }).join('')}
               `}
               ${issuePhotosList.length > 0 ? `
                 <div style="margin-top:12px;">
@@ -687,7 +660,7 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                 <p style="margin:0;color:#64748b;font-size:12px;">Keeping your solar investment performing</p>
               </div>
               <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
-                Based on the ${buildupLevel ? buildupLevel.toLowerCase() : ''} buildup we found${debris && debris.length > 0 ? ' (' + debris.join(', ').toLowerCase() + ')' : ''}${!noSystemIssues && systemIssues.length > 0 ? ' and the system items we noted' : ''}, we recommend <strong style="color:#4f46e5;">${recommendedFrequency || 'regular'} cleaning</strong> to keep your panels performing at maximum efficiency. Regular maintenance can improve your solar output by up to 25% and extend the lifespan of your system.
+                Based on the ${buildupLevel ? buildupLevel.toLowerCase() : ''} buildup we found${cleanDebris.length > 0 ? ' (' + (() => { const d = cleanDebris.map(x => x.toLowerCase()); return d.length === 1 ? d[0] : d.length === 2 ? d.join(' and ') : d.slice(0,-1).join(', ') + ', and ' + d[d.length-1]; })() + ')' : ''}${!noSystemIssues && systemIssues.length > 0 ? (() => { const clean = systemIssues.map(s => s.startsWith('Other: ') ? s.replace('Other: ','').trim() : s).map(s => s.toLowerCase()); if (clean.length <= 2) { return ' and the ' + (clean.length === 1 ? clean[0] : clean[0] + ' and ' + clean[1]) + ' we noticed'; } return ' and the ' + clean[0] + ', ' + clean[1] + ', and other items we noticed'; })() : ''}, we recommend <strong style="color:#4f46e5;">${recommendedFrequency || 'regular'} cleaning</strong> to keep your panels performing at maximum efficiency. Regular maintenance can improve your solar output by up to 25% and extend the lifespan of your system.
               </p>
               <div style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;border-radius:12px;padding:20px;text-align:center;">
                 <div style="font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Recommended Schedule</div>
