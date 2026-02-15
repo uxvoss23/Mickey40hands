@@ -2885,9 +2885,10 @@
           scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDays]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
-      const routeSavingTimeoutRef = useRef(null);
+      const savingCustomerIdsRef = useRef(new Set());
+      const lastAssignedTimeRef = useRef({});
       const handleCustomerClick = async (customer) => {
-        if (routeSaving) return;
+        if (savingCustomerIdsRef.current.has(customer.id)) return;
         if (statusFilter !== 'scheduled') {
           setSelectedCustomer(customer);
           return;
@@ -2933,9 +2934,8 @@
         });
         const isInRoute = isInRoutesByDay || isScheduledForDay;
 
+        savingCustomerIdsRef.current.add(customer.id);
         setRouteSaving(true);
-        if (routeSavingTimeoutRef.current) clearTimeout(routeSavingTimeoutRef.current);
-        routeSavingTimeoutRef.current = setTimeout(() => setRouteSaving(false), 10000);
         try {
           if (isInRoute) {
             const sentRouteWithCustomer = savedRoutes.find(r => {
@@ -2944,31 +2944,10 @@
               if (rDate.toDateString() !== dateKey) return false;
               return (r.customers || []).some(c => c.id === customer.id);
             });
-            if (sentRouteWithCustomer) { setRouteSaving(false); return; }
+            if (sentRouteWithCustomer) { savingCustomerIdsRef.current.delete(customer.id); setRouteSaving(false); return; }
 
             const routeDayStr = effectiveDate.toISOString().split('T')[0];
-            const jobsData = await apiFetch('/jobs?customer_id=' + customer.id);
-            if (jobsData && jobsData.jobs) {
-              const activeJobs = jobsData.jobs
-                .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
-                .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
-              const jobForThisDay = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDayStr);
-              const scheduledJob = !jobForThisDay ? activeJobs.find(j => j.status === 'scheduled') : null;
-              const jobToUpdate = jobForThisDay || scheduledJob;
-              if (jobToUpdate) {
-                await apiFetch(`/jobs/${jobToUpdate.id}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: 'unscheduled' })
-                });
-              }
-            }
-
             const newStatus = getStatusAfterUnschedule(customer);
-            await apiFetch(`/customers/${customer.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: newStatus, route_confirmed: false })
-            });
-
             const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: newStatus, routeConfirmed: false };
             setCustomers(prev => prev.map(c => c.id === customer.id ? { ...c, ...unscheduleUpdates } : c));
             setRoutesByDay(prev => ({
@@ -3001,6 +2980,32 @@
               }));
             }
             setSuggestedCustomers([]);
+
+            (async () => {
+              try {
+                const jobsData = await apiFetch('/jobs?customer_id=' + customer.id);
+                if (jobsData && jobsData.jobs) {
+                  const activeJobs = jobsData.jobs
+                    .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+                    .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
+                  const jobForThisDay = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDayStr);
+                  const scheduledJob = !jobForThisDay ? activeJobs.find(j => j.status === 'scheduled') : null;
+                  const jobToUpdate = jobForThisDay || scheduledJob;
+                  if (jobToUpdate) {
+                    apiFetch(`/jobs/${jobToUpdate.id}`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: 'unscheduled' })
+                    });
+                  }
+                }
+                apiFetch(`/customers/${customer.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: newStatus, route_confirmed: false })
+                });
+              } catch (bgErr) {
+                console.error('Background unschedule save failed:', bgErr);
+              }
+            })();
           } else {
             const savedRoutesForDay = savedRoutes.filter(r => {
               const rDate = new Date(r.scheduledDate);
@@ -3044,12 +3049,20 @@
             }
 
             let nextSlot = null;
-            if (allExistingJobs.length === 0) {
-              nextSlot = { time: '08:00', hour: 8, minute: 0 };
-            } else {
+            const lastAssigned = lastAssignedTimeRef.current[dateKey];
+            let effectiveLastTime = null;
+            if (allExistingJobs.length > 0) {
               const lastJob = allExistingJobs[allExistingJobs.length - 1];
               const [lastH, lastM] = lastJob.scheduledTime.split(':').map(Number);
-              const nextMinutes = (lastH * 60 + lastM) + 75;
+              effectiveLastTime = lastH * 60 + lastM;
+            }
+            if (lastAssigned && (!effectiveLastTime || lastAssigned > effectiveLastTime)) {
+              effectiveLastTime = lastAssigned;
+            }
+            if (effectiveLastTime === null) {
+              nextSlot = { time: '08:00', hour: 8, minute: 0 };
+            } else {
+              const nextMinutes = effectiveLastTime + 75;
               const nextH = Math.floor(nextMinutes / 60);
               const nextM = nextMinutes % 60;
               if (nextH < 20) {
@@ -3062,29 +3075,9 @@
             }
 
             const newTime = nextSlot ? nextSlot.time : '08:00';
+            const [nH, nM] = newTime.split(':').map(Number);
+            lastAssignedTimeRef.current[dateKey] = nH * 60 + nM;
             const routeDateStr = effectiveDate.toISOString().split('T')[0];
-
-            const jobsData = await apiFetch('/jobs?customer_id=' + customer.id);
-            if (jobsData && jobsData.jobs) {
-              const activeJobs = jobsData.jobs
-                .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
-                .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
-              const dateMatchJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDateStr);
-              const unscheduledJob = activeJobs.find(j => !j.scheduled_date || j.status === 'unscheduled');
-              const nearestFutureJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] >= routeDateStr);
-              const jobToUpdate = dateMatchJob || unscheduledJob || nearestFutureJob || activeJobs[0];
-              if (jobToUpdate) {
-                await apiFetch(`/jobs/${jobToUpdate.id}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({ status: 'scheduled', scheduled_date: routeDateStr, scheduled_time: newTime })
-                });
-              }
-            }
-
-            await apiFetch(`/customers/${customer.id}`, {
-              method: 'PATCH',
-              body: JSON.stringify({ scheduled_date: routeDateStr, scheduled_time: newTime, status: 'scheduled', route_confirmed: false })
-            });
 
             const scheduleUpdates = {
               scheduledDate: effectiveDate.toISOString(),
@@ -3124,13 +3117,40 @@
             setUnsavedRouteChanges(true);
             setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
             setSuggestedCustomers([]);
+
+            (async () => {
+              try {
+                const jobsData = await apiFetch('/jobs?customer_id=' + customer.id);
+                if (jobsData && jobsData.jobs) {
+                  const activeJobs = jobsData.jobs
+                    .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+                    .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
+                  const dateMatchJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDateStr);
+                  const unscheduledJob = activeJobs.find(j => !j.scheduled_date || j.status === 'unscheduled');
+                  const nearestFutureJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] >= routeDateStr);
+                  const jobToUpdate = dateMatchJob || unscheduledJob || nearestFutureJob || activeJobs[0];
+                  if (jobToUpdate) {
+                    apiFetch(`/jobs/${jobToUpdate.id}`, {
+                      method: 'PATCH',
+                      body: JSON.stringify({ status: 'scheduled', scheduled_date: routeDateStr, scheduled_time: newTime })
+                    });
+                  }
+                }
+                apiFetch(`/customers/${customer.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ scheduled_date: routeDateStr, scheduled_time: newTime, status: 'scheduled', route_confirmed: false })
+                });
+              } catch (bgErr) {
+                console.error('Background route save failed:', bgErr);
+              }
+            })();
           }
         } catch (err) {
           console.error('Route operation failed:', err);
           setError('Failed to update route. Please try again.');
           setTimeout(() => setError(null), 3000);
         } finally {
-          if (routeSavingTimeoutRef.current) clearTimeout(routeSavingTimeoutRef.current);
+          savingCustomerIdsRef.current.delete(customer.id);
           setRouteSaving(false);
         }
       };
