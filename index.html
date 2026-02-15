@@ -11954,13 +11954,13 @@ const createJob = async () => {
                                     {cd.buildup_level && (
                                       <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
                                         <span style={{ fontWeight: 700 }}>Buildup:</span> {cd.buildup_level}
-                                        {cd.debris && cd.debris.length > 0 && <span> | <span style={{ fontWeight: 700 }}>Debris:</span> {cd.debris.join(', ')}</span>}
-                                        {cd.surface_damage && <span> | <span style={{ fontWeight: 700 }}>Damage:</span> {cd.surface_damage}</span>}
+                                        {cd.debris && cd.debris.length > 0 && <span> | <span style={{ fontWeight: 700 }}>Debris:</span> {cd.debris.map(d => typeof d === 'object' ? (d.type || d.label || JSON.stringify(d)) : d).join(', ')}</span>}
+                                        {cd.surface_damage && <span> | <span style={{ fontWeight: 700 }}>Damage:</span> {Array.isArray(cd.surface_damage) ? cd.surface_damage.map(d => typeof d === 'object' ? (d.type || d.label || JSON.stringify(d)) : d).join(', ') : cd.surface_damage}</span>}
                                       </div>
                                     )}
                                     {cd.system_checks && cd.system_checks.length > 0 && (
                                       <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
-                                        <span style={{ fontWeight: 700 }}>System:</span> {cd.system_checks.join(', ')}
+                                        <span style={{ fontWeight: 700 }}>System:</span> {cd.system_checks.map(s => typeof s === 'object' ? (s.type || s.label || JSON.stringify(s)) : s).join(', ')}
                                       </div>
                                     )}
                                     {cd.recommended_frequency && (
@@ -12005,10 +12005,10 @@ const createJob = async () => {
                                               servicePrice: parseFloat(customer.amountPaid) || 0,
                                               pricePerPanel: parseFloat(customer.pricePerPanel) || 9,
                                               buildupLevel: cd.buildup_level || '',
-                                              debris: cd.debris || [],
-                                              surfaceDamage: cd.surface_damage || '',
-                                              systemChecks: cd.system_checks || [],
-                                              urgentChecks: cd.urgent_checks || [],
+                                              debris: (cd.debris || []).map(d => typeof d === 'object' ? (d.type || d.label || '') : d),
+                                              surfaceDamage: Array.isArray(cd.surface_damage) ? cd.surface_damage.map(d => typeof d === 'object' ? (d.type || d.label || '') : d).join(', ') : (cd.surface_damage || ''),
+                                              systemChecks: (cd.system_checks || []).map(s => typeof s === 'object' ? (s.type || s.label || '') : s),
+                                              urgentChecks: (cd.urgent_checks || []).map(u => typeof u === 'object' ? (u.type || u.label || '') : u),
                                               inspectionNotes: cd.inspectionNotes || cd.inspection_notes || '',
                                               recommendedFrequency: cd.recommended_frequency || '',
                                               recurringStatus: cd.recurringSelection || cd.recurring_selection || '',
