@@ -191,6 +191,19 @@
       opacity: 0.9;
     }
 
+    .marker-name-tooltip .leaflet-tooltip-content-wrapper,
+    .marker-name-tooltip {
+      background: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(139, 92, 246, 0.5) !important;
+      border-radius: 6px !important;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+      padding: 4px 8px !important;
+      color: #f1f5f9 !important;
+    }
+    .marker-name-tooltip::before {
+      border-top-color: rgba(15, 23, 42, 0.95) !important;
+    }
+
     .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
       background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(99, 102, 241, 0.2)) !important;
       border: 2px solid rgba(139, 92, 246, 0.6) !important;
@@ -2113,7 +2126,9 @@
           if (!customer) return;
           try {
             const jobsData = await apiFetch(`/jobs/customer/${customer.id}`);
-            const activeJobs = (jobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+            const allJobs = jobsData.jobs || [];
+            const unscheduledJobs = allJobs.filter(j => j.status === 'unscheduled' || j.status === 'pending');
+            const activeJobs = unscheduledJobs.length > 0 ? unscheduledJobs : allJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
             if (activeJobs.length > 0) {
               const j = activeJobs[0];
               const mapped = {
@@ -2187,9 +2202,12 @@
           pinElement.style.boxShadow = '0 8px 20px rgba(139, 92, 246, 0.6)';
         }
 
-        // Open the marker's popup when hovering from unrouted list
+        // When hovering from unrouted list, show name tooltip only (not full popup)
         if (hoveredUnroutedCustomer?.customer?.id === hoveredCustomer.id) {
-          marker.openPopup();
+          marker.bindTooltip(`<div style="font-family: Inter, sans-serif; font-size: 11px; font-weight: 700; color: #f1f5f9; padding: 2px 4px;">${hoveredCustomer.name}</div>`, {
+            permanent: true, direction: 'top', offset: [0, -20], className: 'marker-name-tooltip'
+          });
+          marker.openTooltip();
         }
         
         return () => {
@@ -2198,9 +2216,9 @@
             pinElement.style.transform = 'rotate(-45deg) scale(1)';
             pinElement.style.boxShadow = '0 4px 16px rgba(139, 92, 246, 0.5)';
           }
-          // Close popup when unhover
+          // Close tooltip when unhover from unrouted list
           if (hoveredUnroutedCustomer?.customer?.id === hoveredCustomer.id) {
-            marker.closePopup();
+            marker.unbindTooltip();
           }
         };
       }, [hoveredCustomer, route, suggestedCustomers, hoveredUnroutedCustomer]);
@@ -2545,16 +2563,7 @@
                   ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + formatTime12h(customer.scheduledTime) : ''}</div>` : ''}
                 </div>
                 
-                ${customer.existingJob ? `
-                <div style="margin-bottom: 8px; padding: 8px; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 6px;">
-                  <div style="font-size: 8px; color: #94a3b8; margin-bottom: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Service History</div>
-                  ${customer.totalPanels ? `<div style="font-size: 9px; color: #f1f5f9; margin-bottom: 2px;">☀️ ${customer.totalPanels} panels</div>` : ''}
-                  ${customer.lastServiceDate ? `<div style="font-size: 9px; color: #f1f5f9; margin-bottom: 2px;">📅 Last: ${new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</div>` : ''}
-                  ${customer.amountPaid ? `<div style="font-size: 9px; color: #22c55e; margin-bottom: 2px;">💵 $${customer.amountPaid}</div>` : ''}
-                  ${customer.isRecurring ? `<div style="font-size: 9px; color: #3b82f6; margin-bottom: 2px;">🦖 Recurring</div>` : ''}
-                  ${customer.nextScheduledDate && customer.isRecurring ? `<div style="font-size: 9px; color: #3b82f6;">📆 Next: ${new Date(customer.nextScheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</div>` : ''}
-                </div>
-                ` : ''}
+                
                 
                 <div style="display: flex; flex-direction: column; gap: 4px;">
                   <button 
@@ -2562,7 +2571,7 @@
                     style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     👤 View Profile
                   </button>
-                  ${customer.activeJobCount > 0 ? `
+                  ${(customer.activeJobCount > 0 || customer.existingJob || customer.totalJobCount > 0) ? `
                   <button 
                     onclick="window.dispatchEvent(new CustomEvent('viewJobForCustomer', {detail: '${customer.id}'}))"
                     style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
