@@ -545,6 +545,7 @@
       const [pendingDateChange, setPendingDateChange] = useState(null); // Track pending date switch when warning shown
       const [routePlannerEditMode, setRoutePlannerEditMode] = useState(false);
       const [multiSelectDays, setMultiSelectDays] = useState(false);
+      const lastRoutePlannerState = React.useRef({ focusedDays: null, multiSelectDays: false, savedViewDays: null });
       const [showMonthCalendar, setShowMonthCalendar] = useState(false);
       const [suggestedCustomers, setSuggestedCustomers] = useState([]);
       const [savedRoutes, setSavedRoutes] = useState([]);
@@ -8506,6 +8507,7 @@ const createJob = async () => {
                           key={s.value}
                           onClick={() => { 
                             if (statusFilter === s.value) {
+                              lastRoutePlannerState.current = { focusedDays: [...focusedDays], multiSelectDays, savedViewDays: { ...savedViewDays } };
                               setStatusFilter('all');
                               setFocusedDays([]);
                               setShowNeedScheduling(false);
@@ -8513,9 +8515,17 @@ const createJob = async () => {
                             } else {
                               setStatusFilter(s.value);
                               setShowNeedScheduling(true);
-                              const today = new Date(); today.setHours(0,0,0,0);
-                              setSelectedDate(today);
-                              setFocusedDays([today]);
+                              const prev = lastRoutePlannerState.current;
+                              if (prev.focusedDays && prev.focusedDays.length > 0) {
+                                setFocusedDays(prev.focusedDays);
+                                setSelectedDate(prev.focusedDays[0]);
+                                setMultiSelectDays(prev.multiSelectDays);
+                                if (prev.savedViewDays) setSavedViewDays(prev.savedViewDays);
+                              } else {
+                                const today = new Date(); today.setHours(0,0,0,0);
+                                setSelectedDate(today);
+                                setFocusedDays([today]);
+                              }
                               setRoutePlannerEditMode(false);
                             }
                           }}
