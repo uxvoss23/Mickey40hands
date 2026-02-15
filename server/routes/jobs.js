@@ -290,22 +290,22 @@ router.patch('/:id', async (req, res) => {
             const nextJob = nextUpcoming.rows[0];
             const nextDate = nextJob.scheduled_date;
             const daysUntilNext = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
-            const customerStatus = daysUntilNext <= 30 && daysUntilNext >= 0 ? 'scheduled' : '';
+            const customerStatus = daysUntilNext <= 30 && daysUntilNext >= 0 ? 'scheduled' : null;
             await pool.query(
-              `UPDATE customers SET status = $1, next_service_date = $2 WHERE id = $3`,
+              `UPDATE customers SET status = $1, next_service_date = $2, scheduled_date = NULL, scheduled_time = NULL WHERE id = $3`,
               [customerStatus, nextDate, updatedJob.customer_id]
             );
             updatedJob.next_job = nextJob;
           } else {
             await pool.query(
-              `UPDATE customers SET status = '', next_service_date = NULL WHERE id = $1`,
+              `UPDATE customers SET status = NULL, next_service_date = NULL, scheduled_date = NULL, scheduled_time = NULL WHERE id = $1`,
               [updatedJob.customer_id]
             );
             updatedJob.next_job = null;
           }
         } else {
           await pool.query(
-            `UPDATE customers SET status = '' WHERE id = $1`,
+            `UPDATE customers SET status = NULL, scheduled_date = NULL, scheduled_time = NULL WHERE id = $1`,
             [updatedJob.customer_id]
           );
         }
@@ -353,19 +353,20 @@ router.delete('/:id', async (req, res) => {
         const isRecurring = upcoming[0].is_recurring;
         if (isRecurring) {
           const daysUntil = Math.floor((new Date(nextServiceDate) - new Date()) / (1000 * 60 * 60 * 24));
-          newStatus = daysUntil <= 30 ? 'scheduled' : '';
+          newStatus = daysUntil <= 30 ? 'scheduled' : null;
         } else {
           newStatus = 'scheduled';
         }
       } else {
         newStatus = 'unscheduled';
       }
+    } else {
+      newStatus = null;
     }
 
-    const clearScheduled = activeJobs.length === 0;
     await pool.query(
-      `UPDATE customers SET last_service_date = $1, next_service_date = $2, status = $3, scheduled_date = $4, scheduled_time = $5 WHERE id = $6`,
-      [lastServiceDate || null, nextServiceDate || null, newStatus, clearScheduled ? null : nextServiceDate, clearScheduled ? null : '', customerId]
+      `UPDATE customers SET last_service_date = $1, next_service_date = $2, status = $3, scheduled_date = NULL, scheduled_time = NULL WHERE id = $4`,
+      [lastServiceDate || null, nextServiceDate || null, newStatus, customerId]
     );
 
     res.json({ deleted: true, customer_update: { last_service_date: lastServiceDate, next_service_date: nextServiceDate, status: newStatus } });

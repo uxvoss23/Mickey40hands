@@ -407,11 +407,21 @@ router.patch('/:id', async (req, res) => {
       customerType: 'customer_type', customer_type: 'customer_type'
     };
 
+    if (updates.status === 'unscheduled' || updates.status === 'scheduled') {
+      const jobCheck = await pool.query(
+        `SELECT COUNT(*) FROM jobs WHERE customer_id = $1 AND status NOT IN ('completed', 'cancelled')`,
+        [req.params.id]
+      );
+      if (parseInt(jobCheck.rows[0].count) === 0) {
+        updates.status = null;
+      }
+    }
+
     for (const [key, value] of Object.entries(updates)) {
       const dbField = fieldMap[key];
       if (dbField) {
         let processedValue = value;
-        if (dbField === 'status') processedValue = (value || '').toLowerCase();
+        if (dbField === 'status') processedValue = (value || '').toLowerCase() || null;
         if (dbField === 'notes_history') processedValue = JSON.stringify(value);
         if (dbField === 'verification_data' && typeof value === 'object') processedValue = JSON.stringify(value);
         setClauses.push(`${dbField} = $${paramIndex}`);
