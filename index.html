@@ -9134,19 +9134,24 @@ const createJob = async () => {
                             const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0);
                             const jobTypes = [...new Set(allUnrouted.map(c => getJobType(c)))].sort();
                             const filtered = unroutedJobTypeFilter === 'all' ? allUnrouted : allUnrouted.filter(c => getJobType(c) === unroutedJobTypeFilter);
-                            const activeDay = hoveredRouteDay || (focusedDays.length === 1 ? focusedDays[0] : null) || selectedDate;
-                            const activeDayOfWeek = activeDay ? activeDay.getDay() : null;
+                            const activeDaysOfWeek = (() => {
+                              if (hoveredRouteDay) return [hoveredRouteDay.getDay()];
+                              if (focusedDays.length > 0) return [...new Set(focusedDays.map(d => d.getDay()))];
+                              if (selectedDate) return [selectedDate.getDay()];
+                              return [];
+                            })();
+                            const activeDayOfWeek = activeDaysOfWeek.length === 1 ? activeDaysOfWeek[0] : null;
                             const sorted = [...filtered].sort((a, b) => {
-                              if (activeDayOfWeek === null) return 0;
+                              if (activeDaysOfWeek.length === 0) return 0;
                               const aDays = parsePrefDays(a.preferredDate);
                               const bDays = parsePrefDays(b.preferredDate);
-                              const aMatch = aDays.includes(activeDayOfWeek);
-                              const bMatch = bDays.includes(activeDayOfWeek);
+                              const aMatch = aDays.some(d => activeDaysOfWeek.includes(d));
+                              const bMatch = bDays.some(d => activeDaysOfWeek.includes(d));
                               if (aMatch && !bMatch) return -1;
                               if (!aMatch && bMatch) return 1;
                               return 0;
                             });
-                            const matchCount = activeDayOfWeek !== null ? sorted.filter(c => parsePrefDays(c.preferredDate).includes(activeDayOfWeek)).length : 0;
+                            const matchCount = activeDaysOfWeek.length > 0 ? sorted.filter(c => parsePrefDays(c.preferredDate).some(d => activeDaysOfWeek.includes(d))).length : 0;
                             return (
                               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
@@ -9154,9 +9159,9 @@ const createJob = async () => {
                                     <h4 style={{ fontSize: '12px', fontWeight: 700, margin: 0, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                                       Unrouted Jobs ({filtered.length})
                                     </h4>
-                                    {matchCount > 0 && activeDayOfWeek !== null && (
+                                    {matchCount > 0 && activeDaysOfWeek.length > 0 && (
                                       <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 600, background: 'rgba(34, 197, 94, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-                                        {matchCount} match {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][activeDayOfWeek]}
+                                        {matchCount} match{activeDaysOfWeek.length === 1 ? ' ' + ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][activeDaysOfWeek[0]] : ''}
                                       </span>
                                     )}
                                   </div>
@@ -9184,7 +9189,7 @@ const createJob = async () => {
                                       const panels = parseInt(customer.panelCount || customer.totalPanels || 0) || 0;
                                       const price = parseFloat(customer.activeJobPrice || customer.jobPrice || customer.amountPaid || 0) || 0;
                                       const prefDays = parsePrefDays(customer.preferredDate);
-                                      const isPrefMatch = activeDayOfWeek !== null && prefDays.includes(activeDayOfWeek);
+                                      const isPrefMatch = activeDaysOfWeek.length > 0 && prefDays.some(d => activeDaysOfWeek.includes(d));
                                       return (
                                       <div
                                         key={customer.id}
@@ -9233,7 +9238,7 @@ const createJob = async () => {
                                             {['M','T','W','T','F','S','S'].map((label, idx) => {
                                               const dayNum = [1,2,3,4,5,6,0][idx];
                                               const isPreferred = prefDays.includes(dayNum);
-                                              const isActiveMatch = isPreferred && activeDayOfWeek === dayNum;
+                                              const isActiveMatch = isPreferred && activeDaysOfWeek.includes(dayNum);
                                               return (
                                                 <div key={idx} style={{
                                                   width: '16px', height: '16px', borderRadius: '3px', fontSize: '8px', fontWeight: 700,
