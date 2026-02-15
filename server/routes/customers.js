@@ -584,14 +584,16 @@ router.post('/sync', async (req, res) => {
       let correctStatus = c.status;
       let correctExistingJob = c.existing_job;
 
-      if (hasScheduledJob) {
-        correctStatus = 'scheduled';
-      } else if (allCompleted) {
-        correctStatus = 'completed';
-      } else if (hasJobs) {
-        correctStatus = 'unscheduled';
-      } else {
-        correctStatus = 'new';
+      if (!c.status || c.status.trim() === '') {
+        if (hasScheduledJob) {
+          correctStatus = 'scheduled';
+        } else if (allCompleted) {
+          correctStatus = 'completed';
+        } else if (hasJobs) {
+          correctStatus = 'unscheduled';
+        } else {
+          correctStatus = 'new';
+        }
       }
 
       if (hasJobs && !c.existing_job) {

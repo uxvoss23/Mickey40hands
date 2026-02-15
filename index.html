@@ -5457,12 +5457,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               serviceHistory: [],
               source: c.source || 'database',
               customerType: c.customer_type || 'residential'
-            })).map(c => {
-              if (c.status === 'scheduled' && !c.scheduledDate) {
-                return { ...c, status: '' };
-              }
-              return c;
-            });
+            }));
 
             const listId = Date.now() + Math.random();
             const listName = 'Database Import';
@@ -7845,23 +7840,23 @@ const createJob = async () => {
                                     if (window.confirm('Delete this route? All jobs will be set back to unscheduled.')) {
                                       const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
                                       if (savedRoute) {
-                                        // Delete from database if it has a dbRouteId
                                         if (savedRoute.dbRouteId) {
                                           try {
                                             await apiFetch(`/routes/${savedRoute.dbRouteId}`, { method: 'DELETE' });
                                           } catch (err) { console.error('Failed to delete route from database:', err); }
-                                        }
-                                        for (const rc of savedRoute.customers) {
-                                          try {
-                                            await apiFetch(`/customers/${rc.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'unscheduled', scheduled_date: null, scheduled_time: null }) });
-                                            const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
-                                            const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
-                                            for (const j of activeJobs) {
-                                              if (j.scheduled_date || j.status === 'scheduled' || j.status === 'in progress') {
-                                                await apiFetch(`/jobs/${j.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_date: '', scheduled_time: '', status: 'unscheduled' }) });
+                                        } else {
+                                          for (const rc of savedRoute.customers) {
+                                            try {
+                                              await apiFetch(`/customers/${rc.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'unscheduled', scheduled_date: null, scheduled_time: null }) });
+                                              const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+                                              const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                              for (const j of activeJobs) {
+                                                if (j.scheduled_date || j.status === 'scheduled' || j.status === 'in progress') {
+                                                  await apiFetch(`/jobs/${j.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: 'unscheduled' }) });
+                                                }
                                               }
-                                            }
-                                          } catch (err) { console.error('Failed to clear job:', err); }
+                                            } catch (err) { console.error('Failed to clear job:', err); }
+                                          }
                                         }
                                         const unscheduleUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null };
                                         setCustomers(prev => prev.map(c => {
@@ -7876,6 +7871,7 @@ const createJob = async () => {
                                         const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                         setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                         setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
+                                        loadFromDatabase();
                                       }
                                       setEditingSavedRouteId(null);
                                       setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
@@ -11635,37 +11631,35 @@ const createJob = async () => {
                             <button
                               onClick={async () => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
-                                  // Delete from database if it has a dbRouteId
                                   if (savedRoute.dbRouteId) {
                                     try {
                                       await apiFetch(`/routes/${savedRoute.dbRouteId}`, { method: 'DELETE' });
                                     } catch (err) {
                                       console.error('Failed to delete route from database:', err);
                                     }
-                                  }
-                                  const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
-                                  const routeDateStr = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate).toISOString().split('T')[0] : null;
-                                  for (const rc of savedRoute.customers) {
-                                    try {
-                                      await apiFetch(`/customers/${rc.id}`, {
-                                        method: 'PATCH',
-                                        body: JSON.stringify({ status: 'unscheduled', scheduled_date: null, scheduled_time: null, route_confirmed: false })
-                                      });
-                                      const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
-                                      const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
-                                      for (const j of activeJobs) {
-                                        const jobDateStr = j.scheduled_date ? j.scheduled_date.split('T')[0] : null;
-                                        if (j.status === 'scheduled' || j.status === 'in progress' || (routeDateStr && jobDateStr === routeDateStr)) {
-                                          await apiFetch(`/jobs/${j.id}`, {
-                                            method: 'PATCH',
-                                            body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: 'unscheduled' })
-                                          });
+                                  } else {
+                                    for (const rc of savedRoute.customers) {
+                                      try {
+                                        await apiFetch(`/customers/${rc.id}`, {
+                                          method: 'PATCH',
+                                          body: JSON.stringify({ status: 'unscheduled', scheduled_date: null, scheduled_time: null, route_confirmed: false })
+                                        });
+                                        const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
+                                        const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+                                        for (const j of activeJobs) {
+                                          if (j.scheduled_date || j.status === 'scheduled' || j.status === 'in progress') {
+                                            await apiFetch(`/jobs/${j.id}`, {
+                                              method: 'PATCH',
+                                              body: JSON.stringify({ scheduled_date: null, scheduled_time: null, status: 'unscheduled' })
+                                            });
+                                          }
                                         }
+                                      } catch (err) {
+                                        console.error('Failed to clear job scheduled dates:', err);
                                       }
-                                    } catch (err) {
-                                      console.error('Failed to clear job scheduled dates:', err);
                                     }
                                   }
+                                  const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
                                   const deleteUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null };
                                   setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...deleteUpdates } : c));
                                   setPipelineCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...deleteUpdates } : c));
@@ -11673,6 +11667,7 @@ const createJob = async () => {
                                   const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                   setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                   setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
+                                  loadFromDatabase();
                                 }
                               }}
                               style={{
