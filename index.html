@@ -2887,14 +2887,14 @@
       // Handle customer click - DAY SPECIFIC ROUTING
       const savingCustomerIdsRef = useRef(new Set());
       const lastAssignedTimeRef = useRef({});
-      const handleCustomerClick = async (customer) => {
+      const handleCustomerClick = async (customer, overrideDate) => {
         if (savingCustomerIdsRef.current.has(customer.id)) return;
         if (statusFilter !== 'scheduled') {
           setSelectedCustomer(customer);
           return;
         }
 
-        const effectiveDate = (statusFilter === 'scheduled' && focusedDays.length > 0) ? focusedDays[0] : selectedDate;
+        const effectiveDate = overrideDate ? overrideDate : ((statusFilter === 'scheduled' && focusedDays.length > 0) ? focusedDays[0] : selectedDate);
         const dateKey = effectiveDate.toDateString();
         const currentDayRoute = routesByDay[dateKey] || [];
 
@@ -12998,10 +12998,9 @@ const createJob = async () => {
                           const chosenDate = new Date(day);
                           chosenDate.setHours(0,0,0,0);
                           setSelectedDate(chosenDate);
+                          const customerToRoute = dayPickerPopup.customer;
                           setDayPickerPopup(null);
-                          setTimeout(() => {
-                            handleCustomerClick(dayPickerPopup.customer);
-                          }, 100);
+                          handleCustomerClickRef.current(customerToRoute, chosenDate);
                         }}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
