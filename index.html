@@ -845,52 +845,102 @@
         return result;
       };
 
-      // Load saved data
+      // Load saved data - sent routes from database, unsent from localStorage
       useEffect(() => {
-        const saved = localStorage.getItem('savedRoutes');
+        const loadAllRoutes = async () => {
+          let allRoutes = [];
 
-        if (saved) {
-          const parsedRoutes = JSON.parse(saved);
-          setSavedRoutes(parsedRoutes);
+          // Load sent routes from database (source of truth for sent routes)
+          try {
+            const dbData = await apiFetch('/routes?include_stops=true');
+            if (dbData && dbData.routes) {
+              const dbRoutes = dbData.routes.map(r => ({
+                id: `db-${r.id}`,
+                dbRouteId: r.id,
+                name: r.name || '',
+                scheduledDate: r.scheduled_date || '',
+                sentToTech: true,
+                status: r.status || 'sent',
+                totalDistance: r.total_distance || 0,
+                customers: (r.stops || []).map(s => ({
+                  id: s.customer_id,
+                  name: s.full_name || '',
+                  address: s.address || '',
+                  phone: s.phone || '',
+                  email: s.email || '',
+                  lat: parseFloat(s.lat) || 0,
+                  lng: parseFloat(s.lng) || 0,
+                  panelCount: parseInt(s.panel_count) || 0,
+                  totalPanels: parseInt(s.panel_count) || 0,
+                  scheduledTime: s.scheduled_time || '',
+                  routeConfirmed: s.route_confirmed || false,
+                  stopStatus: s.status || 'pending',
+                  city: s.city || '',
+                  state: s.state || '',
+                  zip: s.zip || ''
+                }))
+              }));
+              allRoutes = [...allRoutes, ...dbRoutes];
+            }
+          } catch (e) {
+            console.error('Failed to load routes from database:', e);
+          }
+
+          // Load unsent routes from localStorage (these haven't been saved to DB yet)
+          // Also clean up any stale sent routes that might be lingering in localStorage
+          try {
+            const saved = localStorage.getItem('savedRoutes');
+            if (saved) {
+              const parsedRoutes = JSON.parse(saved);
+              const unsentRoutes = parsedRoutes.filter(r => !r.sentToTech && !r.dbRouteId);
+              allRoutes = [...allRoutes, ...unsentRoutes];
+              // Clean localStorage to only keep truly unsent routes
+              localStorage.setItem('savedRoutes', JSON.stringify(unsentRoutes));
+            }
+          } catch (e) {
+            console.error('Failed to load unsent routes from localStorage:', e);
+          }
+
+          setSavedRoutes(allRoutes);
           const savedDays = {};
-          parsedRoutes.forEach(r => {
+          allRoutes.forEach(r => {
             if (r.scheduledDate) {
               savedDays[new Date(r.scheduledDate).toDateString()] = true;
             }
           });
           setSavedViewDays(savedDays);
 
-          const enrichRoutesWithJobData = async () => {
-            const enriched = await Promise.all(parsedRoutes.map(async (route) => {
-              if (!route.customers || route.customers.length === 0) return route;
-              const enrichedCustomers = await Promise.all(route.customers.map(async (c) => {
-                try {
-                  const data = await apiFetch('/jobs?customer_id=' + c.id);
-                  if (data && data.jobs && data.jobs.length > 0) {
-                    const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
-                    if (activeJob) {
-                      return { 
-                        ...c, 
-                        jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
-                        panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                        totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
-                        amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
-                        jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
-                        isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
-                        scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
-                        jobNotes: activeJob.notes || ''
-                      };
-                    }
+          // Enrich unsent routes with latest job data
+          const enriched = await Promise.all(allRoutes.map(async (route) => {
+            if (route.sentToTech || !route.customers || route.customers.length === 0) return route;
+            const enrichedCustomers = await Promise.all(route.customers.map(async (c) => {
+              try {
+                const data = await apiFetch('/jobs?customer_id=' + c.id);
+                if (data && data.jobs && data.jobs.length > 0) {
+                  const activeJob = data.jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled');
+                  if (activeJob) {
+                    return { 
+                      ...c, 
+                      jobPrice: parseFloat(activeJob.price) || c.jobPrice || 0,
+                      panelCount: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                      totalPanels: parseInt(activeJob.panel_count || activeJob.panelCount) || c.panelCount || c.totalPanels || 0,
+                      amountPaid: parseFloat(activeJob.price) || c.amountPaid || 0,
+                      jobDescription: activeJob.job_description || activeJob.jobDescription || c.jobDescription || c.job_description || '',
+                      isRecurring: activeJob.is_recurring || activeJob.isRecurring || c.isRecurring || false,
+                      scheduledTime: c.scheduledTime || activeJob.scheduled_time || activeJob.scheduledTime || '',
+                      jobNotes: activeJob.notes || ''
+                    };
                   }
-                } catch (e) {}
-                return c;
-              }));
-              return { ...route, customers: enrichedCustomers };
+                }
+              } catch (e) {}
+              return c;
             }));
-            setSavedRoutes(enriched);
-          };
-          enrichRoutesWithJobData();
-        }
+            return { ...route, customers: enrichedCustomers };
+          }));
+          setSavedRoutes(enriched);
+        };
+
+        loadAllRoutes();
         setTimeout(async () => {
           const count = await loadFromDatabase();
           if (count > 0) {
@@ -899,13 +949,15 @@
         }, 500);
       }, []);
 
+      // Only persist unsent routes to localStorage (sent routes live in database)
       const savedRoutesInitialized = React.useRef(false);
       useEffect(() => {
         if (!savedRoutesInitialized.current) {
           savedRoutesInitialized.current = true;
           return;
         }
-        localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes));
+        const unsentRoutes = savedRoutes.filter(r => !r.sentToTech);
+        localStorage.setItem('savedRoutes', JSON.stringify(unsentRoutes));
       }, [savedRoutes]);
 
       const refreshRouteStopStatus = async () => {
@@ -7602,6 +7654,12 @@ const createJob = async () => {
                                     if (window.confirm('Delete this route? All jobs will be set back to unscheduled.')) {
                                       const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
                                       if (savedRoute) {
+                                        // Delete from database if it has a dbRouteId
+                                        if (savedRoute.dbRouteId) {
+                                          try {
+                                            await apiFetch(`/routes/${savedRoute.dbRouteId}`, { method: 'DELETE' });
+                                          } catch (err) { console.error('Failed to delete route from database:', err); }
+                                        }
                                         for (const rc of savedRoute.customers) {
                                           try {
                                             await apiFetch(`/customers/${rc.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'unscheduled', scheduled_date: null }) });
@@ -11126,8 +11184,23 @@ const createJob = async () => {
                   <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>📁 Saved Routes</h2>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (window.confirm('Clear ALL saved routes and route history? This cannot be undone.')) {
+                          let dbDeleteFailed = false;
+                          try {
+                            const dbData = await apiFetch('/routes');
+                            if (dbData && dbData.routes) {
+                              for (const r of dbData.routes) {
+                                await apiFetch(`/routes/${r.id}`, { method: 'DELETE' });
+                              }
+                            }
+                          } catch (e) { 
+                            console.error('Failed to clear DB routes:', e);
+                            dbDeleteFailed = true;
+                          }
+                          if (dbDeleteFailed) {
+                            alert('Some routes may not have been fully deleted from the server. Please try again.');
+                          }
                           setSavedRoutes([]);
                           setSavedViewDays({});
                           setRoutesByDay({});
@@ -11280,8 +11353,16 @@ const createJob = async () => {
                               }}
                             >{savedRoute.sentToTech ? '✓ Sent' : sendingEmail ? '⏳ Sending...' : '📧 Send'}</button>
                             <button
-                              onClick={() => {
+                              onClick={async () => {
                                 if (window.confirm(`Delete route "${savedRoute.name}"?`)) {
+                                  // Delete from database if it has a dbRouteId
+                                  if (savedRoute.dbRouteId) {
+                                    try {
+                                      await apiFetch(`/routes/${savedRoute.dbRouteId}`, { method: 'DELETE' });
+                                    } catch (err) {
+                                      console.error('Failed to delete route from database:', err);
+                                    }
+                                  }
                                   const routeCustomerIds = new Set(savedRoute.customers.map(c => c.id));
                                   savedRoute.customers.forEach(async (rc) => {
                                     const fullCustomer = customers.find(c => c.id === rc.id);
