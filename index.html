@@ -899,16 +899,22 @@
             console.error('Failed to load routes from database:', e);
           }
 
-          // Load unsent routes from localStorage (these haven't been saved to DB yet)
-          // Also clean up any stale sent routes that might be lingering in localStorage
           try {
             const saved = localStorage.getItem('savedRoutes');
             if (saved) {
               const parsedRoutes = JSON.parse(saved);
               const unsentRoutes = parsedRoutes.filter(r => !r.sentToTech && !r.dbRouteId);
-              allRoutes = [...allRoutes, ...unsentRoutes];
-              // Clean localStorage to only keep truly unsent routes
-              localStorage.setItem('savedRoutes', JSON.stringify(unsentRoutes));
+              const deduped = new Map();
+              for (const r of unsentRoutes) {
+                const dk = r.scheduledDate ? new Date(r.scheduledDate).toDateString() : r.id;
+                const existing = deduped.get(dk);
+                if (!existing || (r.customers || []).length > (existing.customers || []).length) {
+                  deduped.set(dk, r);
+                }
+              }
+              const cleanRoutes = Array.from(deduped.values());
+              allRoutes = [...allRoutes, ...cleanRoutes];
+              localStorage.setItem('savedRoutes', JSON.stringify(cleanRoutes));
             }
           } catch (e) {
             console.error('Failed to load unsent routes from localStorage:', e);
