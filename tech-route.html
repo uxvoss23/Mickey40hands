@@ -668,8 +668,9 @@
       const stop = routeData.stops.find(s => s.id === activeModal);
       if (!stop) return;
       updateNotes();
-      const modalContent = document.querySelector('.modal-content');
-      const savedScroll = modalContent ? modalContent.scrollTop : 0;
+      const isRerender = !!document.querySelector('.modal-overlay');
+      const modalContentEl = document.querySelector('.modal-content');
+      const savedScroll = modalContentEl ? modalContentEl.scrollTop : 0;
 
       const ms = modalState;
       const filledSlots = Object.keys(ms.slotPhotos).length;
@@ -731,14 +732,7 @@
         { value: 'enrolled_triannual', label: 'Enrolled \u2014 3x Per Year', price: triannualPrice, savings: triannualSavings, discount: '20% off' }
       ];
 
-      document.getElementById('modal-root').innerHTML = `
-        <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-          <div class="modal-content">
-            <div class="modal-header">
-              <h2>Complete Job</h2>
-              <button class="modal-close" onclick="closeModal()">&times;</button>
-            </div>
-            <div class="modal-body">
+      const bodyHTML = `
               <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px">
                 <div style="font-size:14px;font-weight:700;color:#1e293b">${stop.full_name || 'Customer'}</div>
                 <div style="font-size:12px;color:#64748b;margin-top:2px">${stop.address || ''}</div>
@@ -835,10 +829,24 @@
               <button id="modal-submit-btn" class="modal-submit ${valid ? 'enabled' : 'disabled'}" onclick="submitCompletion()">
                 ${valid ? 'Complete Job' : 'Fill All Required Fields'}
               </button>
+      `;
+
+      if (isRerender) {
+        const existingBody = document.querySelector('.modal-body');
+        if (existingBody) existingBody.innerHTML = bodyHTML;
+      } else {
+        document.getElementById('modal-root').innerHTML = `
+          <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>Complete Job</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+              </div>
+              <div class="modal-body">${bodyHTML}</div>
             </div>
           </div>
-        </div>
-      `;
+        `;
+      }
 
       setTimeout(() => {
         document.querySelectorAll('[data-slot]').forEach(el => {
@@ -855,10 +863,10 @@
         document.querySelectorAll('.issue-select').forEach(sel => {
           sel.addEventListener('change', (e) => setIssueTag(parseInt(sel.dataset.issueFor), sel.value));
         });
-        requestAnimationFrame(() => {
-          const newModalContent = document.querySelector('.modal-content');
-          if (newModalContent) { newModalContent.scrollTop = savedScroll; }
-        });
+        if (isRerender) {
+          const mc = document.querySelector('.modal-content');
+          if (mc) mc.scrollTop = savedScroll;
+        }
       }, 0);
     }
 
