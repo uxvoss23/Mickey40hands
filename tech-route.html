@@ -424,7 +424,6 @@
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      input.capture = 'environment';
       input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -531,18 +530,18 @@
                 <div class="photo-row">
                   <div>
                     <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-align:center">BEFORE</div>
-                    <div class="photo-upload-area ${hasBefore ? 'has-photo' : ''}" onclick="${hasBefore ? '' : 'handlePhotoUpload(\"beforePhoto\")'}">
+                    <div class="photo-upload-area ${hasBefore ? 'has-photo' : ''}" id="before-photo-area">
                       ${hasBefore
-                        ? `<img src="${modalState.beforePhoto}" alt="Before"><button class="photo-remove" onclick="event.stopPropagation();removePhoto('beforePhoto')">&times;</button>`
-                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to take photo</div>'}
+                        ? '<img src="' + modalState.beforePhoto + '" alt="Before"><button class="photo-remove" id="remove-before-btn">&times;</button>'
+                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to add photo</div>'}
                     </div>
                   </div>
                   <div>
                     <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-align:center">AFTER</div>
-                    <div class="photo-upload-area ${hasAfter ? 'has-photo' : ''}" onclick="${hasAfter ? '' : 'handlePhotoUpload(\"afterPhoto\")'}">
+                    <div class="photo-upload-area ${hasAfter ? 'has-photo' : ''}" id="after-photo-area">
                       ${hasAfter
-                        ? `<img src="${modalState.afterPhoto}" alt="After"><button class="photo-remove" onclick="event.stopPropagation();removePhoto('afterPhoto')">&times;</button>`
-                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to take photo</div>'}
+                        ? '<img src="' + modalState.afterPhoto + '" alt="After"><button class="photo-remove" id="remove-after-btn">&times;</button>'
+                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to add photo</div>'}
                     </div>
                   </div>
                 </div>
@@ -571,6 +570,26 @@
           </div>
         </div>
       `;
+
+      setTimeout(() => {
+        const beforeArea = document.getElementById('before-photo-area');
+        const afterArea = document.getElementById('after-photo-area');
+        const removeBeforeBtn = document.getElementById('remove-before-btn');
+        const removeAfterBtn = document.getElementById('remove-after-btn');
+
+        if (beforeArea && !modalState.beforePhoto) {
+          beforeArea.addEventListener('click', () => handlePhotoUpload('beforePhoto'));
+        }
+        if (afterArea && !modalState.afterPhoto) {
+          afterArea.addEventListener('click', () => handlePhotoUpload('afterPhoto'));
+        }
+        if (removeBeforeBtn) {
+          removeBeforeBtn.addEventListener('click', (e) => { e.stopPropagation(); removePhoto('beforePhoto'); });
+        }
+        if (removeAfterBtn) {
+          removeAfterBtn.addEventListener('click', (e) => { e.stopPropagation(); removePhoto('afterPhoto'); });
+        }
+      }, 0);
     }
 
     function renderValidation() {
