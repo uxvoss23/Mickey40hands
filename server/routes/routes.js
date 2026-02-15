@@ -142,6 +142,7 @@ router.get('/:id/tech-view', async (req, res) => {
     const stops = await pool.query(`
       SELECT rs.id, rs.stop_order, rs.scheduled_time, rs.notes as stop_notes, rs.completed_at,
              rs.before_photo, rs.after_photo, rs.photos, rs.inspection_notes, rs.recurring_selection,
+             rs.completion_data,
              c.id as customer_id, c.full_name, c.address, c.phone, c.email, c.city, c.state, c.zip,
              c.panel_count, c.customer_notes, c.notes as job_notes, c.amount_paid,
              c.customer_type, c.is_recurring
@@ -162,7 +163,7 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { before_photo, after_photo, photos, inspection_notes, recurring_selection } = req.body || {};
+    const { photos, inspection_notes, recurring_selection, completion_data } = req.body || {};
 
     const stopResult = await client.query(
       'SELECT rs.*, c.is_recurring FROM route_stops rs JOIN customers c ON rs.customer_id = c.id WHERE rs.id = $1 AND rs.route_id = $2',
@@ -181,11 +182,12 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
 
     const photosArray = photos || [];
     const photosJson = JSON.stringify(photosArray);
-    const derivedBefore = before_photo || (photosArray.length > 0 ? photosArray[0] : null);
-    const derivedAfter = after_photo || (photosArray.length > 1 ? photosArray[1] : null);
+    const firstPhoto = photosArray.length > 0 ? (typeof photosArray[0] === 'object' ? photosArray[0].data : photosArray[0]) : null;
+    const secondPhoto = photosArray.length > 1 ? (typeof photosArray[1] === 'object' ? photosArray[1].data : photosArray[1]) : null;
+    const completionDataJson = completion_data ? JSON.stringify(completion_data) : '{}';
     await client.query(
-      `UPDATE route_stops SET completed_at = NOW(), before_photo = $1, after_photo = $2, photos = $3, inspection_notes = $4, recurring_selection = $5 WHERE id = $6`,
-      [derivedBefore, derivedAfter, photosJson, inspection_notes || '', recurring_selection || '', stop.id]
+      `UPDATE route_stops SET completed_at = NOW(), before_photo = $1, after_photo = $2, photos = $3, inspection_notes = $4, recurring_selection = $5, completion_data = $6 WHERE id = $7`,
+      [firstPhoto, secondPhoto, photosJson, inspection_notes || '', recurring_selection || '', completionDataJson, stop.id]
     );
 
     const routeResult = await client.query('SELECT scheduled_date FROM routes WHERE id = $1', [req.params.id]);

@@ -157,6 +157,7 @@ const applySchemaUpdates = async () => {
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS photos TEXT DEFAULT '[]'`);
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS inspection_notes TEXT DEFAULT ''`);
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS recurring_selection VARCHAR(50) DEFAULT ''`);
+    await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completion_data TEXT DEFAULT '{}'`);
   } catch (err) {
     console.error('Schema update warning:', err.message);
   }

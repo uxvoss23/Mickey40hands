@@ -231,220 +231,96 @@
       font-size: 11px;
       font-weight: 600;
     }
-    .photo-slots-section { margin-bottom: 4px; }
-    .photo-slots-title {
-      font-size: 11px;
-      font-weight: 700;
-      color: #475569;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 8px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .photo-slots-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
+    .section-title { font-size: 14px; font-weight: 800; color: #1e293b; margin-bottom: 12px; padding: 8px 0 6px; border-bottom: 2px solid #e2e8f0; }
+    .section-title .st-icon { margin-right: 6px; }
+    .photo-slots-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .photo-slot {
-      border: 2px dashed #cbd5e1;
-      border-radius: 10px;
-      padding: 8px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
-      position: relative;
-      overflow: hidden;
-      min-height: 90px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      background: #f8fafc;
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 8px; text-align: center;
+      cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden;
+      min-height: 90px; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; background: #f8fafc;
     }
     .photo-slot:active { background: #eef2ff; border-color: #6366f1; }
-    .photo-slot.filled {
-      border-style: solid;
-      border-color: #22c55e;
-      padding: 3px;
-      background: white;
-    }
-    .photo-slot.filled img {
-      width: 100%;
-      height: 80px;
-      object-fit: cover;
-      border-radius: 7px;
-    }
+    .photo-slot.filled { border-style: solid; border-color: #22c55e; padding: 3px; background: white; }
+    .photo-slot.filled img { width: 100%; height: 80px; object-fit: cover; border-radius: 7px; }
     .photo-slot-icon { font-size: 22px; margin-bottom: 2px; }
     .photo-slot-label { font-size: 10px; color: #64748b; font-weight: 600; line-height: 1.3; }
     .photo-slot-check { position: absolute; top: 4px; left: 4px; font-size: 14px; }
     .photo-slot-name { font-size: 9px; color: #475569; font-weight: 700; margin-top: 3px; text-align: center; }
-    .callout-photos-area { margin-top: 8px; }
-    .callout-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 6px;
-    }
-    .callout-thumb {
-      position: relative;
-      border-radius: 6px;
-      overflow: hidden;
-      aspect-ratio: 1;
-      border: 2px solid #e2e8f0;
-    }
-    .callout-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .callout-add-btn {
-      border: 2px dashed #cbd5e1;
-      border-radius: 6px;
-      aspect-ratio: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      cursor: pointer;
-      background: #fef2f2;
-      transition: all 0.2s;
-    }
-    .callout-add-btn:active { background: #fee2e2; border-color: #f87171; }
     .photo-remove {
-      position: absolute;
-      top: 3px;
-      right: 3px;
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      background: rgba(239, 68, 68, 0.9);
-      color: white;
-      border: none;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2;
+      position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(239,68,68,0.9); color: white; border: none; font-size: 12px;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 2;
     }
+    .issue-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
+    .issue-thumb { position: relative; border-radius: 6px; overflow: hidden; aspect-ratio: 1; border: 2px solid #fca5a5; }
+    .issue-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .issue-tag { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.7); color: white; font-size: 8px; padding: 2px 4px; text-align: center; font-weight: 600; }
+    .issue-add-btn {
+      border: 2px dashed #fca5a5; border-radius: 6px; aspect-ratio: 1; display: flex;
+      align-items: center; justify-content: center; flex-direction: column; cursor: pointer;
+      background: #fef2f2; transition: all 0.2s;
+    }
+    .issue-add-btn:active { background: #fee2e2; border-color: #f87171; }
+    .radio-group { display: flex; flex-direction: column; gap: 6px; }
+    .radio-row {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1.5px solid #e2e8f0;
+      border-radius: 8px; cursor: pointer; transition: all 0.15s; background: white;
+      font-size: 13px; font-weight: 500; color: #475569;
+    }
+    .radio-row:active { transform: scale(0.98); }
+    .radio-row.selected { border-color: #6366f1; background: #eef2ff; color: #4f46e5; font-weight: 600; }
+    .radio-dot {
+      width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .radio-row.selected .radio-dot { border-color: #6366f1; }
+    .radio-dot-inner { width: 10px; height: 10px; border-radius: 50%; background: #6366f1; display: none; }
+    .radio-row.selected .radio-dot-inner { display: block; }
+    .check-group { display: flex; flex-direction: column; gap: 6px; }
+    .check-row {
+      display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 1.5px solid #e2e8f0;
+      border-radius: 8px; cursor: pointer; transition: all 0.15s; background: white;
+      font-size: 13px; font-weight: 500; color: #475569;
+    }
+    .check-row:active { transform: scale(0.98); }
+    .check-row.checked { border-color: #6366f1; background: #eef2ff; color: #4f46e5; }
+    .check-box {
+      width: 18px; height: 18px; border-radius: 4px; border: 2px solid #cbd5e1;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      font-size: 11px; color: white;
+    }
+    .check-row.checked .check-box { background: #6366f1; border-color: #6366f1; }
     .service-price-card {
-      background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-      border: 1.5px solid #bbf7d0;
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      background: linear-gradient(135deg, #f0fdf4, #ecfdf5); border: 1.5px solid #bbf7d0;
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: space-between;
     }
     .service-price-label { font-size: 12px; color: #64748b; font-weight: 600; }
     .service-price-amount { font-size: 22px; font-weight: 800; color: #059669; }
-    .recurring-price-tag {
-      font-size: 11px;
-      font-weight: 700;
-      color: #059669;
-      background: #f0fdf4;
-      padding: 2px 8px;
-      border-radius: 6px;
-      margin-left: 6px;
-    }
-    .recurring-savings {
-      font-size: 10px;
-      color: #64748b;
-      margin-top: 2px;
-    }
+    .recurring-price-tag { font-size: 11px; font-weight: 700; color: #059669; background: #f0fdf4; padding: 2px 8px; border-radius: 6px; margin-left: 6px; }
+    .recurring-savings { font-size: 10px; color: #64748b; margin-top: 2px; }
     .modal-textarea {
-      width: 100%;
-      min-height: 80px;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 12px;
-      font-size: 14px;
-      font-family: 'Inter', sans-serif;
-      resize: vertical;
-      transition: border-color 0.2s;
-      color: #1e293b;
+      width: 100%; min-height: 60px; border: 1.5px solid #e2e8f0; border-radius: 10px;
+      padding: 10px 12px; font-size: 13px; font-family: 'Inter', sans-serif; resize: vertical;
+      transition: border-color 0.2s; color: #1e293b;
     }
     .modal-textarea:focus { outline: none; border-color: #6366f1; }
     .modal-textarea::placeholder { color: #94a3b8; }
-    .recurring-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    .recurring-option {
-      padding: 12px;
-      border: 1.5px solid #e2e8f0;
-      border-radius: 10px;
-      text-align: center;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.2s;
-      color: #64748b;
-      background: white;
-      font-family: 'Inter', sans-serif;
-    }
-    .recurring-option:active { transform: scale(0.97); }
-    .recurring-option.selected {
-      border-color: #6366f1;
-      background: #eef2ff;
-      color: #4f46e5;
-    }
     .modal-submit {
-      width: 100%;
-      padding: 16px;
-      border: none;
-      border-radius: 12px;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      font-family: 'Inter', sans-serif;
-      transition: all 0.2s;
-      margin-top: 8px;
+      width: 100%; padding: 16px; border: none; border-radius: 12px; font-size: 16px;
+      font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif;
+      transition: all 0.2s; margin-top: 8px;
     }
-    .modal-submit.enabled {
-      background: #22c55e;
-      color: white;
-    }
-    .modal-submit.enabled:active {
-      transform: scale(0.97);
-      background: #16a34a;
-    }
-    .modal-submit.disabled {
-      background: #e2e8f0;
-      color: #94a3b8;
-      pointer-events: none;
-    }
-    .modal-submit.submitting {
-      background: #94a3b8;
-      color: white;
-      pointer-events: none;
-    }
-    .validation-checklist {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 12px;
-    }
-    .validation-item {
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      font-weight: 600;
-    }
+    .modal-submit.enabled { background: #22c55e; color: white; }
+    .modal-submit.enabled:active { transform: scale(0.97); background: #16a34a; }
+    .modal-submit.disabled { background: #e2e8f0; color: #94a3b8; pointer-events: none; }
+    .modal-submit.submitting { background: #94a3b8; color: white; pointer-events: none; }
+    .validation-checklist { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .validation-item { font-size: 10px; padding: 3px 8px; border-radius: 20px; font-weight: 600; }
     .validation-item.done { background: #f0fdf4; color: #22c55e; }
     .validation-item.pending { background: #fef2f2; color: #ef4444; }
-    .photo-remove {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      background: rgba(239, 68, 68, 0.9);
-      color: white;
-      border: none;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2;
-    }
+    .issue-select { width: 100%; padding: 6px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 11px; font-family: 'Inter', sans-serif; color: #475569; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -456,12 +332,26 @@
     let completedStops = new Set();
     let activeModal = null;
     const PHOTO_SLOTS = [
-      { key: 'wide_before', label: 'Wide \u2013 Before', icon: '\ud83c\udfe0' },
-      { key: 'closeup_before', label: 'Dirty Close-Up \u2013 Before', icon: '\ud83d\udd0d' },
-      { key: 'wide_after', label: 'Wide \u2013 After', icon: '\u2728' },
-      { key: 'closeup_after', label: 'Clean Close-Up \u2013 After', icon: '\ud83e\uddfc' }
+      { key: 'full_before', label: 'Full System \u2013 Before', icon: '\ud83c\udfe0' },
+      { key: 'closeup_before', label: 'Close-Up Buildup \u2013 Before', icon: '\ud83d\udd0d' },
+      { key: 'full_after', label: 'Full System \u2013 After', icon: '\u2728' },
+      { key: 'closeup_after', label: 'Close-Up Clean \u2013 After', icon: '\ud83e\uddfc' }
     ];
-    let modalState = { slotPhotos: {}, calloutPhotos: [], inspectionNotes: '', recurringSelection: '' };
+    const ISSUE_TAGS = ['Crack','Chip','Delamination','Loose hardware','Pest activity','Roof concern','Other'];
+    const DEBRIS_OPTIONS = ['Dust / Pollen','Bird Droppings','Sap','Pollution Film','Mixed'];
+    const DAMAGE_OPTIONS = ['None','Crack','Chip','Delamination'];
+    const SYSTEM_CHECKS = ['No visible issues','Loose racking / hardware','Pest activity','Shading concern','Roof penetration concern','Conduit / wiring concern','Other'];
+    let modalState = {
+      slotPhotos: {},
+      issuePhotos: [],
+      buildupLevel: '',
+      debris: [],
+      surfaceDamage: '',
+      systemChecks: [],
+      inspectionNotes: '',
+      recommendedFreq: '',
+      recurringSelection: ''
+    };
 
     async function loadRoute() {
       const app = document.getElementById('app');
@@ -481,7 +371,11 @@
 
     function openCompletionModal(stopId) {
       activeModal = stopId;
-      modalState = { slotPhotos: {}, calloutPhotos: [], inspectionNotes: '', recurringSelection: '' };
+      modalState = {
+        slotPhotos: {}, issuePhotos: [], buildupLevel: '', debris: [],
+        surfaceDamage: '', systemChecks: [], inspectionNotes: '',
+        recommendedFreq: '', recurringSelection: ''
+      };
       renderModal();
     }
 
@@ -517,79 +411,58 @@
 
     async function handleSlotPhoto(slotKey) {
       const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
+      input.type = 'file'; input.accept = 'image/*';
       input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const base64 = await fileToBase64(file);
-          modalState.slotPhotos[slotKey] = base64;
-          renderModal();
-        } catch (err) {
-          alert('Failed to process photo');
-        }
+        const file = e.target.files[0]; if (!file) return;
+        try { modalState.slotPhotos[slotKey] = await fileToBase64(file); renderModal(); }
+        catch(err) { alert('Failed to process photo'); }
       };
       input.click();
     }
+    function removeSlotPhoto(k) { delete modalState.slotPhotos[k]; renderModal(); }
 
-    function removeSlotPhoto(slotKey) {
-      delete modalState.slotPhotos[slotKey];
-      renderModal();
-    }
-
-    async function handleAddCallout() {
+    async function handleAddIssue() {
       const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.multiple = true;
+      input.type = 'file'; input.accept = 'image/*';
       input.onchange = async (e) => {
-        const files = Array.from(e.target.files);
-        if (!files.length) return;
-        for (const file of files) {
-          try {
-            const base64 = await fileToBase64(file);
-            modalState.calloutPhotos.push(base64);
-          } catch (err) {
-            console.error('Failed to process photo:', err);
-          }
-        }
-        renderModal();
+        const file = e.target.files[0]; if (!file) return;
+        try {
+          const b64 = await fileToBase64(file);
+          modalState.issuePhotos.push({ data: b64, tag: '' });
+          renderModal();
+        } catch(err) { console.error(err); }
       };
       input.click();
     }
-
-    function removeCallout(index) {
-      modalState.calloutPhotos.splice(index, 1);
-      renderModal();
-    }
+    function removeIssue(i) { modalState.issuePhotos.splice(i, 1); renderModal(); }
+    function setIssueTag(i, tag) { modalState.issuePhotos[i].tag = tag; }
 
     function getAllPhotos() {
       const photos = [];
-      PHOTO_SLOTS.forEach(slot => {
-        if (modalState.slotPhotos[slot.key]) {
-          photos.push({ label: slot.label, data: modalState.slotPhotos[slot.key] });
-        }
-      });
-      modalState.calloutPhotos.forEach((p, i) => {
-        photos.push({ label: 'Call-Out ' + (i + 1), data: p });
-      });
+      PHOTO_SLOTS.forEach(s => { if (modalState.slotPhotos[s.key]) photos.push({ label: s.label, data: modalState.slotPhotos[s.key] }); });
+      modalState.issuePhotos.forEach((p, i) => photos.push({ label: 'Issue: ' + (p.tag || 'Untagged'), data: p.data }));
       return photos;
     }
 
-    function setRecurring(value) {
-      modalState.recurringSelection = value;
+    function setRadio(field, value) { modalState[field] = value; renderModal(); }
+    function toggleCheck(field, value) {
+      const arr = modalState[field];
+      const idx = arr.indexOf(value);
+      if (idx >= 0) arr.splice(idx, 1); else { if (field === 'debris' && arr.length >= 2) return; arr.push(value); }
       renderModal();
     }
 
-    function updateNotes() {
-      const el = document.getElementById('modal-inspection-notes');
-      if (el) modalState.inspectionNotes = el.value;
-    }
+    function updateNotes() { const el = document.getElementById('modal-inspection-notes'); if (el) modalState.inspectionNotes = el.value; }
 
     function isModalValid() {
-      const filledSlots = Object.keys(modalState.slotPhotos).length;
-      return filledSlots >= 4 && modalState.inspectionNotes.trim() && modalState.recurringSelection;
+      const s = modalState;
+      const filledSlots = Object.keys(s.slotPhotos).length;
+      const needsIssuePhoto = s.surfaceDamage && s.surfaceDamage !== 'None';
+      const hasIssuePhoto = s.issuePhotos.length > 0;
+      return filledSlots >= 4 && s.buildupLevel && s.surfaceDamage &&
+        (!needsIssuePhoto || hasIssuePhoto) &&
+        s.systemChecks.length > 0 && s.inspectionNotes.trim() &&
+        s.recommendedFreq && s.recurringSelection;
     }
 
     async function submitCompletion() {
@@ -604,13 +477,18 @@
           body: JSON.stringify({
             photos: getAllPhotos(),
             inspection_notes: modalState.inspectionNotes.trim(),
-            recurring_selection: modalState.recurringSelection
+            recurring_selection: modalState.recurringSelection,
+            completion_data: {
+              buildup_level: modalState.buildupLevel,
+              debris: modalState.debris,
+              surface_damage: modalState.surfaceDamage,
+              system_checks: modalState.systemChecks,
+              recommended_frequency: modalState.recommendedFreq,
+              issue_tags: modalState.issuePhotos.map(p => p.tag).filter(Boolean)
+            }
           })
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed');
-        }
+        if (!res.ok) { const data = await res.json(); throw new Error(data.error || 'Failed'); }
         completedStops.add(activeModal);
         closeModal();
         render();
@@ -626,11 +504,17 @@
       if (!stop) return;
       updateNotes();
 
-      const filledSlots = Object.keys(modalState.slotPhotos).length;
-      const hasAllSlots = filledSlots >= 4;
-      const hasNotes = !!modalState.inspectionNotes.trim();
-      const hasRecurring = !!modalState.recurringSelection;
-      const valid = hasAllSlots && hasNotes && hasRecurring;
+      const ms = modalState;
+      const filledSlots = Object.keys(ms.slotPhotos).length;
+      const needsIssuePhoto = ms.surfaceDamage && ms.surfaceDamage !== 'None';
+      const hasIssuePhoto = ms.issuePhotos.length > 0;
+      const v = {
+        photos: filledSlots >= 4,
+        condition: !!ms.buildupLevel && !!ms.surfaceDamage && (!needsIssuePhoto || hasIssuePhoto),
+        system: ms.systemChecks.length > 0 && !!ms.inspectionNotes.trim(),
+        maintenance: !!ms.recommendedFreq && !!ms.recurringSelection
+      };
+      const valid = v.photos && v.condition && v.system && v.maintenance;
 
       const servicePrice = stop.amount_paid ? parseFloat(stop.amount_paid) : 0;
       const annualPrice = servicePrice > 0 ? (servicePrice * 0.90).toFixed(2) : null;
@@ -638,32 +522,40 @@
       const annualSavings = servicePrice > 0 ? (servicePrice * 0.10).toFixed(2) : null;
       const biannualSavings = servicePrice > 0 ? (servicePrice * 0.15).toFixed(2) : null;
 
-      const recurringOptions = [
-        { value: 'not_offered', label: 'Not Offered', price: null, savings: null },
-        { value: 'offered_declined', label: 'Offered - Declined', price: null, savings: null },
-        { value: 'signed_annual', label: 'Annual Service', price: annualPrice, savings: annualSavings, discount: '10% off' },
-        { value: 'signed_biannual', label: 'Bi-Annual Service', price: biannualPrice, savings: biannualSavings, discount: '15% off' }
-      ];
-
       const slotsHTML = PHOTO_SLOTS.map(slot => {
-        const filled = !!modalState.slotPhotos[slot.key];
-        if (filled) {
-          return '<div class="photo-slot filled" data-slot="' + slot.key + '">' +
-            '<span class="photo-slot-check">\u2705</span>' +
-            '<img src="' + modalState.slotPhotos[slot.key] + '" alt="' + slot.label + '">' +
-            '<button class="photo-remove" data-remove-slot="' + slot.key + '">&times;</button>' +
-            '<div class="photo-slot-name">' + slot.label + '</div>' +
-          '</div>';
-        }
-        return '<div class="photo-slot" data-slot="' + slot.key + '">' +
-          '<div class="photo-slot-icon">' + slot.icon + '</div>' +
-          '<div class="photo-slot-label">' + slot.label + '</div>' +
-        '</div>';
+        const filled = !!ms.slotPhotos[slot.key];
+        if (filled) return '<div class="photo-slot filled" data-slot="' + slot.key + '"><span class="photo-slot-check">\u2705</span><img src="' + ms.slotPhotos[slot.key] + '" alt="' + slot.label + '"><button class="photo-remove" data-remove-slot="' + slot.key + '">&times;</button><div class="photo-slot-name">' + slot.label + '</div></div>';
+        return '<div class="photo-slot" data-slot="' + slot.key + '"><div class="photo-slot-icon">' + slot.icon + '</div><div class="photo-slot-label">' + slot.label + '</div></div>';
       }).join('');
 
-      const calloutsHTML = modalState.calloutPhotos.map((p, i) =>
-        '<div class="callout-thumb"><img src="' + p + '" alt="Call-out ' + (i+1) + '"><button class="photo-remove" data-callout-idx="' + i + '">&times;</button></div>'
+      const issuesHTML = ms.issuePhotos.map((p, i) =>
+        '<div style="display:flex;flex-direction:column;gap:4px">' +
+        '<div class="issue-thumb"><img src="' + p.data + '" alt="Issue"><button class="photo-remove" data-issue-idx="' + i + '">&times;</button>' +
+        (p.tag ? '<div class="issue-tag">' + p.tag + '</div>' : '') + '</div>' +
+        '<select class="issue-select" data-issue-for="' + i + '"><option value="">Tag...</option>' +
+        ISSUE_TAGS.map(t => '<option value="' + t + '"' + (p.tag === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+        '</select></div>'
       ).join('');
+
+      const radioHTML = (field, options, extra) => options.map(opt => {
+        const val = typeof opt === 'string' ? opt : opt.value;
+        const label = typeof opt === 'string' ? opt : opt.label;
+        const sel = ms[field] === val;
+        const ex = extra && extra[val] ? extra[val] : '';
+        return '<div class="radio-row ' + (sel ? 'selected' : '') + '" onclick="setRadio(\'' + field + '\',\'' + val.replace(/'/g, "\\'") + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1">' + label + ex + '</div></div>';
+      }).join('');
+
+      const checkHTML = (field, options) => options.map(opt => {
+        const chk = ms[field].includes(opt);
+        return '<div class="check-row ' + (chk ? 'checked' : '') + '" onclick="toggleCheck(\'' + field + '\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div>' + opt + '</div></div>';
+      }).join('');
+
+      const recurringOptions = [
+        { value: 'not_offered', label: 'Not Offered' },
+        { value: 'offered_declined', label: 'Offered \u2014 Declined' },
+        { value: 'enrolled_annual', label: 'Enrolled \u2014 Annual', price: annualPrice, savings: annualSavings, discount: '10% off' },
+        { value: 'enrolled_biannual', label: 'Enrolled \u2014 Bi-Annual', price: biannualPrice, savings: biannualSavings, discount: '15% off' }
+      ];
 
       document.getElementById('modal-root').innerHTML = `
         <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
@@ -673,57 +565,77 @@
               <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-              <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:12px">
+              <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:8px">
                 <div style="font-size:14px;font-weight:700;color:#1e293b">${stop.full_name || 'Customer'}</div>
                 <div style="font-size:12px;color:#64748b;margin-top:2px">${stop.address || ''}</div>
               </div>
-
-              ${servicePrice > 0 ? `
-                <div class="service-price-card">
-                  <div class="service-price-label">Service Price</div>
-                  <div class="service-price-amount">$${servicePrice.toFixed(2)}</div>
-                </div>
-              ` : ''}
+              ${servicePrice > 0 ? '<div class="service-price-card"><div class="service-price-label">Service Price</div><div class="service-price-amount">$' + servicePrice.toFixed(2) + '</div></div>' : ''}
 
               <div class="validation-checklist">
-                <span class="validation-item ${hasAllSlots ? 'done' : 'pending'}">${hasAllSlots ? '\u2713' : '\u25CB'} Photos (${filledSlots}/4)</span>
-                <span class="validation-item ${hasNotes ? 'done' : 'pending'}">${hasNotes ? '\u2713' : '\u25CB'} Notes</span>
-                <span class="validation-item ${hasRecurring ? 'done' : 'pending'}">${hasRecurring ? '\u2713' : '\u25CB'} Recurring</span>
+                <span class="validation-item ${v.photos ? 'done' : 'pending'}">${v.photos ? '\u2713' : '\u25CB'} Photos</span>
+                <span class="validation-item ${v.condition ? 'done' : 'pending'}">${v.condition ? '\u2713' : '\u25CB'} Condition</span>
+                <span class="validation-item ${v.system ? 'done' : 'pending'}">${v.system ? '\u2713' : '\u25CB'} Inspection</span>
+                <span class="validation-item ${v.maintenance ? 'done' : 'pending'}">${v.maintenance ? '\u2713' : '\u25CB'} Plan</span>
               </div>
 
+              <!-- SECTION 1: PHOTOS -->
+              <div class="section-title"><span class="st-icon">\ud83d\udcf7</span> Photo Documentation</div>
               <div class="modal-section">
                 <div class="modal-label">Required Photos <span class="required">All 4 required</span></div>
-                <div class="photo-slots-grid">
-                  ${slotsHTML}
-                </div>
+                <div class="photo-slots-grid">${slotsHTML}</div>
               </div>
-
               <div class="modal-section">
-                <div class="modal-label">Call-Out Photos <span style="font-size:10px;color:#64748b;font-weight:400">Damaged panels, cracks, pest activity, etc.</span></div>
-                <div class="callout-grid">
-                  ${calloutsHTML}
-                  <div class="callout-add-btn" id="add-callout-btn">
-                    <div style="font-size:18px">\u26A0\uFE0F</div>
-                    <div style="font-size:9px;color:#64748b;margin-top:2px">Add Issue</div>
+                <div class="modal-label">\u2795 Issue Photos <span style="font-size:10px;color:#64748b;font-weight:400">Optional \u2013 tag each photo</span></div>
+                <div class="issue-grid">
+                  ${issuesHTML}
+                  <div class="issue-add-btn" id="add-issue-btn">
+                    <div style="font-size:16px">\u26A0\uFE0F</div>
+                    <div style="font-size:8px;color:#ef4444;margin-top:2px;font-weight:600">Add Issue</div>
                   </div>
                 </div>
-                ${modalState.calloutPhotos.length > 0 ? '<div style="font-size:11px;color:#64748b;margin-top:4px">' + modalState.calloutPhotos.length + ' call-out photo' + (modalState.calloutPhotos.length !== 1 ? 's' : '') + '</div>' : ''}
+                ${needsIssuePhoto && !hasIssuePhoto ? '<div style="font-size:11px;color:#ef4444;margin-top:4px;font-weight:600">\u26A0 Surface damage selected \u2014 issue photo required</div>' : ''}
               </div>
 
+              <!-- SECTION 2: PANEL CONDITION -->
+              <div class="section-title"><span class="st-icon">\ud83d\udd35</span> Cleaning Assessment</div>
+              <div class="modal-section">
+                <div class="modal-label">Buildup Level <span class="required">Required</span></div>
+                <div class="radio-group">${radioHTML('buildupLevel', ['Light', 'Moderate', 'Heavy'])}</div>
+              </div>
+              <div class="modal-section">
+                <div class="modal-label">Primary Debris <span style="font-size:10px;color:#64748b;font-weight:400">Select up to 2</span></div>
+                <div class="check-group">${checkHTML('debris', DEBRIS_OPTIONS)}</div>
+              </div>
+              <div class="modal-section">
+                <div class="modal-label">Surface Damage Observed <span class="required">Required</span></div>
+                <div class="radio-group">${radioHTML('surfaceDamage', DAMAGE_OPTIONS)}</div>
+              </div>
+
+              <!-- SECTION 3: SYSTEM CHECK -->
+              <div class="section-title"><span class="st-icon">\ud83d\udd0d</span> Visual Inspection</div>
+              <div class="modal-section">
+                <div class="modal-label">System Condition <span class="required">Select all that apply</span></div>
+                <div class="check-group">${checkHTML('systemChecks', SYSTEM_CHECKS)}</div>
+              </div>
               <div class="modal-section">
                 <div class="modal-label">Inspection Notes <span class="required">Required</span></div>
-                <textarea class="modal-textarea" id="modal-inspection-notes" placeholder="Describe the condition of the panels, any issues found, work performed..." oninput="updateNotes();renderValidation();">${modalState.inspectionNotes}</textarea>
+                <textarea class="modal-textarea" id="modal-inspection-notes" placeholder="Anything notable about system condition? (1\u20133 sentences)" oninput="updateNotes();">${ms.inspectionNotes}</textarea>
               </div>
 
+              <!-- SECTION 4: MAINTENANCE PLAN -->
+              <div class="section-title"><span class="st-icon">\ud83d\udcc5</span> Maintenance Recommendation</div>
               <div class="modal-section">
-                <div class="modal-label">Recurring Service <span class="required">Required</span></div>
-                <div class="recurring-options">
-                  ${recurringOptions.map(opt => `
-                    <button class="recurring-option ${modalState.recurringSelection === opt.value ? 'selected' : ''}" onclick="setRecurring('${opt.value}')">
-                      <div>${opt.label}</div>
-                      ${opt.price ? `<div class="recurring-price-tag">$${opt.price}</div><div class="recurring-savings">${opt.discount} &middot; Save $${opt.savings}</div>` : ''}
-                    </button>
-                  `).join('')}
+                <div class="modal-label">Recommended Cleaning Frequency <span class="required">Required</span></div>
+                <div class="radio-group">${radioHTML('recommendedFreq', ['Annual', 'Bi-Annual', '3x Per Year'])}</div>
+              </div>
+              <div class="modal-section">
+                <div class="modal-label">Recurring Service Status <span class="required">Required</span></div>
+                <div class="radio-group">
+                  ${recurringOptions.map(opt => {
+                    const sel = ms.recurringSelection === opt.value;
+                    const priceInfo = opt.price ? '<div class="recurring-price-tag">$' + opt.price + '</div><div class="recurring-savings">' + opt.discount + ' \u00B7 Save $' + opt.savings + '</div>' : '';
+                    return '<div class="radio-row ' + (sel ? 'selected' : '') + '" onclick="setRadio(\'recurringSelection\',\'' + opt.value + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1"><div>' + opt.label + '</div>' + priceInfo + '</div></div>';
+                  }).join('')}
                 </div>
               </div>
 
@@ -737,53 +649,20 @@
 
       setTimeout(() => {
         document.querySelectorAll('[data-slot]').forEach(el => {
-          const key = el.dataset.slot;
-          if (!modalState.slotPhotos[key]) {
-            el.addEventListener('click', () => handleSlotPhoto(key));
-          }
+          if (!ms.slotPhotos[el.dataset.slot]) el.addEventListener('click', () => handleSlotPhoto(el.dataset.slot));
         });
         document.querySelectorAll('[data-remove-slot]').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeSlotPhoto(btn.dataset.removeSlot);
-          });
+          btn.addEventListener('click', (e) => { e.stopPropagation(); removeSlotPhoto(btn.dataset.removeSlot); });
         });
-        const calloutBtn = document.getElementById('add-callout-btn');
-        if (calloutBtn) calloutBtn.addEventListener('click', () => handleAddCallout());
-        document.querySelectorAll('[data-callout-idx]').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            removeCallout(parseInt(btn.dataset.calloutIdx));
-          });
+        const issueBtn = document.getElementById('add-issue-btn');
+        if (issueBtn) issueBtn.addEventListener('click', () => handleAddIssue());
+        document.querySelectorAll('[data-issue-idx]').forEach(btn => {
+          btn.addEventListener('click', (e) => { e.stopPropagation(); removeIssue(parseInt(btn.dataset.issueIdx)); });
+        });
+        document.querySelectorAll('.issue-select').forEach(sel => {
+          sel.addEventListener('change', (e) => setIssueTag(parseInt(sel.dataset.issueFor), sel.value));
         });
       }, 0);
-    }
-
-    function renderValidation() {
-      updateNotes();
-      const filledSlots = Object.keys(modalState.slotPhotos).length;
-      const hasAllSlots = filledSlots >= 4;
-      const hasNotes = !!modalState.inspectionNotes.trim();
-      const hasRecurring = !!modalState.recurringSelection;
-      const valid = hasAllSlots && hasNotes && hasRecurring;
-      const items = document.querySelectorAll('.validation-item');
-      if (items.length >= 1) {
-        items[0].className = `validation-item ${hasAllSlots ? 'done' : 'pending'}`;
-        items[0].textContent = `${hasAllSlots ? '\u2713' : '\u25CB'} Photos (${filledSlots}/4)`;
-      }
-      if (items.length >= 2) {
-        items[1].className = `validation-item ${hasNotes ? 'done' : 'pending'}`;
-        items[1].textContent = `${hasNotes ? '\u2713' : '\u25CB'} Notes`;
-      }
-      if (items.length >= 3) {
-        items[2].className = `validation-item ${hasRecurring ? 'done' : 'pending'}`;
-        items[2].textContent = `${hasRecurring ? '\u2713' : '\u25CB'} Recurring`;
-      }
-      const btn = document.getElementById('modal-submit-btn');
-      if (btn) {
-        btn.className = `modal-submit ${valid ? 'enabled' : 'disabled'}`;
-        btn.textContent = valid ? 'Complete Job' : 'Fill All Required Fields';
-      }
     }
 
     function render() {

@@ -1006,13 +1006,16 @@
                 try { parsedPhotos = s.photos ? JSON.parse(s.photos) : []; } catch(e) { parsedPhotos = []; }
                 if (s.before_photo && parsedPhotos.length === 0) parsedPhotos.push({ label: 'Before', data: s.before_photo });
                 if (s.after_photo && parsedPhotos.length <= 1) parsedPhotos.push({ label: 'After', data: s.after_photo });
+                let parsedCompletionData = {};
+                try { parsedCompletionData = s.completion_data ? JSON.parse(s.completion_data) : {}; } catch(e) { parsedCompletionData = {}; }
                 stopCompletionData[s.customer_id] = {
                   photos: parsedPhotos,
                   beforePhoto: s.before_photo || null,
                   afterPhoto: s.after_photo || null,
                   inspectionNotes: s.inspection_notes || '',
                   recurringSelection: s.recurring_selection || '',
-                  completedAt: s.completed_at
+                  completedAt: s.completed_at,
+                  ...parsedCompletionData
                 };
               }
             });
@@ -11919,8 +11922,8 @@ const createJob = async () => {
                           {savedRoute.customers.map((customer, idx) => {
                             const timeSlot = customer.scheduledTime || '';
                             const cd = customer._completionData;
-                            const recurringLabels = { not_offered: 'Not Offered', offered_declined: 'Declined', signed_annual: 'Annual', signed_biannual: 'Bi-Annual' };
-                            const recurringColors = { not_offered: '#64748b', offered_declined: '#ef4444', signed_annual: '#22c55e', signed_biannual: '#3b82f6' };
+                            const recurringLabels = { not_offered: 'Not Offered', offered_declined: 'Declined', signed_annual: 'Annual', signed_biannual: 'Bi-Annual', enrolled_annual: 'Enrolled Annual', enrolled_biannual: 'Enrolled Bi-Annual' };
+                            const recurringColors = { not_offered: '#64748b', offered_declined: '#ef4444', signed_annual: '#22c55e', signed_biannual: '#3b82f6', enrolled_annual: '#22c55e', enrolled_biannual: '#3b82f6' };
                             return (
                               <div key={customer.id} style={{ 
                                 padding: '8px 10px',
@@ -11961,9 +11964,26 @@ const createJob = async () => {
                                         {recurringLabels[cd.recurringSelection] || cd.recurringSelection}
                                       </span>
                                     )}
+                                    {cd.buildup_level && (
+                                      <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '4px' }}>
+                                        <span style={{ fontWeight: 700 }}>Buildup:</span> {cd.buildup_level}
+                                        {cd.debris && cd.debris.length > 0 && <span> | <span style={{ fontWeight: 700 }}>Debris:</span> {cd.debris.join(', ')}</span>}
+                                        {cd.surface_damage && <span> | <span style={{ fontWeight: 700 }}>Damage:</span> {cd.surface_damage}</span>}
+                                      </div>
+                                    )}
+                                    {cd.system_checks && cd.system_checks.length > 0 && (
+                                      <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
+                                        <span style={{ fontWeight: 700 }}>System:</span> {cd.system_checks.join(', ')}
+                                      </div>
+                                    )}
+                                    {cd.recommended_frequency && (
+                                      <div style={{ fontSize: '9px', color: '#94a3b8', marginTop: '2px' }}>
+                                        <span style={{ fontWeight: 700 }}>Rec. Frequency:</span> {cd.recommended_frequency}
+                                      </div>
+                                    )}
                                     {cd.inspectionNotes && (
                                       <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
-                                        🔍 {cd.inspectionNotes}
+                                        {cd.inspectionNotes}
                                       </div>
                                     )}
                                     {cd.photos && cd.photos.length > 0 && (
