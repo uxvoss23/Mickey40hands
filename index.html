@@ -2125,8 +2125,8 @@
           const customer = customers.find(c => c.id === customerId || String(c.id) === String(customerId));
           if (!customer) return;
           try {
-            const jobsData = await apiFetch(`/jobs/customer/${customer.id}`);
-            const allJobs = jobsData.jobs || [];
+            const jobsData = await apiFetch(`/jobs?customer_id=${customer.id}`);
+            const allJobs = jobsData.jobs || jobsData || [];
             const unscheduledJobs = allJobs.filter(j => j.status === 'unscheduled' || j.status === 'pending');
             const activeJobs = unscheduledJobs.length > 0 ? unscheduledJobs : allJobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
             if (activeJobs.length > 0) {
@@ -5523,8 +5523,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               panelCount: c.panel_count,
               totalPanels: c.total_panels,
               pricingTier: c.pricing_tier,
-              preferredDate: c.preferred_date || '',
+              preferredDate: c.active_job_preferred_days || c.preferred_date || '',
               preferredTimeWindow: c.preferred_time_window || '',
+              activeJobId: c.active_job_id || null,
+              activeJobPrice: c.active_job_price || null,
+              activeJobDescription: c.active_job_description || '',
               scheduledDate: c.scheduled_date ? c.scheduled_date.substring(0, 10) : '',
               scheduledTime: c.scheduled_time || '',
               solarVerified: c.solar_verified,
@@ -9177,9 +9180,9 @@ const createJob = async () => {
                                     <div style={{ textAlign: 'center', padding: '20px 0', color: '#475569', fontSize: '11px' }}>{allUnrouted.length === 0 ? 'All jobs are routed' : 'No jobs match filter'}</div>
                                   ) : (
                                     sorted.map(customer => {
-                                      const jobType = getJobType(customer);
+                                      const jobType = customer.activeJobDescription || getJobType(customer);
                                       const panels = parseInt(customer.panelCount || customer.totalPanels || 0) || 0;
-                                      const price = parseFloat(customer.jobPrice || customer.amountPaid || 0) || 0;
+                                      const price = parseFloat(customer.activeJobPrice || customer.jobPrice || customer.amountPaid || 0) || 0;
                                       const prefDays = parsePrefDays(customer.preferredDate);
                                       const isPrefMatch = activeDayOfWeek !== null && prefDays.includes(activeDayOfWeek);
                                       return (

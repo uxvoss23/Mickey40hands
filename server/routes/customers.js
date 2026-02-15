@@ -15,7 +15,11 @@ router.get('/', async (req, res) => {
 
     let query = `SELECT c.*, 
       COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled'))), 0)::int AS active_job_count,
-      COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count
+      COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count,
+      (SELECT j.preferred_days FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_preferred_days,
+      (SELECT j.price FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_price,
+      (SELECT j.job_description FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_description,
+      (SELECT j.id FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_id
     FROM customers c WHERE 1=1`;
     const params = [];
     let paramIndex = 1;
@@ -222,7 +226,11 @@ router.get('/:id', async (req, res) => {
     const result = await pool.query(`
       SELECT c.*,
         COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled'))), 0)::int AS active_job_count,
-        COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count
+        COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count,
+        (SELECT j.preferred_days FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_preferred_days,
+        (SELECT j.price FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_price,
+        (SELECT j.job_description FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_description,
+        (SELECT j.id FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled')) ORDER BY j.id DESC LIMIT 1) AS active_job_id
       FROM customers c WHERE c.id = $1
     `, [req.params.id]);
     if (result.rows.length === 0) {
