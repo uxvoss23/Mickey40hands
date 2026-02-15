@@ -7956,24 +7956,33 @@ const createJob = async () => {
                           )}
                           
                           <div style={{ display: 'grid', gap: '6px' }}>
-                        {generateTimeSlots()
-                          .filter(slot => slot.hour >= visibleStartHour && slot.hour < visibleEndHour)
-                          .map((slot, index) => {
+                        {(() => {
+                          const allJobsForDay = customers
+                            .filter(c => {
+                              if (!c.scheduledDate || !c.scheduledTime) return false;
+                              const custDate = new Date(c.scheduledDate);
+                              return custDate.toDateString() === selectedDate.toDateString();
+                            })
+                            .sort((a, b) => {
+                              const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
+                              const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
+                              return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+                            });
+                          let effectiveEndHour = visibleEndHour;
+                          allJobsForDay.forEach(c => {
+                            const [h] = c.scheduledTime.split(':').map(Number);
+                            if (h + 1 > effectiveEndHour) effectiveEndHour = Math.min(20, h + 1);
+                          });
+                          let effectiveStartHour = visibleStartHour;
+                          allJobsForDay.forEach(c => {
+                            const [h] = c.scheduledTime.split(':').map(Number);
+                            if (h < effectiveStartHour) effectiveStartHour = Math.max(6, h);
+                          });
+                          return generateTimeSlots()
+                            .filter(slot => slot.hour >= effectiveStartHour && slot.hour < effectiveEndHour)
+                            .map((slot, index) => {
                             const jobsInSlot = getJobsForTimeSlot(selectedDate, slot.time);
                             const isBlocked = jobsInSlot.length > 0;
-                            
-                            // Calculate job number based on scheduled time
-                            const allJobsForDay = customers
-                              .filter(c => {
-                                if (!c.scheduledDate || !c.scheduledTime) return false;
-                                const custDate = new Date(c.scheduledDate);
-                                return custDate.toDateString() === selectedDate.toDateString();
-                              })
-                              .sort((a, b) => {
-                                const [aHour, aMin] = a.scheduledTime.split(':').map(Number);
-                                const [bHour, bMin] = b.scheduledTime.split(':').map(Number);
-                                return (aHour * 60 + aMin) - (bHour * 60 + bMin);
-                              });
                             
                             return (
                               <div
@@ -8101,7 +8110,6 @@ const createJob = async () => {
                                         {/* Action Buttons */}
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flexShrink: 0 }}>
                                           {/* Up Arrow - Move job earlier */}
-                                          {jobNumber > 1 && (
                                             <button
                                               onClick={async (e) => {
                                                 e.stopPropagation();
@@ -8109,22 +8117,38 @@ const createJob = async () => {
                                                 setRouteSaving(true);
                                                 try {
                                                   const currentIndex = jobNumber - 1;
-                                                  const prevJob = allJobsForDay[currentIndex - 1];
-                                                  await apiFetch(`/customers/${job.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: prevJob.scheduledTime }) });
-                                                  await apiFetch(`/customers/${prevJob.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: job.scheduledTime }) });
-                                                  setCustomers(prev => prev.map(c => {
-                                                    if (c.id === job.id) return { ...c, scheduledTime: prevJob.scheduledTime };
-                                                    if (c.id === prevJob.id) return { ...c, scheduledTime: job.scheduledTime };
-                                                    return c;
-                                                  }));
-                                                  setRoutesByDay(prev => {
-                                                    const dayStops = (prev[dateKey] || []).map(c => {
+                                                  if (currentIndex > 0) {
+                                                    const prevJob = allJobsForDay[currentIndex - 1];
+                                                    await apiFetch(`/customers/${job.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: prevJob.scheduledTime }) });
+                                                    await apiFetch(`/customers/${prevJob.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: job.scheduledTime }) });
+                                                    setCustomers(prev => prev.map(c => {
                                                       if (c.id === job.id) return { ...c, scheduledTime: prevJob.scheduledTime };
                                                       if (c.id === prevJob.id) return { ...c, scheduledTime: job.scheduledTime };
                                                       return c;
+                                                    }));
+                                                    setRoutesByDay(prev => {
+                                                      const dayStops = (prev[dateKey] || []).map(c => {
+                                                        if (c.id === job.id) return { ...c, scheduledTime: prevJob.scheduledTime };
+                                                        if (c.id === prevJob.id) return { ...c, scheduledTime: job.scheduledTime };
+                                                        return c;
+                                                      });
+                                                      return { ...prev, [dateKey]: dayStops };
                                                     });
-                                                    return { ...prev, [dateKey]: dayStops };
-                                                  });
+                                                  } else {
+                                                    const [curH, curM] = (job.scheduledTime || '08:00').split(':').map(Number);
+                                                    const clampedMin = Math.max(360, curH * 60 + curM - 75);
+                                                    const newH = Math.floor(clampedMin / 60);
+                                                    const newM = clampedMin % 60;
+                                                    const newTime = `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
+                                                    if (newTime !== job.scheduledTime) {
+                                                      await apiFetch(`/customers/${job.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: newTime }) });
+                                                      setCustomers(prev => prev.map(c => c.id === job.id ? { ...c, scheduledTime: newTime } : c));
+                                                      setRoutesByDay(prev => {
+                                                        const dayStops = (prev[dateKey] || []).map(c => c.id === job.id ? { ...c, scheduledTime: newTime } : c);
+                                                        return { ...prev, [dateKey]: dayStops };
+                                                      });
+                                                    }
+                                                  }
                                                 } catch (e) { console.error('Failed to swap times:', e); }
                                                 finally { setRouteSaving(false); }
                                               }}
@@ -8143,11 +8167,10 @@ const createJob = async () => {
                                                 flexShrink: 0,
                                                 padding: 0
                                               }}
-                                              title="Move up"
+                                              title={jobNumber > 1 ? "Swap with previous" : "Move earlier by 1h 15m"}
                                             >
                                               ▲
                                             </button>
-                                          )}
                                           
                                           {/* Down Arrow - Move job later */}
                                           {jobNumber < allJobsForDay.length && (
@@ -8284,7 +8307,8 @@ const createJob = async () => {
                             )}
                           </div>
                         );
-                      })}
+                      });
+                        })()}
                     </div>
                     
                           {/* Down Arrow - Show Later Times */}
