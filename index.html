@@ -11031,6 +11031,24 @@ const createJob = async () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
                   <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0 }}>📁 Saved Routes</h2>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Clear ALL saved routes and route history? This cannot be undone.')) {
+                          setSavedRoutes([]);
+                          setSavedViewDays({});
+                          setRoutesByDay({});
+                          setEditingSavedRouteId(null);
+                          localStorage.removeItem('savedRoutes');
+                        }
+                      }}
+                      style={{
+                        padding: '4px 10px', fontSize: '11px', fontWeight: 600,
+                        background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '6px', color: '#f87171', cursor: 'pointer'
+                      }}
+                    >🗑️ Clear All Routes</button>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>📧 Send to:</span>
                     <input
                       type="email"
