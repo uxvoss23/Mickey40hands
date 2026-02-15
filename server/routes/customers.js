@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
       } else if (solar_verified === 'no-solar') {
         query += ` AND solar_verified = 'no'`;
       } else if (solar_verified === 'unverified') {
-        query += ` AND (solar_verified IS NULL OR solar_verified = '')`;
+        query += ` AND solar_verified IS NULL`;
       }
     }
 
@@ -87,7 +87,7 @@ router.get('/', async (req, res) => {
       if (months > 0) {
         const cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - months);
-        query += ` AND last_service_date != '' AND last_service_date >= $${paramIndex}`;
+        query += ` AND last_service_date IS NOT NULL AND last_service_date >= $${paramIndex}`;
         params.push(cutoff.toISOString().split('T')[0]);
         paramIndex++;
       }
@@ -153,7 +153,7 @@ router.get('/stats', async (req, res) => {
         COUNT(*) as total,
         COUNT(CASE WHEN LOWER(status) = 'unscheduled' THEN 1 END) as unscheduled,
         COUNT(CASE WHEN LOWER(status) = 'scheduled' THEN 1 END) as scheduled,
-        COUNT(CASE WHEN last_service_date IS NOT NULL AND last_service_date != '' THEN 1 END) as completed,
+        COUNT(CASE WHEN last_service_date IS NOT NULL THEN 1 END) as completed,
         COUNT(DISTINCT state) as states,
         COUNT(DISTINCT city) as cities,
         COUNT(CASE WHEN is_recurring = true THEN 1 END) as recurring,
@@ -173,7 +173,7 @@ router.get('/filter-options', async (req, res) => {
     const cities = await pool.query(`SELECT DISTINCT city FROM customers WHERE city != '' ORDER BY city`);
     const states = await pool.query(`SELECT DISTINCT state FROM customers WHERE state != '' ORDER BY state`);
     const zips = await pool.query(`SELECT DISTINCT zip FROM customers WHERE zip != '' ORDER BY zip`);
-    const statuses = await pool.query(`SELECT DISTINCT status FROM customers WHERE status != '' ORDER BY status`);
+    const statuses = await pool.query(`SELECT DISTINCT status FROM customers WHERE status IS NOT NULL ORDER BY status`);
 
     res.json({
       cities: cities.rows.map(r => r.city),
@@ -238,6 +238,18 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const c = req.body;
+
+    const fullName = c.full_name || c.name || `${c.first_name || c.firstName || ''} ${c.last_name || c.lastName || ''}`.trim();
+    const address = c.address || '';
+    if (!fullName || !address) {
+      return res.status(400).json({ error: 'Customer name and address are required' });
+    }
+
+    const dupCheck = await pool.query(
+      `SELECT id, full_name FROM customers WHERE LOWER(address) = LOWER($1)`,
+      [address]
+    );
+    const isDuplicate = dupCheck.rows.length > 0;
     const result = await pool.query(`
       INSERT INTO customers (
         first_name, last_name, full_name, address, street, city, state, zip,
@@ -260,15 +272,15 @@ router.post('/', async (req, res) => {
       c.phone || '', c.email || '',
       c.secondary_phones || c.secondaryPhones || [],
       c.secondary_emails || c.secondaryEmails || [],
-      (c.status || '').toLowerCase(), c.notes || '', c.customer_notes || c.customerNotes || '',
+      (c.status || '').toLowerCase() || null, c.notes || '', c.customer_notes || c.customerNotes || '',
       parseInt(c.panel_count || c.panelCount) || 0, parseInt(c.total_panels || c.totalPanels) || 0,
       c.pricing_tier || c.pricingTier || 'standard',
-      c.preferred_date || c.preferredDate || '', c.preferred_time_window || c.preferredTimeWindow || '',
-      c.scheduled_date || c.scheduledDate || '', c.scheduled_time || c.scheduledTime || '',
+      c.preferred_date || c.preferredDate || null, c.preferred_time_window || c.preferredTimeWindow || null,
+      c.scheduled_date || c.scheduledDate || null, c.scheduled_time || c.scheduledTime || null,
       c.solar_verified || c.solarVerified || null,
       c.is_recurring || c.isRecurring || false,
       parseFloat(c.amount_paid || c.amountPaid) || 0, parseFloat(c.tip_amount || c.tipAmount) || 0,
-      c.last_service_date || c.lastServiceDate || '', c.next_service_date || c.nextServiceDate || '',
+      c.last_service_date || c.lastServiceDate || null, c.next_service_date || c.nextServiceDate || null,
       c.job_description || c.jobDescription || '', c.tags || '', c.employee || '',
       c.existing_job || c.existingJob || false, c.route_confirmed || c.routeConfirmed || false,
       c.verification_data || c.verificationData || null,
@@ -276,7 +288,11 @@ router.post('/', async (req, res) => {
       c.source || '',
       c.customer_type || c.customerType || 'residential'
     ]);
-    res.status(201).json(result.rows[0]);
+    const customer = result.rows[0];
+    if (isDuplicate) {
+      customer._duplicate_warning = `Address already exists for: ${dupCheck.rows.map(r => r.full_name).join(', ')}`;
+    }
+    res.status(201).json(customer);
   } catch (err) {
     console.error('Error creating customer:', err);
     res.status(500).json({ error: 'Failed to create customer' });
@@ -317,15 +333,15 @@ router.post('/bulk', async (req, res) => {
         c.phone || '', c.email || '',
         c.secondary_phones || c.secondaryPhones || [],
         c.secondary_emails || c.secondaryEmails || [],
-        (c.status || '').toLowerCase(), c.notes || '', c.customer_notes || c.customerNotes || '',
+        (c.status || '').toLowerCase() || null, c.notes || '', c.customer_notes || c.customerNotes || '',
         parseInt(c.panel_count || c.panelCount) || 0, parseInt(c.total_panels || c.totalPanels) || 0,
         c.pricing_tier || c.pricingTier || 'standard',
-        c.preferred_date || c.preferredDate || '', c.preferred_time_window || c.preferredTimeWindow || '',
-        c.scheduled_date || c.scheduledDate || '', c.scheduled_time || c.scheduledTime || '',
+        c.preferred_date || c.preferredDate || null, c.preferred_time_window || c.preferredTimeWindow || null,
+        c.scheduled_date || c.scheduledDate || null, c.scheduled_time || c.scheduledTime || null,
         c.solar_verified || c.solarVerified || null,
         c.is_recurring || c.isRecurring || false,
         parseFloat(c.amount_paid || c.amountPaid) || 0, parseFloat(c.tip_amount || c.tipAmount) || 0,
-        c.last_service_date || c.lastServiceDate || '', c.next_service_date || c.nextServiceDate || '',
+        c.last_service_date || c.lastServiceDate || null, c.next_service_date || c.nextServiceDate || null,
         c.job_description || c.jobDescription || '', c.tags || '', c.employee || '',
         c.existing_job || c.existingJob || false, c.route_confirmed || c.routeConfirmed || false,
         JSON.stringify(c.notes_history || c.notesHistory || []),
@@ -346,7 +362,7 @@ router.post('/bulk', async (req, res) => {
           customerId,
           job.jobDescription || job.job_description || '',
           (job.status || 'completed').toLowerCase(),
-          job.date || job.completed_date || '',
+          job.date || job.completed_date || null,
           parseFloat(job.amount) || 0,
           parseFloat(job.tip) || 0,
           job.notes || '',
@@ -422,6 +438,7 @@ router.patch('/:id', async (req, res) => {
       if (dbField) {
         let processedValue = value;
         if (dbField === 'status') processedValue = (value || '').toLowerCase() || null;
+        if (['preferred_date', 'preferred_time_window', 'scheduled_date', 'scheduled_time', 'last_service_date', 'next_service_date'].includes(dbField)) processedValue = value || null;
         if (dbField === 'notes_history') processedValue = JSON.stringify(value);
         if (dbField === 'verification_data' && typeof value === 'object') processedValue = JSON.stringify(value);
         setClauses.push(`${dbField} = $${paramIndex}`);

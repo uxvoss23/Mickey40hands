@@ -23,21 +23,21 @@ async function generateRecurringJobs(customerId, baseJob, interval, startDate) {
     const dateStr = jobDate.toISOString().split('T')[0];
 
     const daysUntilJob = Math.floor((jobDate - now) / (1000 * 60 * 60 * 24));
-    const autoStatus = daysUntilJob <= 30 && daysUntilJob >= 0 ? 'scheduled' : '';
+    const autoStatus = daysUntilJob <= 30 && daysUntilJob >= 0 ? 'scheduled' : null;
 
     const result = await pool.query(`
       INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
                         completed_date, amount, tip, notes, is_recurring, employee, panel_count,
                         price, price_per_panel, preferred_days, preferred_time, technician,
                         recurrence_interval, next_service_date)
-      VALUES ($1, $2, $3, $4, $5, '', 0, 0, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, '')
+      VALUES ($1, $2, $3, $4, $5, NULL, 0, 0, $6, true, $7, $8, $9, $10, $11, $12, $13, $14, NULL)
       RETURNING *
     `, [
       customerId,
       baseJob.job_description || baseJob.jobDescription || '',
       autoStatus,
       dateStr,
-      baseJob.scheduled_time || baseJob.preferred_time || '',
+      baseJob.scheduled_time || baseJob.preferred_time || null,
       `Recurring service #${i}`,
       baseJob.employee || baseJob.technician || '',
       baseJob.panel_count || 0,
@@ -54,7 +54,7 @@ async function generateRecurringJobs(customerId, baseJob, interval, startDate) {
   const nextJob = jobs.find(j => j.status !== 'completed' && j.status !== 'cancelled' && j.scheduled_date);
   if (nextJob) {
     const daysUntilNext = Math.floor((new Date(nextJob.scheduled_date) - now) / (1000 * 60 * 60 * 24));
-    const customerStatus = daysUntilNext <= 30 && daysUntilNext >= 0 ? 'scheduled' : '';
+    const customerStatus = daysUntilNext <= 30 && daysUntilNext >= 0 ? 'scheduled' : null;
     await pool.query(
       `UPDATE customers SET is_recurring = true, next_service_date = $1, status = $2 WHERE id = $3`,
       [nextJob.scheduled_date, customerStatus, customerId]
@@ -113,13 +113,13 @@ router.post('/', async (req, res) => {
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
     `, [
-      j.customer_id, j.job_description || '', (j.status || '').toLowerCase(),
-      j.scheduled_date || '', j.scheduled_time || '', j.completed_date || '',
+      j.customer_id, j.job_description || '', (j.status || '').toLowerCase() || null,
+      j.scheduled_date || null, j.scheduled_time || null, j.completed_date || null,
       parseFloat(j.amount) || 0, parseFloat(j.tip) || 0, j.notes || '',
       j.is_recurring || false, j.employee || '', parseInt(j.panel_count) || 0,
       parseFloat(j.price) || 0, parseFloat(j.price_per_panel) || 0,
       j.preferred_days || '', j.preferred_time || '', j.technician || '',
-      j.recurrence_interval || '', j.next_service_date || ''
+      j.recurrence_interval || '', j.next_service_date || null
     ]);
 
     const job = result.rows[0];
@@ -145,7 +145,7 @@ router.post('/generate-recurring', async (req, res) => {
     }
 
     await pool.query(
-      `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status = '' OR status IS NULL OR status = 'scheduled') AND (completed_date IS NULL OR completed_date = '')`,
+      `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status IS NULL OR status = 'scheduled') AND completed_date IS NULL`,
       [customer_id]
     );
 
@@ -212,12 +212,12 @@ router.post('/cancel-recurring', async (req, res) => {
     }
 
     const deleted = await pool.query(
-      `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status = '' OR status IS NULL OR status = 'scheduled') AND (completed_date IS NULL OR completed_date = '') RETURNING id`,
+      `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status IS NULL OR status = 'scheduled') AND completed_date IS NULL RETURNING id`,
       [customer_id]
     );
 
     await pool.query(
-      `UPDATE customers SET is_recurring = false, status = '', next_service_date = NULL WHERE id = $1`,
+      `UPDATE customers SET is_recurring = false, status = NULL, next_service_date = NULL WHERE id = $1`,
       [customer_id]
     );
 
@@ -240,10 +240,15 @@ router.patch('/:id', async (req, res) => {
                     'price', 'price_per_panel', 'preferred_days', 'preferred_time', 'technician',
                     'recurrence_interval', 'next_service_date'];
 
+    if ((updates.status || '').toLowerCase() === 'completed' && !updates.completed_date) {
+      updates.completed_date = new Date().toISOString().split('T')[0];
+    }
+
     for (const field of fields) {
       if (updates[field] !== undefined) {
         let val = updates[field];
-        if (field === 'status') val = (val || '').toLowerCase();
+        if (field === 'status') val = (val || '').toLowerCase() || null;
+        if (['scheduled_date', 'scheduled_time', 'completed_date', 'next_service_date'].includes(field)) val = val || null;
         setClauses.push(`${field} = $${paramIndex}`);
         params.push(val);
         paramIndex++;
@@ -305,7 +310,7 @@ router.patch('/:id', async (req, res) => {
           }
         } else {
           await pool.query(
-            `UPDATE customers SET status = NULL, scheduled_date = NULL, scheduled_time = NULL WHERE id = $1`,
+            `UPDATE customers SET status = NULL, next_service_date = NULL, scheduled_date = NULL, scheduled_time = NULL WHERE id = $1`,
             [updatedJob.customer_id]
           );
         }
@@ -342,7 +347,7 @@ router.delete('/:id', async (req, res) => {
 
     const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
     let nextServiceDate = null;
-    let newStatus = '';
+    let newStatus = null;
 
     if (activeJobs.length > 0) {
       const upcoming = activeJobs
