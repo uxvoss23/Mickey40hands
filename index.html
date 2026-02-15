@@ -1460,7 +1460,9 @@
             setUnsavedRouteChanges(true);
           }
 
-          setEditingSavedRouteId(null);
+          if (!Object.keys(editingRouteIdByDay).length) {
+            setEditingSavedRouteId(null);
+          }
         }
 
         // Update the ref for next change
@@ -3313,9 +3315,10 @@
           };
           const routeIds = new Set(routeCustomers.map(c => c.id));
 
-          if (editingSavedRouteId) {
+          const effectiveEditingId = editingSavedRouteId || editingRouteIdByDay[dateKey];
+          if (effectiveEditingId) {
             setSavedRoutes(prev => prev.map(r => {
-              if (r.id === editingSavedRouteId) {
+              if (r.id === effectiveEditingId) {
                 return { ...r, name: routeName, scheduledDate: selectedDate.toISOString(), customers: routeCustomers, totalDistance: routeTotalDistance };
               }
               return r;
@@ -14064,7 +14067,7 @@ onClick={exitRadiusMode}
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{editingSavedRouteId ? 'Update Route' : 'Save Route'}</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{(editingSavedRouteId || editingRouteIdByDay[selectedDate.toDateString()]) ? 'Update Route' : 'Save Route'}</h2>
                   <button
                     onClick={() => setShowSaveModal(false)}
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '24px' }}
@@ -14138,7 +14141,7 @@ onClick={exitRadiusMode}
                       onClick={handleSaveRoute}
                       style={{ flex: 1, justifyContent: 'center' }}
                     >
-                      {editingSavedRouteId ? '💾 Update Route' : '💾 Save This Day'}
+                      {(editingSavedRouteId || editingRouteIdByDay[selectedDate.toDateString()]) ? '💾 Update Route' : '💾 Save This Day'}
                     </button>
                   </div>
                   {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 && (
