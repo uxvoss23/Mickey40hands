@@ -855,8 +855,10 @@
         document.querySelectorAll('.issue-select').forEach(sel => {
           sel.addEventListener('change', (e) => setIssueTag(parseInt(sel.dataset.issueFor), sel.value));
         });
-        const newModalContent = document.querySelector('.modal-content');
-        if (newModalContent && savedScroll) { newModalContent.scrollTop = savedScroll; }
+        requestAnimationFrame(() => {
+          const newModalContent = document.querySelector('.modal-content');
+          if (newModalContent) { newModalContent.scrollTop = savedScroll; }
+        });
       }, 0);
     }
 
