@@ -5538,7 +5538,7 @@ const createJob = async () => {
               totalPanels: parseInt(jobForm.panelCount) || 0,
               lastServiceDate: '',
               amountPaid: 0,
-              status: '', // Default: no status (blank = no action needed)
+              status: 'none',
               existingJob: false,
               isRecurring: jobForm.isRecurring,
               solarVerified: null,
@@ -6605,8 +6605,8 @@ const createJob = async () => {
                               <div style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{c.name || `${c.firstName || ''} ${c.lastName || ''}`.trim()}</div>
                               <div style={{ fontSize: '11px', color: '#64748b' }}>{c.city}{c.city && c.state ? ', ' : ''}{c.state}{c.zip ? ' ' + c.zip : ''}</div>
                             </div>
-                            <div style={{ fontSize: '10px', padding: '2px 8px', background: c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.15)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.15)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.15)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(100, 116, 139, 0.15)', border: '1px solid ' + (c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.2)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.2)' : c.status === 'completed' ? 'rgba(34, 197, 94, 0.2)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.15)'), borderRadius: '10px', color: c.status === 'unscheduled' ? '#ef4444' : c.status === 'scheduled' ? '#fbbf24' : c.status === 'completed' ? '#22c55e' : c.status === 'in progress' ? '#3b82f6' : '#64748b' }}>
-                              {c.status || 'no status'}
+                            <div style={{ fontSize: '10px', padding: '2px 8px', background: c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.15)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.15)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(100, 116, 139, 0.15)', border: '1px solid ' + (c.status === 'unscheduled' ? 'rgba(239, 68, 68, 0.2)' : c.status === 'scheduled' ? 'rgba(251, 191, 36, 0.2)' : c.status === 'in progress' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(100, 116, 139, 0.15)'), borderRadius: '10px', color: c.status === 'unscheduled' ? '#ef4444' : c.status === 'scheduled' ? '#fbbf24' : c.status === 'in progress' ? '#3b82f6' : '#64748b' }}>
+                              {c.status || 'none'}
                             </div>
                           </div>
                         ))}
@@ -9705,7 +9705,7 @@ const createJob = async () => {
                                   cursor: 'pointer'
                                 }}
                               >
-                                <option value="">⚪ No Status</option>
+                                <option value="none">⚪ None</option>
                                 <option value="unscheduled">🔴 Unscheduled</option>
                                 <option value="scheduled">🟡 Scheduled</option>
                               </select>
@@ -10621,7 +10621,7 @@ const createJob = async () => {
                             cursor: 'pointer'
                           }}
                         >
-                          <option value="">⚪ No Status</option>
+                          <option value="none">⚪ None</option>
                           <option value="unscheduled">🔴 Unscheduled</option>
                           <option value="scheduled">🟡 Scheduled</option>
                         </select>

@@ -272,7 +272,7 @@ router.post('/', async (req, res) => {
       c.phone || '', c.email || '',
       c.secondary_phones || c.secondaryPhones || [],
       c.secondary_emails || c.secondaryEmails || [],
-      (c.status || '').toLowerCase() || null, c.notes || '', c.customer_notes || c.customerNotes || '',
+      (c.status || '').toLowerCase() || 'none', c.notes || '', c.customer_notes || c.customerNotes || '',
       parseInt(c.panel_count || c.panelCount) || 0, parseInt(c.total_panels || c.totalPanels) || 0,
       c.pricing_tier || c.pricingTier || 'standard',
       c.preferred_date || c.preferredDate || null, c.preferred_time_window || c.preferredTimeWindow || null,
@@ -587,12 +587,10 @@ router.post('/sync', async (req, res) => {
       if (!c.status || c.status.trim() === '') {
         if (hasScheduledJob) {
           correctStatus = 'scheduled';
-        } else if (allCompleted) {
-          correctStatus = 'completed';
-        } else if (hasJobs) {
+        } else if (hasJobs && !allCompleted) {
           correctStatus = 'unscheduled';
         } else {
-          correctStatus = 'new';
+          correctStatus = 'none';
         }
       }
 
