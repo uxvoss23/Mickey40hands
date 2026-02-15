@@ -812,6 +812,7 @@
       const radiusCircleRef = useRef(null);
       const referenceMarkerRef = useRef(null);
       const homeBaseMarkerRef = useRef(null);
+      const handleCustomerClickRef = useRef(null);
       const routeLinesRef = useRef([]);
       const fileInputRef = useRef(null);
       const markersMapRef = useRef(new Map());
@@ -1961,9 +1962,8 @@
         const handleAddToRoute = (e) => {
           const customerId = e.detail;
           const customer = customers.find(c => c.id === customerId);
-          if (customer) {
-            handleCustomerClick(customer);
-            // Close any open popups
+          if (customer && handleCustomerClickRef.current) {
+            handleCustomerClickRef.current(customer);
             if (mapInstanceRef.current) {
               mapInstanceRef.current.closePopup();
             }
@@ -2530,10 +2530,14 @@
                 if (customer._needsScheduling && focusedDays.length > 1) {
                   window.dispatchEvent(new CustomEvent('showDayPicker', { detail: { customerId: customer.id } }));
                 } else {
-                  handleCustomerClick(customer);
+                  const latestCustomer = customers.find(c => c.id === customer.id) || customer;
+                  if (handleCustomerClickRef.current) {
+                    handleCustomerClickRef.current(latestCustomer);
+                  }
                 }
               } else {
-                setProfileCustomer(customer);
+                const latestCustomer = customers.find(c => c.id === customer.id) || customer;
+                setProfileCustomer(latestCustomer);
                 setShowCustomerProfile(true);
               }
             });
@@ -2881,6 +2885,7 @@
           scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDays]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
+      const routeSavingTimeoutRef = useRef(null);
       const handleCustomerClick = async (customer) => {
         if (routeSaving) return;
         if (statusFilter !== 'scheduled') {
@@ -2929,6 +2934,8 @@
         const isInRoute = isInRoutesByDay || isScheduledForDay;
 
         setRouteSaving(true);
+        if (routeSavingTimeoutRef.current) clearTimeout(routeSavingTimeoutRef.current);
+        routeSavingTimeoutRef.current = setTimeout(() => setRouteSaving(false), 10000);
         try {
           if (isInRoute) {
             const sentRouteWithCustomer = savedRoutes.find(r => {
@@ -3123,9 +3130,11 @@
           setError('Failed to update route. Please try again.');
           setTimeout(() => setError(null), 3000);
         } finally {
+          if (routeSavingTimeoutRef.current) clearTimeout(routeSavingTimeoutRef.current);
           setRouteSaving(false);
         }
       };
+      handleCustomerClickRef.current = handleCustomerClick;
 
       // Sync route state with current day's route when switching days
       useEffect(() => {
