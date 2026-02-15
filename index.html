@@ -7362,6 +7362,7 @@ const createJob = async () => {
                     
                     {(() => {
                       const dateKey = selectedDate.toDateString();
+                      const editingRouteForDay = editingRouteIdByDay[dateKey] || null;
                       const inSavedView = savedViewDays[dateKey] === true;
 
                       // Find ALL saved routes for this day (multiple technicians)
@@ -7612,7 +7613,7 @@ const createJob = async () => {
                       }
                       
                       // Check if currently editing/viewing a sent route
-                      const isViewingSentRoute = editingSavedRouteId && savedRoutes.find(r => r.id === editingSavedRouteId)?.sentToTech;
+                      const isViewingSentRoute = editingRouteForDay && savedRoutes.find(r => r.id === editingRouteForDay)?.sentToTech;
 
                       // EDIT VIEW - Show action buttons (if jobs exist) and timeslots
                       return (
@@ -7685,8 +7686,8 @@ const createJob = async () => {
                               <div style={{ display: 'flex', gap: '6px' }}>
                               <button
                                 onClick={() => {
-                                  if (editingSavedRouteId) {
-                                    const existingRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                  if (editingRouteForDay) {
+                                    const existingRoute = savedRoutes.find(r => r.id === editingRouteForDay);
                                     if (existingRoute) setRouteName(existingRoute.name);
                                   }
                                   setShowSaveModal(true);
@@ -7705,8 +7706,8 @@ const createJob = async () => {
                                 onClick={async () => {
                                   setRouteSaving(true);
                                   try {
-                                  if (editingSavedRouteId) {
-                                    const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                  if (editingRouteForDay) {
+                                    const savedRoute = savedRoutes.find(r => r.id === editingRouteForDay);
                                     if (savedRoute) {
                                       const savedCustomerIds = new Set(savedRoute.customers.map(c => c.id));
                                       setCustomers(prev => prev.map(c => {
@@ -7797,7 +7798,7 @@ const createJob = async () => {
                                 gap: '4px'
                               }}
                             >
-                              {editingSavedRouteId ? '↩️ Cancel' : '🗑️ Clear Day'}
+                              {editingRouteForDay ? '↩️ Cancel' : '🗑️ Clear Day'}
                             </button>
                               </div>
                               {/* Save All Routes button - show when multiple days have unsaved changes */}
@@ -7838,7 +7839,7 @@ const createJob = async () => {
                                 </div>
                               )}
                           </div>
-                          ) : (!isViewingSentRoute && editingSavedRouteId) ? (
+                          ) : (!isViewingSentRoute && editingRouteForDay) ? (
                             <div style={{ marginBottom: '8px' }}>
                               <div style={{ padding: '12px', background: 'rgba(239,68,68,0.08)', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.2)', marginBottom: '8px', textAlign: 'center' }}>
                                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#fca5a5', marginBottom: '4px' }}>All stops removed</div>
@@ -7848,7 +7849,7 @@ const createJob = async () => {
                                 <button
                                   onClick={async () => {
                                     if (window.confirm('Delete this route? All jobs will be set back to unscheduled.')) {
-                                      const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                      const savedRoute = savedRoutes.find(r => r.id === editingRouteForDay);
                                       if (savedRoute) {
                                         if (savedRoute.dbRouteId) {
                                           try {
@@ -7873,7 +7874,7 @@ const createJob = async () => {
                                           const inRoute = savedRoute.customers.some(rc => rc.id === c.id);
                                           return inRoute ? { ...c, ...unscheduleUpdates } : c;
                                         }));
-                                        setSavedRoutes(prev => prev.filter(r => r.id !== editingSavedRouteId));
+                                        setSavedRoutes(prev => prev.filter(r => r.id !== editingRouteForDay));
                                         setPipelineCustomers(prev => prev.map(c => {
                                           const inRoute = savedRoute.customers.some(rc => rc.id === c.id);
                                           return inRoute ? { ...c, ...unscheduleUpdates } : c;
@@ -7903,7 +7904,7 @@ const createJob = async () => {
                                 >🗑️ Delete Route</button>
                                 <button
                                   onClick={() => {
-                                    const savedRoute = savedRoutes.find(r => r.id === editingSavedRouteId);
+                                    const savedRoute = savedRoutes.find(r => r.id === editingRouteForDay);
                                     if (savedRoute) {
                                       setRoutesByDay(prev => ({ ...prev, [dateKey]: [...savedRoute.customers] }));
                                       setCustomers(prev => {
