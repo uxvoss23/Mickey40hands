@@ -444,15 +444,62 @@
       return photos;
     }
 
-    function setRadio(field, value) { modalState[field] = value; renderModal(); }
+    function setRadio(field, value) {
+      modalState[field] = value;
+      document.querySelectorAll('[data-radio-field="' + field + '"]').forEach(row => {
+        const isSelected = row.dataset.radioValue === value;
+        row.className = 'radio-row' + (isSelected ? ' selected' : '');
+      });
+      if (field === 'surfaceDamage') {
+        const warn = document.getElementById('damage-warning');
+        const needsIssue = value && value !== 'None';
+        const hasIssue = modalState.issuePhotos.length > 0;
+        if (warn) warn.style.display = (needsIssue && !hasIssue) ? 'block' : 'none';
+      }
+      updateValidation();
+    }
     function toggleCheck(field, value) {
       const arr = modalState[field];
       const idx = arr.indexOf(value);
       if (idx >= 0) arr.splice(idx, 1); else { if (field === 'debris' && arr.length >= 2) return; arr.push(value); }
-      renderModal();
+      document.querySelectorAll('[data-check-field="' + field + '"]').forEach(row => {
+        const isChecked = arr.includes(row.dataset.checkValue);
+        row.className = 'check-row' + (isChecked ? ' checked' : '');
+        row.querySelector('.check-box').innerHTML = isChecked ? '\u2713' : '';
+      });
+      updateValidation();
     }
 
     function updateNotes() { const el = document.getElementById('modal-inspection-notes'); if (el) modalState.inspectionNotes = el.value; }
+
+    function updateValidation() {
+      updateNotes();
+      const ms = modalState;
+      const filledSlots = Object.keys(ms.slotPhotos).length;
+      const needsIssuePhoto = ms.surfaceDamage && ms.surfaceDamage !== 'None';
+      const hasIssuePhoto = ms.issuePhotos.length > 0;
+      const v = {
+        photos: filledSlots >= 4,
+        condition: !!ms.buildupLevel && !!ms.surfaceDamage && (!needsIssuePhoto || hasIssuePhoto),
+        system: ms.systemChecks.length > 0 && !!ms.inspectionNotes.trim(),
+        maintenance: !!ms.recommendedFreq && !!ms.recurringSelection
+      };
+      const valid = v.photos && v.condition && v.system && v.maintenance;
+      const items = document.querySelectorAll('.validation-item');
+      const labels = ['Photos', 'Condition', 'Inspection', 'Plan'];
+      const vals = [v.photos, v.condition, v.system, v.maintenance];
+      items.forEach((item, i) => {
+        if (i < vals.length) {
+          item.className = 'validation-item ' + (vals[i] ? 'done' : 'pending');
+          item.textContent = (vals[i] ? '\u2713' : '\u25CB') + ' ' + labels[i];
+        }
+      });
+      const btn = document.getElementById('modal-submit-btn');
+      if (btn && !btn.classList.contains('submitting')) {
+        btn.className = 'modal-submit ' + (valid ? 'enabled' : 'disabled');
+        btn.textContent = valid ? 'Complete Job' : 'Fill All Required Fields';
+      }
+    }
 
     function isModalValid() {
       const s = modalState;
@@ -542,12 +589,12 @@
         const label = typeof opt === 'string' ? opt : opt.label;
         const sel = ms[field] === val;
         const ex = extra && extra[val] ? extra[val] : '';
-        return '<div class="radio-row ' + (sel ? 'selected' : '') + '" onclick="setRadio(\'' + field + '\',\'' + val.replace(/'/g, "\\'") + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1">' + label + ex + '</div></div>';
+        return '<div class="radio-row ' + (sel ? 'selected' : '') + '" data-radio-field="' + field + '" data-radio-value="' + val.replace(/"/g, '&quot;') + '" onclick="setRadio(\'' + field + '\',\'' + val.replace(/'/g, "\\'") + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1">' + label + ex + '</div></div>';
       }).join('');
 
       const checkHTML = (field, options) => options.map(opt => {
         const chk = ms[field].includes(opt);
-        return '<div class="check-row ' + (chk ? 'checked' : '') + '" onclick="toggleCheck(\'' + field + '\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div>' + opt + '</div></div>';
+        return '<div class="check-row ' + (chk ? 'checked' : '') + '" data-check-field="' + field + '" data-check-value="' + opt.replace(/"/g, '&quot;') + '" onclick="toggleCheck(\'' + field + '\',\'' + opt.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div>' + opt + '</div></div>';
       }).join('');
 
       const recurringOptions = [
@@ -593,7 +640,7 @@
                     <div style="font-size:8px;color:#ef4444;margin-top:2px;font-weight:600">Add Issue</div>
                   </div>
                 </div>
-                ${needsIssuePhoto && !hasIssuePhoto ? '<div style="font-size:11px;color:#ef4444;margin-top:4px;font-weight:600">\u26A0 Surface damage selected \u2014 issue photo required</div>' : ''}
+                <div id="damage-warning" style="font-size:11px;color:#ef4444;margin-top:4px;font-weight:600;display:${needsIssuePhoto && !hasIssuePhoto ? 'block' : 'none'}">\u26A0 Surface damage selected \u2014 issue photo required</div>
               </div>
 
               <!-- SECTION 2: PANEL CONDITION -->
@@ -619,7 +666,7 @@
               </div>
               <div class="modal-section">
                 <div class="modal-label">Inspection Notes <span class="required">Required</span></div>
-                <textarea class="modal-textarea" id="modal-inspection-notes" placeholder="Anything notable about system condition? (1\u20133 sentences)" oninput="updateNotes();">${ms.inspectionNotes}</textarea>
+                <textarea class="modal-textarea" id="modal-inspection-notes" placeholder="Anything notable about system condition? (1\u20133 sentences)" oninput="updateNotes();updateValidation();">${ms.inspectionNotes}</textarea>
               </div>
 
               <!-- SECTION 4: MAINTENANCE PLAN -->
@@ -634,7 +681,7 @@
                   ${recurringOptions.map(opt => {
                     const sel = ms.recurringSelection === opt.value;
                     const priceInfo = opt.price ? '<div class="recurring-price-tag">$' + opt.price + '</div><div class="recurring-savings">' + opt.discount + ' \u00B7 Save $' + opt.savings + '</div>' : '';
-                    return '<div class="radio-row ' + (sel ? 'selected' : '') + '" onclick="setRadio(\'recurringSelection\',\'' + opt.value + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1"><div>' + opt.label + '</div>' + priceInfo + '</div></div>';
+                    return '<div class="radio-row ' + (sel ? 'selected' : '') + '" data-radio-field="recurringSelection" data-radio-value="' + opt.value + '" onclick="setRadio(\'recurringSelection\',\'' + opt.value + '\')"><div class="radio-dot"><div class="radio-dot-inner"></div></div><div style="flex:1"><div>' + opt.label + '</div>' + priceInfo + '</div></div>';
                   }).join('')}
                 </div>
               </div>
