@@ -909,11 +909,14 @@
       }, [savedRoutes]);
 
       const refreshRouteStopStatus = async () => {
-        const sentRoutes = savedRoutes.filter(r => r.sentToTech && r.id);
+        const sentRoutes = savedRoutes.filter(r => r.sentToTech && (r.dbRouteId || r.id));
         if (sentRoutes.length === 0) return;
         try {
           const updates = await Promise.all(sentRoutes.map(async (sr) => {
-            const data = await apiFetch(`/routes/${sr.id}/tech-view`);
+            const routeDbId = sr.dbRouteId || sr.id;
+            const idNum = parseInt(routeDbId);
+            if (isNaN(idNum) || idNum > 2147483647) return null;
+            const data = await apiFetch(`/routes/${routeDbId}/tech-view`);
             if (!data || !data.stops) return null;
             const completedStopCustomerIds = new Set(
               data.stops.filter(s => s.completed_at).map(s => s.customer_id)
@@ -3598,6 +3601,32 @@
 
         setSendingEmail(true);
         try {
+          let dbRouteId = savedRoute.dbRouteId || null;
+          if (!dbRouteId) {
+            const dbRoute = await apiFetch('/routes', {
+              method: 'POST',
+              body: JSON.stringify({
+                name: savedRoute.name,
+                scheduled_date: savedRoute.scheduledDate || today,
+                status: 'in_progress',
+                total_distance: totalMiles || 0,
+                stops: routeCustomers.map((c, i) => ({
+                  customer_id: c.id,
+                  stop_order: i + 1,
+                  scheduled_time: c.scheduledTime || '',
+                  notes: c.jobNotes || c.customerNotes || '',
+                  route_confirmed: true
+                }))
+              })
+            });
+            if (dbRoute && dbRoute.id) {
+              dbRouteId = dbRoute.id;
+              setSavedRoutes(prev => prev.map(r =>
+                r.id === savedRoute.id ? { ...r, dbRouteId: dbRoute.id } : r
+              ));
+            }
+          }
+
           const response = await apiFetch('/email/send-route', {
             method: 'POST',
             body: JSON.stringify({
@@ -3626,7 +3655,7 @@
                   distanceToHome: c.distanceToHome,
                   cumulativeDistance: c.cumulativeDistance
                 })),
-                routeId: savedRoute.id,
+                routeId: dbRouteId || savedRoute.id,
                 totalRevenue,
                 totalMiles,
                 avgDistance,
@@ -3638,14 +3667,16 @@
           if (response.success) {
             setError(null);
             setSavedRoutes(prev => prev.map(r =>
-              r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today, sentAt: new Date().toISOString() } : r
+              r.id === savedRoute.id ? { ...r, sentToTech: true, sentDate: today, sentAt: new Date().toISOString(), dbRouteId: dbRouteId || r.dbRouteId } : r
             ));
-            try {
-              await apiFetch(`/routes/${savedRoute.id}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ sent_to_tech: true, sent_date: today, sent_at: new Date().toISOString() })
-              });
-            } catch (e) { console.error('Failed to persist sent status:', e); }
+            if (dbRouteId) {
+              try {
+                await apiFetch(`/routes/${dbRouteId}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ sent_to_tech: true, sent_date: today, sent_at: new Date().toISOString() })
+                });
+              } catch (e) { console.error('Failed to persist sent status:', e); }
+            }
             alert('Route email sent successfully to ' + techEmail + '!');
           } else {
             throw new Error(response.error || 'Failed to send email');
@@ -3788,7 +3819,7 @@
         ));
         
         try {
-          await apiFetch(`/routes/${savedRoute.id}`, {
+          await apiFetch(`/routes/${savedRoute.dbRouteId || savedRoute.id}`, {
             method: 'PATCH',
             body: JSON.stringify({ status: 'completed', completed_at: completedAtTimestamp })
           });
