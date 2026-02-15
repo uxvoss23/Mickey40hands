@@ -11592,10 +11592,15 @@ const createJob = async () => {
                                   alert('This route has already been sent to the technician.');
                                   return;
                                 }
-                                const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                const routeDate = new Date(savedRoute.scheduledDate);
+                                const routeDateKey = routeDate.toDateString();
                                 setRoutesByDay(prev => ({ ...prev, [routeDateKey]: savedRoute.customers }));
                                 setEditingSavedRouteId(savedRoute.id, routeDateKey);
-                                setSelectedDate(new Date(savedRoute.scheduledDate));
+                                setSelectedDate(routeDate);
+                                const focusDate = new Date(routeDate);
+                                focusDate.setHours(0, 0, 0, 0);
+                                setFocusedDays([focusDate]);
+                                setRoutePlannerEditMode(true);
                                 setCustomers(prev => {
                                   const rcMap = new Map();
                                   savedRoute.customers.forEach(rc => rcMap.set(rc.id, rc));
