@@ -9216,10 +9216,22 @@ const createJob = async () => {
                                           <div style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customer.name}</div>
                                           <div style={{ fontSize: '9px', color: '#a78bfa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>{jobType}{price > 0 ? ` · $${price.toFixed(0)}` : ''}</div>
                                         </div>
-                                        {(customer.preferredDate || customer.preferredTimeWindow) && (
-                                          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                            {customer.preferredDate && <div style={{ fontSize: '9px', color: isPrefMatch ? '#22c55e' : '#fbbf24', fontWeight: 600 }}>{customer.preferredDate}</div>}
-                                            {customer.preferredTimeWindow && <div style={{ fontSize: '9px', color: '#94a3b8' }}>{customer.preferredTimeWindow}</div>}
+                                        {prefDays.length > 0 && (
+                                          <div style={{ display: 'flex', gap: '2px', flexShrink: 0, alignItems: 'center' }}>
+                                            {['M','T','W','T','F','S','S'].map((label, idx) => {
+                                              const dayNum = [1,2,3,4,5,6,0][idx];
+                                              const isPreferred = prefDays.includes(dayNum);
+                                              const isActiveMatch = isPreferred && activeDayOfWeek === dayNum;
+                                              return (
+                                                <div key={idx} style={{
+                                                  width: '16px', height: '16px', borderRadius: '3px', fontSize: '8px', fontWeight: 700,
+                                                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                  background: isActiveMatch ? '#22c55e' : isPreferred ? 'rgba(250, 204, 21, 0.25)' : 'rgba(100, 116, 139, 0.1)',
+                                                  color: isActiveMatch ? '#000' : isPreferred ? '#fbbf24' : 'rgba(100, 116, 139, 0.3)',
+                                                  border: isActiveMatch ? '1px solid #22c55e' : isPreferred ? '1px solid rgba(250, 204, 21, 0.4)' : '1px solid transparent'
+                                                }}>{label}</div>
+                                              );
+                                            })}
                                           </div>
                                         )}
                                         <button
