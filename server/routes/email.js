@@ -408,6 +408,20 @@ function buildAssessmentEmailHTML(data) {
 </html>`;
 }
 
+router.post('/preview-assessment', (req, res) => {
+  try {
+    const { assessmentData } = req.body;
+    if (!assessmentData) {
+      return res.status(400).json({ error: 'Missing assessmentData' });
+    }
+    const html = buildAssessmentEmailHTML(assessmentData);
+    res.json({ html });
+  } catch (err) {
+    console.error('Assessment preview error:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate preview' });
+  }
+});
+
 router.post('/send-assessment', rateLimit, async (req, res) => {
   try {
     const { to, assessmentData } = req.body;

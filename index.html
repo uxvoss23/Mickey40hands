@@ -548,6 +548,7 @@
       const [savedRoutes, setSavedRoutes] = useState([]);
       const [failedCustomers, setFailedCustomers] = useState([]);
       const [showFailedCustomersModal, setShowFailedCustomersModal] = useState(false);
+      const [assessmentPreview, setAssessmentPreview] = useState(null);
       const [pipelineCustomers, setPipelineCustomers] = useState([]);
       const [selectedPipeline, setSelectedPipeline] = useState([]);
       const [activeSorts, setActiveSorts] = useState([]); // array of sort keys: 'lastService', 'distance', 'panels', 'zip'
@@ -12005,47 +12006,32 @@ const createJob = async () => {
                                     )}
                                     {customer.email && cd.photos && cd.photos.length > 0 && (
                                       <button
-                                        onClick={async (e) => {
-                                          const btn = e.currentTarget;
-                                          btn.disabled = true;
-                                          btn.textContent = 'Sending...';
+                                        onClick={() => {
                                           const normalizedPhotos = (cd.photos || []).map((p, pi) => typeof p === 'object' && p.data ? p : { label: `Photo ${pi+1}`, data: p });
-                                          try {
-                                            const res = await fetch('/api/email/send-assessment', {
-                                              method: 'POST',
-                                              headers: { 'Content-Type': 'application/json' },
-                                              body: JSON.stringify({
-                                                to: customer.email,
-                                                assessmentData: {
-                                                  customerName: customer.name,
-                                                  address: customer.address,
-                                                  serviceDate: savedRoute.scheduledDate,
-                                                  panelCount: customer.panelCount,
-                                                  servicePrice: customer.amountPaid,
-                                                  buildupLevel: cd.buildup_level || '',
-                                                  debris: cd.debris || [],
-                                                  surfaceDamage: cd.surface_damage || '',
-                                                  systemChecks: cd.system_checks || [],
-                                                  inspectionNotes: cd.inspectionNotes || cd.inspection_notes || '',
-                                                  recommendedFrequency: cd.recommended_frequency || '',
-                                                  recurringStatus: cd.recurringSelection || cd.recurring_selection || '',
-                                                  photos: normalizedPhotos
-                                                }
-                                              })
-                                            });
-                                            const data = await res.json();
-                                            if (!res.ok) throw new Error(data.error || 'Failed');
-                                            btn.textContent = 'Sent!';
-                                            btn.style.background = 'rgba(34, 197, 94, 0.3)';
-                                            btn.style.color = '#22c55e';
-                                          } catch (err) {
-                                            alert('Failed to send: ' + err.message);
-                                            btn.disabled = false;
-                                            btn.textContent = 'Send Assessment';
-                                          }
+                                          setAssessmentPreview({
+                                            to: customer.email,
+                                            data: {
+                                              customerName: customer.name,
+                                              address: customer.address,
+                                              serviceDate: savedRoute.scheduledDate,
+                                              panelCount: customer.panelCount,
+                                              servicePrice: customer.amountPaid,
+                                              buildupLevel: cd.buildup_level || '',
+                                              debris: cd.debris || [],
+                                              surfaceDamage: cd.surface_damage || '',
+                                              systemChecks: cd.system_checks || [],
+                                              inspectionNotes: cd.inspectionNotes || cd.inspection_notes || '',
+                                              recommendedFrequency: cd.recommended_frequency || '',
+                                              recurringStatus: cd.recurringSelection || cd.recurring_selection || '',
+                                              photos: normalizedPhotos
+                                            },
+                                            previewHtml: null,
+                                            sending: false,
+                                            sent: false
+                                          });
                                         }}
                                         style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '6px', color: '#818cf8', cursor: 'pointer', fontWeight: 600, marginTop: '6px', width: '100%', fontFamily: 'Inter, sans-serif' }}
-                                      >Send Assessment to {customer.email}</button>
+                                      >Preview & Send Assessment</button>
                                     )}
                                   </div>
                                 )}
@@ -14356,6 +14342,185 @@ onClick={exitRadiusMode}
           </div>
           </div>
         </div>
+        {assessmentPreview && (() => {
+          const ap = assessmentPreview;
+          const d = ap.data;
+          const BUILDUP_OPTS = ['Light', 'Moderate', 'Heavy'];
+          const DEBRIS_OPTS = ['Dust / Pollen', 'Bird Droppings', 'Sap', 'Pollution Film', 'Mixed'];
+          const DAMAGE_OPTS = ['None', 'Crack', 'Chip', 'Delamination', 'Other'];
+          const SYSTEM_OPTS = ['No visible issues', 'Loose racking / hardware', 'Pest activity', 'Shading concern', 'Roof penetration concern', 'Conduit / wiring concern', 'Other'];
+          const FREQ_OPTS = ['Annual', 'Bi-Annual', '3x Per Year'];
+          const RECURRING_OPTS = [
+            { value: '', label: 'None' },
+            { value: 'not_offered', label: 'Not Offered' },
+            { value: 'offered_declined', label: 'Offered — Declined' },
+            { value: 'enrolled_annual', label: 'Enrolled — Annual' },
+            { value: 'enrolled_biannual', label: 'Enrolled — Bi-Annual' }
+          ];
+
+          const updateField = (key, val) => {
+            setAssessmentPreview(prev => ({ ...prev, data: { ...prev.data, [key]: val }, previewHtml: null }));
+          };
+          const toggleDebris = (item) => {
+            const arr = [...(d.debris || [])];
+            const idx = arr.indexOf(item);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
+            updateField('debris', arr);
+          };
+          const toggleSystemCheck = (item) => {
+            const arr = [...(d.systemChecks || [])];
+            const idx = arr.indexOf(item);
+            if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
+            updateField('systemChecks', arr);
+          };
+
+          const loadPreview = async () => {
+            try {
+              const res = await fetch('/api/email/preview-assessment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ assessmentData: d })
+              });
+              const result = await res.json();
+              if (res.ok) setAssessmentPreview(prev => ({ ...prev, previewHtml: result.html }));
+            } catch (err) { console.error('Preview error:', err); }
+          };
+
+          const sendEmail = async () => {
+            setAssessmentPreview(prev => ({ ...prev, sending: true }));
+            try {
+              const res = await fetch('/api/email/send-assessment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: ap.to, assessmentData: d })
+              });
+              const result = await res.json();
+              if (!res.ok) throw new Error(result.error || 'Failed');
+              setAssessmentPreview(prev => ({ ...prev, sending: false, sent: true }));
+            } catch (err) {
+              alert('Failed to send: ' + err.message);
+              setAssessmentPreview(prev => ({ ...prev, sending: false }));
+            }
+          };
+
+          const inputStyle = { width: '100%', padding: '6px 10px', background: '#1e293b', border: '1px solid #334155', borderRadius: '6px', color: '#e2e8f0', fontSize: '12px', fontFamily: 'Inter, sans-serif', boxSizing: 'border-box' };
+          const labelStyle = { fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px', display: 'block' };
+          const chipStyle = (active) => ({ display: 'inline-block', padding: '3px 10px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, cursor: 'pointer', margin: '2px 3px 2px 0', border: active ? '1px solid #6366f1' : '1px solid #334155', background: active ? 'rgba(99,102,241,0.2)' : '#1e293b', color: active ? '#a5b4fc' : '#94a3b8' });
+
+          return (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'stretch', justifyContent: 'center', padding: '20px' }} onClick={(e) => { if (e.target === e.currentTarget) setAssessmentPreview(null); }}>
+              <div style={{ display: 'flex', width: '100%', maxWidth: '1200px', maxHeight: '100%', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 25px 50px rgba(0,0,0,0.5)' }}>
+
+                <div style={{ width: '380px', minWidth: '380px', background: '#0f172a', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ padding: '16px 20px', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#f1f5f9' }}>Edit Assessment</h3>
+                    <button onClick={() => setAssessmentPreview(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '20px', cursor: 'pointer', padding: '0 4px' }}>&times;</button>
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }}>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Send To</label>
+                      <input value={ap.to} onChange={(e) => setAssessmentPreview(prev => ({ ...prev, to: e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Customer Name</label>
+                      <input value={d.customerName} onChange={(e) => updateField('customerName', e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Address</label>
+                      <input value={d.address} onChange={(e) => updateField('address', e.target.value)} style={inputStyle} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+                      <div>
+                        <label style={labelStyle}>Panel Count</label>
+                        <input type="number" value={d.panelCount || ''} onChange={(e) => updateField('panelCount', e.target.value)} style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={labelStyle}>Service Date</label>
+                        <input type="date" value={d.serviceDate || ''} onChange={(e) => updateField('serviceDate', e.target.value)} style={inputStyle} />
+                      </div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginBottom: '14px' }}>
+                      <label style={labelStyle}>Buildup Level</label>
+                      <div>{BUILDUP_OPTS.map(opt => (
+                        <span key={opt} style={chipStyle(d.buildupLevel === opt)} onClick={() => updateField('buildupLevel', opt)}>{opt}</span>
+                      ))}</div>
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Debris Type</label>
+                      <div>{DEBRIS_OPTS.map(opt => (
+                        <span key={opt} style={chipStyle((d.debris || []).includes(opt))} onClick={() => toggleDebris(opt)}>{opt}</span>
+                      ))}</div>
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Surface Damage</label>
+                      <div>{DAMAGE_OPTS.map(opt => (
+                        <span key={opt} style={chipStyle(d.surfaceDamage === opt)} onClick={() => updateField('surfaceDamage', opt)}>{opt}</span>
+                      ))}</div>
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginBottom: '14px' }}>
+                      <label style={labelStyle}>System Checks</label>
+                      <div>{SYSTEM_OPTS.map(opt => (
+                        <span key={opt} style={chipStyle((d.systemChecks || []).includes(opt))} onClick={() => toggleSystemCheck(opt)}>{opt}</span>
+                      ))}</div>
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Technician Notes</label>
+                      <textarea value={d.inspectionNotes} onChange={(e) => updateField('inspectionNotes', e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                    </div>
+
+                    <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginBottom: '14px' }}>
+                      <label style={labelStyle}>Recommended Frequency</label>
+                      <div>{FREQ_OPTS.map(opt => (
+                        <span key={opt} style={chipStyle(d.recommendedFrequency === opt)} onClick={() => updateField('recommendedFrequency', opt)}>{opt}</span>
+                      ))}</div>
+                    </div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={labelStyle}>Recurring Status</label>
+                      <select value={d.recurringStatus || ''} onChange={(e) => updateField('recurringStatus', e.target.value)} style={inputStyle}>
+                        {RECURRING_OPTS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div style={{ padding: '12px 20px', borderTop: '1px solid #1e293b', display: 'flex', gap: '8px' }}>
+                    <button onClick={loadPreview} style={{ flex: 1, padding: '10px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '8px', color: '#a5b4fc', fontSize: '12px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Inter, sans-serif' }}>
+                      {ap.previewHtml ? 'Refresh Preview' : 'Load Preview'}
+                    </button>
+                    <button
+                      onClick={sendEmail}
+                      disabled={ap.sending || ap.sent}
+                      style={{ flex: 1, padding: '10px', background: ap.sent ? 'rgba(34,197,94,0.3)' : '#4f46e5', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '12px', fontWeight: 700, cursor: ap.sending || ap.sent ? 'default' : 'pointer', fontFamily: 'Inter, sans-serif', opacity: ap.sending ? 0.7 : 1 }}
+                    >{ap.sent ? 'Sent!' : ap.sending ? 'Sending...' : 'Send Email'}</button>
+                  </div>
+                </div>
+
+                <div style={{ flex: 1, background: '#e2e8f0', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  <div style={{ padding: '12px 20px', background: '#f1f5f9', borderBottom: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>Email Preview</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>To: {ap.to}</span>
+                  </div>
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', justifyContent: 'center' }}>
+                    {ap.previewHtml ? (
+                      <iframe
+                        srcDoc={ap.previewHtml}
+                        style={{ width: '100%', maxWidth: '650px', height: '100%', border: 'none', borderRadius: '8px', background: '#fff' }}
+                        title="Assessment Preview"
+                      />
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#94a3b8', textAlign: 'center', padding: '40px' }}>
+                        <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.5 }}>📧</div>
+                        <div style={{ fontSize: '15px', fontWeight: 600, color: '#64748b', marginBottom: '8px' }}>No Preview Loaded</div>
+                        <div style={{ fontSize: '12px', maxWidth: '300px', lineHeight: 1.5 }}>Edit the assessment fields on the left, then click "Load Preview" to see how the email will look before sending.</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
         </>
       );
     };
