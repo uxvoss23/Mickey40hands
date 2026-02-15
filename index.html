@@ -597,7 +597,20 @@
       });
       const [routeName, setRouteName] = useState('');
       const [editingRouteId, setEditingRouteId] = useState(null);
-      const [editingSavedRouteId, setEditingSavedRouteId] = useState(null); // Track which saved route is being edited on the map
+      const [editingSavedRouteId, _setEditingSavedRouteId] = useState(null);
+      const [editingRouteIdByDay, setEditingRouteIdByDay] = useState({});
+      const setEditingSavedRouteId = (routeId, dateKeyOverride) => {
+        _setEditingSavedRouteId(routeId);
+        if (routeId && dateKeyOverride) {
+          setEditingRouteIdByDay(prev => ({ ...prev, [dateKeyOverride]: routeId }));
+        } else if (routeId) {
+          const route = savedRoutes.find(r => r.id === routeId);
+          if (route) {
+            const dateKey = new Date(route.scheduledDate).toDateString();
+            setEditingRouteIdByDay(prev => ({ ...prev, [dateKey]: routeId }));
+          }
+        }
+      };
       const [editedRouteName, setEditedRouteName] = useState('');
       const [editingCustomerNotes, setEditingCustomerNotes] = useState(null); // {routeId, customerId}
       const [editedNotes, setEditedNotes] = useState('');
@@ -3041,7 +3054,7 @@
               ...prev,
               [dateKey]: [...unsavedSavedRouteForDay.customers, { ...customer, scheduledTime: newTime, scheduledDate: effectiveDate.toISOString() }]
             }));
-            setEditingSavedRouteId(unsavedSavedRouteForDay.id);
+            setEditingSavedRouteId(unsavedSavedRouteForDay.id, dateKey);
             setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
             setUnsavedRouteChanges(true);
             setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
@@ -3290,6 +3303,11 @@
         }));
         setSuggestedCustomers([]);
         setEditingSavedRouteId(null);
+        setEditingRouteIdByDay(prev => {
+          const next = { ...prev };
+          delete next[dateKey];
+          return next;
+        });
       };
 
       // Save all unsaved routes across multiple days
@@ -3356,10 +3374,13 @@
             routeTotalDistance += calculateDistance(stopsWithCoords[stopsWithCoords.length - 1].lat, stopsWithCoords[stopsWithCoords.length - 1].lng, homeBase.lat, homeBase.lng);
           }
 
-          const existingSavedRoute = savedRoutes.find(r => {
-            const rDate = new Date(r.scheduledDate);
-            return rDate.toDateString() === dayKey;
-          });
+          const editingIdForDay = editingRouteIdByDay[dayKey];
+          let existingSavedRoute = editingIdForDay 
+            ? savedRoutes.find(r => r.id === editingIdForDay)
+            : null;
+          if (!existingSavedRoute) {
+            existingSavedRoute = savedRoutes.find(r => new Date(r.scheduledDate).toDateString() === dayKey && !r.sentToTech);
+          }
 
           if (existingSavedRoute) {
             setSavedRoutes(prev => prev.map(r => {
@@ -3388,13 +3409,14 @@
             setSavedRoutes(prev => [...prev, newRoute]);
           }
 
+          const routeDisplayName = existingSavedRoute ? existingSavedRoute.name : `Route - ${dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`;
           const routeIds = new Set(routeCustomers.map(c => c.id));
           setCustomers(prev => prev.map(c => {
             if (routeIds.has(c.id)) {
               const scheduleUpdates = {
                 status: 'scheduled',
                 routeConfirmed: true,
-                confirmedRouteName: newRoute.name,
+                confirmedRouteName: routeDisplayName,
                 confirmedRouteDate: dayDate.toISOString()
               };
               propagateCustomerUpdate(c.id, scheduleUpdates);
@@ -3428,6 +3450,7 @@
         setRouteName('');
         setSuggestedCustomers([]);
         setEditingSavedRouteId(null);
+        setEditingRouteIdByDay({});
         setRoute([]);
       };
 
@@ -7050,8 +7073,8 @@ const createJob = async () => {
                                         setRoutePlannerEditMode(true);
                                         const dayRoute = editableRoutes[0];
                                         if (dayRoute) {
-                                          setEditingSavedRouteId(dayRoute.id);
                                           const dateKey = displayDate.toDateString();
+                                          setEditingSavedRouteId(dayRoute.id, dateKey);
                                           setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
                                           setCustomers(prev => {
                                             const routeCustomerMap = new Map();
@@ -7193,7 +7216,7 @@ const createJob = async () => {
                                     setFocusedDays([selectedDate]);
                                     const dayRoute = editableRoutes[0];
                                     if (dayRoute) {
-                                      setEditingSavedRouteId(dayRoute.id);
+                                      setEditingSavedRouteId(dayRoute.id, dateKey);
                                       setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
                                       setRoutePlannerEditMode(true);
                                     }
@@ -7367,7 +7390,7 @@ const createJob = async () => {
                                         ...prev,
                                         [dateKey]: savedRouteForDay.customers
                                       }));
-                                      setEditingSavedRouteId(savedRouteForDay.id);
+                                      setEditingSavedRouteId(savedRouteForDay.id, dateKey);
                                       setRoutePlannerEditMode(true);
 
                                       setCustomers(prev => {
@@ -7410,6 +7433,7 @@ const createJob = async () => {
                                     [dateKey]: []
                                   }));
                                   setEditingSavedRouteId(null);
+                                  setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                   setSuggestedCustomers([]);
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                 }}
@@ -7550,6 +7574,7 @@ const createJob = async () => {
                               <button
                                 onClick={() => {
                                   setEditingSavedRouteId(null);
+                                  setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                   setRoutesByDay(prev => ({ ...prev, [dateKey]: [] }));
                                   setRoutePlannerEditMode(true);
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
@@ -7572,6 +7597,7 @@ const createJob = async () => {
                                 onClick={() => {
                                   setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
                                   setEditingSavedRouteId(null);
+                                  setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                   setRoutePlannerEditMode(false);
                                 }}
                                 style={{
@@ -7650,6 +7676,7 @@ const createJob = async () => {
                                       }));
                                       setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
                                       setEditingSavedRouteId(null);
+                                      setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                     }
                                   } else {
                                     const affectedIds = customers.filter(c => {
@@ -7789,6 +7816,7 @@ const createJob = async () => {
                                         setSavedRoutes(prev => prev.filter(r => r.id !== editingSavedRouteId));
                                       }
                                       setEditingSavedRouteId(null);
+                                      setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                       setRoutePlannerEditMode(false);
                                       setRoute([]);
                                       setUnsavedRouteDays(prev => {
@@ -7822,6 +7850,7 @@ const createJob = async () => {
                                       setSavedViewDays(prev => ({ ...prev, [dateKey]: true }));
                                     }
                                     setEditingSavedRouteId(null);
+                                    setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
                                     setRoutePlannerEditMode(false);
                                     setRoute([]);
                                     setUnsavedRouteDays(prev => {
@@ -11358,6 +11387,7 @@ const createJob = async () => {
                           setSavedViewDays({});
                           setRoutesByDay({});
                           setEditingSavedRouteId(null);
+                          setEditingRouteIdByDay({});
                           localStorage.removeItem('savedRoutes');
                         }
                       }}
@@ -11468,7 +11498,7 @@ const createJob = async () => {
                                 }
                                 const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
                                 setRoutesByDay(prev => ({ ...prev, [routeDateKey]: savedRoute.customers }));
-                                setEditingSavedRouteId(savedRoute.id);
+                                setEditingSavedRouteId(savedRoute.id, routeDateKey);
                                 setSelectedDate(new Date(savedRoute.scheduledDate));
                                 setCustomers(prev => {
                                   const rcMap = new Map();
