@@ -219,7 +219,12 @@ router.get('/autocomplete', async (req, res) => {
 
 router.get('/:id', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM customers WHERE id = $1', [req.params.id]);
+    const result = await pool.query(`
+      SELECT c.*,
+        COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id AND (j.status IS NULL OR j.status NOT IN ('completed', 'cancelled'))), 0)::int AS active_job_count,
+        COALESCE((SELECT COUNT(*) FROM jobs j WHERE j.customer_id = c.id), 0)::int AS total_job_count
+      FROM customers c WHERE c.id = $1
+    `, [req.params.id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Customer not found' });
     }

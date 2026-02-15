@@ -10601,11 +10601,30 @@ const createJob = async () => {
                                             onClick={async (e) => {
                                               e.stopPropagation();
                                               try {
+                                                const custId = profileCustomer?.id;
                                                 if (job.jobId) {
                                                   await apiFetch(`/jobs/${job.jobId}`, { method: 'DELETE' });
                                                 }
                                                 await loadFromDatabase();
                                                 setJobRefreshKey(k => k + 1);
+                                                if (custId) {
+                                                  try {
+                                                    const refreshed = await apiFetch(`/customers/${custId}`);
+                                                    if (refreshed) {
+                                                      setProfileCustomer(prev => prev ? ({
+                                                        ...prev,
+                                                        status: (refreshed.status || '').toLowerCase(),
+                                                        lastServiceDate: refreshed.last_service_date || '',
+                                                        nextServiceDate: refreshed.next_service_date || '',
+                                                        scheduledDate: refreshed.scheduled_date || '',
+                                                        scheduledTime: refreshed.scheduled_time || '',
+                                                        activeJobCount: refreshed.active_job_count || 0,
+                                                        totalJobCount: refreshed.total_job_count || 0,
+                                                        isRecurring: refreshed.is_recurring || false
+                                                      }) : prev);
+                                                    }
+                                                  } catch (e) { console.error('Failed to refresh profile:', e); }
+                                                }
                                                 setConfirmDeleteJobId(null);
                                               } catch (err) {
                                                 console.error('Failed to delete job:', err);
