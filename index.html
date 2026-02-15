@@ -10648,7 +10648,22 @@ const createJob = async () => {
                                         </React.Fragment>
                                       ) : (
                                         <button
-                                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteJobId(job.jobId || job.jobDescription + idx); }}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            const onRoute = savedRoutes.find(r => 
+                                              !r.sentToTech && (r.customers || []).some(c => c.id === profileCustomer?.id)
+                                            );
+                                            const onSentRoute = savedRoutes.find(r => 
+                                              r.sentToTech && (r.customers || []).some(c => c.id === profileCustomer?.id) &&
+                                              r.status !== 'completed'
+                                            );
+                                            if (onRoute || onSentRoute) {
+                                              const routeName = (onRoute || onSentRoute).name || 'a saved route';
+                                              alert(`This customer is on "${routeName}". To delete this job, first remove the customer from the route in the Route Planner, then delete the job.`);
+                                              return;
+                                            }
+                                            setConfirmDeleteJobId(job.jobId || job.jobDescription + idx);
+                                          }}
                                           style={{
                                             padding: '4px 8px', borderRadius: '5px', fontSize: '11px', fontWeight: 600,
                                             background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
