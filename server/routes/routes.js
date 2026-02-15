@@ -115,6 +115,19 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+router.delete('/clear-all', async (req, res) => {
+  try {
+    await pool.query(`UPDATE customers SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL, route_confirmed = false WHERE status IN ('scheduled', 'in progress')`);
+    await pool.query(`UPDATE jobs SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE status IN ('scheduled', 'in progress')`);
+    await pool.query('DELETE FROM route_stops');
+    await pool.query('DELETE FROM routes');
+    res.json({ success: true, message: 'All routes cleared. Completed jobs were not touched.' });
+  } catch (err) {
+    console.error('Error clearing all routes:', err);
+    res.status(500).json({ error: 'Failed to clear routes: ' + err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     const check = await pool.query('SELECT sent_to_tech FROM routes WHERE id = $1', [req.params.id]);

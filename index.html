@@ -11433,55 +11433,23 @@ const createJob = async () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       onClick={async () => {
-                        if (window.confirm('Clear ALL saved routes and route history? This cannot be undone.')) {
-                          let dbDeleteFailed = false;
-                          for (const sr of savedRoutes) {
-                            if (sr.customers && sr.customers.length > 0) {
-                              for (const rc of sr.customers) {
-                                try {
-                                  await apiFetch(`/customers/${rc.id}`, {
-                                    method: 'PATCH',
-                                    body: JSON.stringify({ status: 'unscheduled', scheduled_date: null, scheduled_time: null })
-                                  });
-                                  const custJobsData = await apiFetch(`/jobs?customer_id=${rc.id}`);
-                                  const activeJobs = (custJobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
-                                  for (const j of activeJobs) {
-                                    if (j.scheduled_date || j.status === 'scheduled' || j.status === 'in progress') {
-                                      await apiFetch(`/jobs/${j.id}`, {
-                                        method: 'PATCH',
-                                        body: JSON.stringify({ scheduled_date: '', scheduled_time: '', status: 'unscheduled' })
-                                      });
-                                    }
-                                  }
-                                } catch (err) { console.error('Failed to clear customer/job status:', err); }
-                              }
-                            }
-                          }
-                          const clearUpdates = { scheduledDate: null, scheduledTime: null, status: 'unscheduled', routeConfirmed: false, confirmedRouteName: null };
-                          const allRouteCustomerIds = new Set();
-                          savedRoutes.forEach(sr => (sr.customers || []).forEach(rc => allRouteCustomerIds.add(rc.id)));
-                          setCustomers(prev => prev.map(c => allRouteCustomerIds.has(c.id) ? { ...c, ...clearUpdates } : c));
-                          setPipelineCustomers(prev => prev.map(c => allRouteCustomerIds.has(c.id) ? { ...c, ...clearUpdates } : c));
+                        if (window.confirm('Clear ALL saved routes and route history? Completed jobs will not be touched. This cannot be undone.')) {
                           try {
-                            const dbData = await apiFetch('/routes');
-                            if (dbData && dbData.routes) {
-                              for (const r of dbData.routes) {
-                                await apiFetch(`/routes/${r.id}`, { method: 'DELETE' });
-                              }
-                            }
-                          } catch (e) { 
-                            console.error('Failed to clear DB routes:', e);
-                            dbDeleteFailed = true;
-                          }
-                          if (dbDeleteFailed) {
-                            alert('Some routes may not have been fully deleted from the server. Please try again.');
+                            await apiFetch('/routes/clear-all', { method: 'DELETE' });
+                          } catch (err) {
+                            console.error('Failed to clear routes:', err);
+                            alert('Failed to clear routes from the server. Please try again.');
+                            return;
                           }
                           setSavedRoutes([]);
                           setSavedViewDays({});
                           setRoutesByDay({});
                           setEditingSavedRouteId(null);
                           setEditingRouteIdByDay({});
+                          setRoutePlannerEditMode(false);
+                          setRoute([]);
                           localStorage.removeItem('savedRoutes');
+                          await loadFromDatabase();
                         }
                       }}
                       style={{
