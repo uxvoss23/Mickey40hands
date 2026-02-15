@@ -7161,12 +7161,12 @@ const createJob = async () => {
                       </h3>
                       <div style={{ fontSize: '9px', color: '#94a3b8' }}>
                         {(() => {
-                          const jobsForDay = customers.filter(c => {
-                            if (!c.scheduledDate) return false;
-                            const custDate = new Date(c.scheduledDate);
-                            return custDate.toDateString() === selectedDate.toDateString();
-                          });
-                          return `${jobsForDay.length} job${jobsForDay.length !== 1 ? 's' : ''}`;
+                          const dk = selectedDate.toDateString();
+                          const dayRouteStops = routesByDay[dk] || [];
+                          const savedRoutesOnDay = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === dk);
+                          const savedStopCount = savedRoutesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
+                          const count = dayRouteStops.length > 0 ? dayRouteStops.length : savedStopCount;
+                          return `${count} job${count !== 1 ? 's' : ''}`;
                         })()}
                       </div>
                     </div>
@@ -7196,9 +7196,11 @@ const createJob = async () => {
                           return (aHour * 60 + aMin) - (bHour * 60 + bMin);
                         });
                       } else {
-                        // Use customers state (for edit view)
+                        // Use routesByDay as source of truth for edit view
+                        const dayRouteIds = new Set((routesByDay[dateKey] || []).map(r => r.id));
                         jobsForDay = customers
                           .filter(c => {
+                            if (dayRouteIds.size > 0) return dayRouteIds.has(c.id);
                             if (!c.scheduledDate) return false;
                             const custDate = new Date(c.scheduledDate);
                             return custDate.toDateString() === dateKey;

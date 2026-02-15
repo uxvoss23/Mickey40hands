@@ -359,9 +359,10 @@ router.delete('/:id', async (req, res) => {
       }
     }
 
+    const clearScheduled = activeJobs.length === 0;
     await pool.query(
-      `UPDATE customers SET last_service_date = $1, next_service_date = $2, status = $3 WHERE id = $4`,
-      [lastServiceDate || null, nextServiceDate || null, newStatus, customerId]
+      `UPDATE customers SET last_service_date = $1, next_service_date = $2, status = $3, scheduled_date = $4, scheduled_time = $5 WHERE id = $6`,
+      [lastServiceDate || null, nextServiceDate || null, newStatus, clearScheduled ? null : nextServiceDate, clearScheduled ? null : '', customerId]
     );
 
     res.json({ deleted: true, customer_update: { last_service_date: lastServiceDate, next_service_date: nextServiceDate, status: newStatus } });
