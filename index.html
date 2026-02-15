@@ -497,6 +497,7 @@
       const [hoveredPrefDay, setHoveredPrefDay] = useState(null);
       const [hoveredPrefTime, setHoveredPrefTime] = useState(null);
       const [hoveredUnroutedDays, setHoveredUnroutedDays] = useState([]);
+      const [hoveredRouteDay, setHoveredRouteDay] = useState(null);
       const [dayPickerPopup, setDayPickerPopup] = useState(null);
       const [verifyingCustomer, setVerifyingCustomer] = useState(false);
       const [visibleCustomers, setVisibleCustomers] = useState([]);
@@ -2296,21 +2297,22 @@
             // Skip markers based on zoom/count for performance
             if (renderEveryNth > 1 && index % renderEveryNth !== 0) return;
 
-            // Check if customer is scheduled for the SELECTED day
+            // Check if customer is scheduled for the ACTIVE day (hovered day or selected day)
+            const activeDateStr = (hoveredRouteDay || selectedDate).toDateString();
             const isScheduledToday = (() => {
               if (!customer.scheduledDate || !customer.scheduledTime) return false;
               const custDate = new Date(customer.scheduledDate);
-              return custDate.toDateString() === selectedDate.toDateString();
+              return custDate.toDateString() === activeDateStr;
             })();
             
-            // Find job number for selected day only
+            // Find job number for active day only
             let routeNumber = null;
             if (isScheduledToday) {
               const jobsForDay = customers
                 .filter(c => {
                   if (!c.scheduledDate || !c.scheduledTime) return false;
                   const custDate = new Date(c.scheduledDate);
-                  return custDate.toDateString() === selectedDate.toDateString();
+                  return custDate.toDateString() === activeDateStr;
                 })
                 .sort((a, b) => {
                   const [aH, aM] = a.scheduledTime.split(':').map(Number);
@@ -2336,8 +2338,12 @@
             if (statusFilter === 'scheduled' && customer._dayOfWeek !== undefined) {
               const custRouteDate = customer._routeDate ? new Date(customer._routeDate).toDateString() : null;
               isOtherDayRoute = focusedDays.length > 0 && custRouteDate && !focusedDays.some(fd => fd.toDateString() === custRouteDate);
+              const isHoveredDayPin = hoveredRouteDay && custRouteDate === hoveredRouteDay.toDateString();
+              const isDimmedByHover = hoveredRouteDay && custRouteDate && custRouteDate !== hoveredRouteDay.toDateString();
               if (focusedDays.length === 0) {
                 gradient = 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)';
+              } else if (isDimmedByHover) {
+                gradient = 'linear-gradient(135deg, #22c55e33 0%, #16a34a22 100%)';
               } else {
                 gradient = isOtherDayRoute
                   ? 'linear-gradient(135deg, #22c55e55 0%, #16a34a44 100%)'
@@ -2621,9 +2627,13 @@
           // Draw route lines - ONLY when a specific day is focused
           if (statusFilter === 'scheduled' && homeBase && focusedDays.length > 0) {
             const DAY_LINE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
+            const isHovering = hoveredRouteDay !== null;
             focusedDays.forEach(fd => {
               const dateKey = fd.toDateString();
               const lineColor = DAY_LINE_COLORS[fd.getDay()] || '#22c55e';
+              const isHoveredDay = isHovering && hoveredRouteDay.toDateString() === dateKey;
+              const lineOpacity = isHovering ? (isHoveredDay ? 0.9 : 0.15) : 0.7;
+              const lineWeight = isHovering ? (isHoveredDay ? 4 : 2) : 3;
               const dayJobs = customers
                 .filter(c => {
                   if (!c.scheduledDate || !c.scheduledTime) return false;
@@ -2639,13 +2649,13 @@
               if (dayJobs.length > 0) {
                 const line1 = L.polyline(
                   [[homeBase.lat, homeBase.lng], [dayJobs[0].lat, dayJobs[0].lng]],
-                  { color: lineColor, weight: 3, opacity: 0.7, dashArray: '5, 10' }
+                  { color: lineColor, weight: lineWeight, opacity: lineOpacity, dashArray: '5, 10' }
                 ).addTo(mapInstanceRef.current);
                 routeLinesRef.current.push(line1);
                 for (let i = 0; i < dayJobs.length - 1; i++) {
                   const line = L.polyline(
                     [[dayJobs[i].lat, dayJobs[i].lng], [dayJobs[i + 1].lat, dayJobs[i + 1].lng]],
-                    { color: lineColor, weight: 3, opacity: 0.8 }
+                    { color: lineColor, weight: lineWeight, opacity: Math.min(lineOpacity + 0.1, 1) }
                   ).addTo(mapInstanceRef.current);
                   routeLinesRef.current.push(line);
                 }
@@ -2653,7 +2663,7 @@
             });
           }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: customer type, nav filters (status, date, time), search bar filters (city, state, zip),
@@ -8897,10 +8907,18 @@ const createJob = async () => {
                                             setScheduledViewWeekStart(weekStart);
                                             if (!multiSelectDays) setShowMonthCalendar(false);
                                           }}
+                                          onMouseEnter={() => {
+                                            if (isFocused) {
+                                              const hoverDate = new Date(date);
+                                              hoverDate.setHours(0, 0, 0, 0);
+                                              setHoveredRouteDay(hoverDate);
+                                            }
+                                          }}
+                                          onMouseLeave={() => setHoveredRouteDay(null)}
                                           style={{
                                             padding: '4px 2px', borderRadius: '4px', cursor: 'pointer', textAlign: 'center',
-                                            background: isFocused ? 'rgba(234, 179, 8, 0.3)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                            border: isFocused ? '1px solid rgba(234, 179, 8, 0.6)' : '1px solid transparent',
+                                            background: (isFocused && hoveredRouteDay && hoveredRouteDay.toDateString() === date.toDateString()) ? 'rgba(234, 179, 8, 0.5)' : isFocused ? 'rgba(234, 179, 8, 0.3)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                            border: (isFocused && hoveredRouteDay && hoveredRouteDay.toDateString() === date.toDateString()) ? '2px solid rgba(234, 179, 8, 0.8)' : isFocused ? '1px solid rgba(234, 179, 8, 0.6)' : '1px solid transparent',
                                             position: 'relative'
                                           }}
                                         >
@@ -8967,11 +8985,19 @@ const createJob = async () => {
                                         setFocusedDays([clickedDate]);
                                       }
                                     }}
+                                    onMouseEnter={() => {
+                                      if (isFocused) {
+                                        const hoverDate = new Date(date);
+                                        hoverDate.setHours(0, 0, 0, 0);
+                                        setHoveredRouteDay(hoverDate);
+                                      }
+                                    }}
+                                    onMouseLeave={() => setHoveredRouteDay(null)}
                                     style={{
                                       display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px',
                                       borderRadius: '8px', cursor: 'pointer', marginBottom: '2px',
-                                      background: isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                      border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.5)' : isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : isToday ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
+                                      background: isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : (isFocused && hoveredRouteDay && hoveredRouteDay.toDateString() === date.toDateString()) ? 'rgba(234, 179, 8, 0.3)' : isFocused ? 'rgba(234, 179, 8, 0.15)' : isToday ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+                                      border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.5)' : (isFocused && hoveredRouteDay && hoveredRouteDay.toDateString() === date.toDateString()) ? '2px solid rgba(234, 179, 8, 0.8)' : isFocused ? '1px solid rgba(234, 179, 8, 0.5)' : isToday ? '1px solid rgba(59, 130, 246, 0.3)' : '1px solid transparent',
                                       transition: 'all 0.15s'
                                     }}
                                   >
@@ -9038,10 +9064,12 @@ const createJob = async () => {
                                           e.currentTarget.style.background = 'rgba(100, 116, 139, 0.15)';
                                           const days = parsePrefDays(customer.preferredDate);
                                           setHoveredUnroutedDays(days);
+                                          setHoveredCustomer(customer);
                                         }}
                                         onMouseOut={(e) => {
                                           e.currentTarget.style.background = 'rgba(100, 116, 139, 0.08)';
                                           setHoveredUnroutedDays([]);
+                                          setHoveredCustomer(null);
                                         }}
                                       >
                                         <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b', flexShrink: 0 }} />
