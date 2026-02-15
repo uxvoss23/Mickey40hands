@@ -900,9 +900,9 @@
             console.error('Failed to load routes from database:', e);
           }
 
-          if (!localStorage.getItem('routeLogicV4')) {
+          if (!localStorage.getItem('routeLogicV5')) {
             localStorage.removeItem('savedRoutes');
-            localStorage.setItem('routeLogicV4', 'true');
+            localStorage.setItem('routeLogicV5', 'true');
             console.log('One-time cleanup: cleared old route data from localStorage');
           }
 
