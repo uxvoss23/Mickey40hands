@@ -567,13 +567,24 @@ function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
                 </div>
               ` : `
                 <p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.6;">During our inspection, our technician noted the following items for your awareness:</p>
-                ${systemIssues.map(issue => {
-                  const cleanIssue = issue.startsWith('Other: ') ? issue.replace('Other: ', '').trim() : issue;
-                  return `
-                  <div style="background:#fef2f2;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;">
-                    <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${cleanIssue}</div>
-                  </div>`;
-                }).join('')}
+                ${(() => {
+                  const issueExplanations = {
+                    'Loose racking / hardware': 'Loose mounts can shift panels out of alignment and expose your roof to potential water damage over time.',
+                    'Pest activity': 'Birds and rodents nesting under panels can chew wiring and block airflow, reducing performance and creating fire risk.',
+                    'Shading concern': 'Even partial shading on one panel can significantly reduce output across your entire system.',
+                    'Roof penetration concern': 'Compromised seals around roof mounts can lead to leaks that cause costly structural damage if left unaddressed.',
+                    'Conduit / wiring concern': 'Damaged or exposed wiring reduces system efficiency and poses a potential electrical safety hazard.'
+                  };
+                  return systemIssues.map(issue => {
+                    const cleanIssue = issue.startsWith('Other: ') ? issue.replace('Other: ', '').trim() : issue;
+                    const explanation = issueExplanations[issue] || '';
+                    return `
+                    <div style="background:#fef2f2;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;">
+                      <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${cleanIssue}</div>
+                      ${explanation ? `<div style="color:#64748b;font-size:12px;line-height:1.5;margin-top:4px;">${explanation}</div>` : ''}
+                    </div>`;
+                  }).join('');
+                })()}
               `}
               ${issuePhotosList.length > 0 ? `
                 <div style="margin-top:12px;">
