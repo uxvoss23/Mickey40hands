@@ -239,7 +239,7 @@ function buildRouteEmailHTML(routeData, baseUrl) {
 </html>`;
 }
 
-function buildAssessmentEmailHTML(data, enrollmentTokens) {
+function buildAssessmentEmailHTML(data, enrollmentTokens, previousServiceData) {
   const { customerName, address, serviceDate, panelCount, servicePrice, pricePerPanel,
           buildupLevel, debris, surfaceDamage, systemChecks, inspectionNotes,
           recommendedFrequency, recurringStatus, photos } = data;
@@ -253,9 +253,65 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
   const afterPhotos = (photos || []).filter(p => p.label && (p.label.includes('After') || p.label.includes('Clean')));
   const issuePhotosList = (photos || []).filter(p => p.label && p.label.startsWith('Issue:'));
 
-  const damageIsNone = !surfaceDamage || surfaceDamage === 'None';
+  const normalizeDamage = (sd) => {
+    if (!sd) return [];
+    if (typeof sd === 'string') {
+      if (sd === 'None') return [{ type: 'None' }];
+      return [{ type: sd }];
+    }
+    if (Array.isArray(sd)) return sd;
+    return [];
+  };
+  const damageItems = normalizeDamage(surfaceDamage);
+  const damageIsNone = damageItems.length === 0 || (damageItems.length === 1 && damageItems[0].type === 'None');
+  const damageCount = damageItems.filter(d => d.type !== 'None').reduce((sum, d) => sum + (d.count || 1), 0);
+
   const systemIssues = (systemChecks || []).filter(c => c !== 'No visible issues');
   const noSystemIssues = systemChecks && systemChecks.includes('No visible issues') && systemIssues.length === 0;
+
+  const calcGrade = () => {
+    let score = 10;
+    const buildupPenalty = { 'Light': 0, 'Moderate': -1, 'Heavy': -3 };
+    score += buildupPenalty[buildupLevel] || 0;
+    const nonNoneDamage = damageItems.filter(d => d.type !== 'None');
+    nonNoneDamage.forEach(d => {
+      score -= 1;
+      if ((d.count || 1) > 1) score -= 0.5 * ((d.count || 1) - 1);
+    });
+    score -= systemIssues.length;
+    score = Math.max(0, Math.round(score));
+    const gradeMap = { 10: 'A+', 9: 'A+', 8: 'A', 7: 'A-', 6: 'B+', 5: 'B', 4: 'B-', 3: 'C+', 2: 'C', 1: 'C-', 0: 'D' };
+    return gradeMap[score] || 'D';
+  };
+  const grade = calcGrade();
+  const gradeColor = grade.startsWith('A') ? '#16a34a' : grade.startsWith('B') ? '#d97706' : grade.startsWith('C') ? '#ea580c' : '#dc2626';
+  const gradeBgLight = grade.startsWith('A') ? '#f0fdf4' : grade.startsWith('B') ? '#fffbeb' : grade.startsWith('C') ? '#fff7ed' : '#fef2f2';
+  const gradeBgDark = grade.startsWith('A') ? '#dcfce7' : grade.startsWith('B') ? '#fef3c7' : grade.startsWith('C') ? '#ffedd5' : '#fee2e2';
+  const gradeDescriptions = { 'A+': 'Excellent condition \u2014 your panels are performing great', 'A': 'Excellent condition \u2014 your panels are performing great', 'A-': 'Very good \u2014 minor attention areas noted', 'B+': 'Good condition \u2014 regular maintenance recommended', 'B': 'Good condition \u2014 regular maintenance recommended', 'B-': 'Fair condition \u2014 some items need attention', 'C+': 'Below average \u2014 maintenance strongly recommended', 'C': 'Below average \u2014 maintenance strongly recommended', 'C-': 'Needs attention \u2014 several issues found', 'D': 'Needs attention \u2014 several issues found' };
+  const gradeDescription = gradeDescriptions[grade] || 'Needs attention \u2014 several issues found';
+
+  const damageNarrative = (() => {
+    if (damageIsNone) return ' The good news is that no surface damage was found on any of your panels.';
+    const items = damageItems.filter(d => d.type !== 'None');
+    const pluralize = (word, count) => {
+      const w = word.toLowerCase();
+      if (count <= 1) return w;
+      if (w === 'crack') return 'cracks';
+      if (w === 'chip') return 'chips';
+      if (w === 'micro-cracks' || w === 'micro-crack') return 'micro-cracks';
+      if (w === 'hot spots' || w === 'hot spot') return 'hot spots';
+      return w;
+    };
+    const parts = items.map(d => {
+      const cnt = d.count || 1;
+      return cnt > 1 ? `${cnt} ${pluralize(d.type, cnt)}` : d.type.toLowerCase();
+    });
+    let joined;
+    if (parts.length === 1) joined = parts[0];
+    else if (parts.length === 2) joined = parts.join(' and ');
+    else joined = parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
+    return ` We identified the following surface damage: ${joined}.`;
+  })();
 
   const buildupNarrative = {
     'Light': 'a light layer of dust and residue',
@@ -283,8 +339,8 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
     const width = photoList.length === 1 ? '100%' : (photoList.length === 2 ? '48%' : '31%');
     return photoList.map(p => `
       <div style="display:inline-block;width:${width};vertical-align:top;padding:4px;">
-        <img src="${p.data}" alt="${p.label}" style="width:100%;border-radius:12px;display:block;" />
-        <div style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
+        <img src="${p.data}" alt="${p.label}" style="width:100%;max-height:180px;object-fit:cover;border-radius:10px;display:block;" />
+        <div style="font-size:10px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
       </div>
     `).join('');
   };
@@ -427,6 +483,21 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
             </td>
           </tr>
 
+          <!-- Panel Health Grade -->
+          <tr>
+            <td style="background:#ffffff;padding:0 24px 20px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:linear-gradient(135deg,${gradeBgLight},${gradeBgDark});border:2px solid ${gradeColor}30;border-radius:16px;padding:24px;text-align:center;">
+                    <div style="font-size:11px;color:${gradeColor};text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Panel Health Grade</div>
+                    <div style="font-size:56px;font-weight:900;color:${gradeColor};line-height:1;">${grade}</div>
+                    <div style="font-size:13px;color:#64748b;margin-top:8px;font-weight:500;">${gradeDescription}</div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
           <!-- Section 1: What We Found -->
           <tr>
             <td style="background:#ffffff;padding:8px 24px 20px;">
@@ -435,11 +506,17 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
                 <p style="margin:0;color:#64748b;font-size:12px;">Initial panel condition before cleaning</p>
               </div>
               <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
-                During our inspection, we observed ${buildupDesc}.${debrisDesc}${!damageIsNone ? ` We also identified ${surfaceDamage.toLowerCase()} damage on the panel surface, which we've documented below.` : ' The good news is that no surface damage was found on any of your panels.'}
+                During our inspection, we observed ${buildupDesc}.${debrisDesc}${damageNarrative}
               </p>
               ${beforePhotos.length > 0 ? `
                 <div style="margin-bottom:8px;">
-                  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Before Cleaning</div>
+                  <div style="background:#fffbeb;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;">
+                    <span style="font-size:20px;margin-right:10px;">📸</span>
+                    <div>
+                      <div style="font-size:14px;font-weight:800;color:#92400e;">Before Cleaning</div>
+                      <div style="font-size:11px;color:#b45309;">Initial condition documented</div>
+                    </div>
+                  </div>
                   ${photoGrid(beforePhotos)}
                 </div>
               ` : ''}
@@ -452,10 +529,21 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
                     </div>
                   </td>
                   <td width="50%" style="padding:6px 0 6px 4px;">
-                    <div style="background:${damageIsNone ? '#f0fdf4' : '#fef2f2'};border-radius:10px;padding:14px;text-align:center;">
-                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Surface Condition</div>
-                      <div style="font-size:20px;font-weight:800;color:${damageIsNone ? '#16a34a' : '#dc2626'};margin-top:4px;">${damageIsNone ? 'No Damage' : surfaceDamage}</div>
+                    ${damageIsNone ? `
+                    <div style="background:#f0fdf4;border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Surface Findings</div>
+                      <div style="font-size:20px;font-weight:800;color:#16a34a;margin-top:4px;">No Damage</div>
                     </div>
+                    ` : `
+                    <div style="background:#fef2f2;border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Surface Findings</div>
+                      <div style="margin-top:8px;">
+                        ${damageItems.filter(d => d.type !== 'None').map(d =>
+                          `<span style="display:inline-block;background:#fee2e2;color:#dc2626;padding:4px 10px;border-radius:16px;font-size:12px;font-weight:700;margin:2px;">${d.type}${d.count > 1 ? ' \u00d7' + d.count : ''}</span>`
+                        ).join('')}
+                      </div>
+                    </div>
+                    `}
                   </td>
                 </tr>
               </table>
@@ -480,7 +568,13 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
               </p>
               ${afterPhotos.length > 0 ? `
                 <div style="margin-bottom:8px;">
-                  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">After Cleaning</div>
+                  <div style="background:#f0fdf4;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;">
+                    <span style="font-size:20px;margin-right:10px;">✨</span>
+                    <div>
+                      <div style="font-size:14px;font-weight:800;color:#166534;">After Cleaning</div>
+                      <div style="font-size:11px;color:#15803d;">Restored to peak performance</div>
+                    </div>
+                  </div>
                   ${photoGrid(afterPhotos)}
                 </div>
               ` : ''}
@@ -523,7 +617,69 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
             </td>
           </tr>
 
-          <!-- Section 4: Our Recommendation -->
+          <!-- Section 4: Service Comparison (if previous data available) -->
+          ${previousServiceData ? (() => {
+            const prevBuildup = previousServiceData.buildup_level || 'N/A';
+            const prevDamageItems = normalizeDamage(previousServiceData.surface_damage);
+            const prevDamageCount = prevDamageItems.filter(d => d.type !== 'None').reduce((sum, d) => sum + (d.count || 1), 0);
+            const currentDamageCount = damageCount;
+            const prevFormattedDate = previousServiceData.service_date ? new Date(previousServiceData.service_date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'your previous service';
+            const buildupRank = { 'Light': 1, 'Moderate': 2, 'Heavy': 3 };
+            const prevBuildupRank = buildupRank[prevBuildup] || 0;
+            const currBuildupRank = buildupRank[buildupLevel] || 0;
+            const buildupImproved = currBuildupRank < prevBuildupRank;
+            const buildupWorse = currBuildupRank > prevBuildupRank;
+            const buildupSame = currBuildupRank === prevBuildupRank;
+            const damageImproved = currentDamageCount < prevDamageCount;
+            const damageWorse = currentDamageCount > prevDamageCount;
+            const damageSame = currentDamageCount === prevDamageCount;
+            const buildupTrend = buildupImproved ? '<div style="color:#16a34a;font-size:16px;margin-top:4px;">\u2191 Improved</div>' : buildupWorse ? '<div style="color:#dc2626;font-size:16px;margin-top:4px;">\u2193 Increased</div>' : '<div style="color:#94a3b8;font-size:16px;margin-top:4px;">\u2192 Same</div>';
+            const damageTrend = damageImproved ? '<div style="color:#16a34a;font-size:16px;margin-top:4px;">\u2191 Improved</div>' : damageWorse ? '<div style="color:#dc2626;font-size:16px;margin-top:4px;">\u2193 Increased</div>' : '<div style="color:#94a3b8;font-size:16px;margin-top:4px;">\u2192 Same</div>';
+            const currentBuildupColor = buildupLevel === 'Heavy' ? '#dc2626' : buildupLevel === 'Moderate' ? '#d97706' : '#16a34a';
+            const currentDamageColor = currentDamageCount === 0 ? '#16a34a' : currentDamageCount <= 2 ? '#d97706' : '#dc2626';
+            let compNarrative = '';
+            if (buildupImproved && (damageImproved || damageSame)) {
+              compNarrative = 'Great news \u2014 your buildup level has decreased since your last service, indicating your maintenance schedule is working well.';
+            } else if (buildupSame && damageSame) {
+              compNarrative = 'Your panel conditions are consistent with your last service, suggesting a stable environment.';
+            } else if (buildupWorse || damageWorse) {
+              compNarrative = 'We noticed increased buildup compared to your last cleaning. You may want to consider more frequent maintenance.';
+            } else {
+              compNarrative = 'Overall, your panel conditions are holding steady. Keep up the regular maintenance!';
+            }
+            return `
+          <tr>
+            <td style="background:#ffffff;padding:8px 24px 20px;">
+              <div style="border-left:4px solid #06b6d4;padding-left:16px;margin-bottom:16px;">
+                <h2 style="margin:0 0 4px;color:#1e293b;font-size:18px;font-weight:800;">Since Your Last Cleaning</h2>
+                <p style="margin:0;color:#64748b;font-size:12px;">Comparing to your service on ${prevFormattedDate}</p>
+              </div>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="50%" style="padding:6px 4px 6px 0;">
+                    <div style="background:#f8fafc;border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:600;">Buildup</div>
+                      <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Previous: ${prevBuildup}</div>
+                      <div style="font-size:14px;font-weight:800;color:${currentBuildupColor};margin-top:2px;">Now: ${buildupLevel || 'N/A'}</div>
+                      ${buildupTrend}
+                    </div>
+                  </td>
+                  <td width="50%" style="padding:6px 0 6px 4px;">
+                    <div style="background:#f8fafc;border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;font-weight:600;">Damage</div>
+                      <div style="font-size:12px;color:#94a3b8;margin-top:4px;">Previous: ${prevDamageCount} issues</div>
+                      <div style="font-size:14px;font-weight:800;color:${currentDamageColor};margin-top:2px;">Now: ${currentDamageCount} issues</div>
+                      ${damageTrend}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:12px 0 0;color:#475569;font-size:13px;line-height:1.5;font-style:italic;">${compNarrative}</p>
+            </td>
+          </tr>`;
+          })() : ''}
+
+          <!-- Section 5: Our Recommendation -->
           <tr>
             <td style="background:#ffffff;padding:8px 24px 24px;">
               <div style="border-left:4px solid #8b5cf6;padding-left:16px;margin-bottom:16px;">
@@ -580,7 +736,7 @@ router.post('/preview-assessment', (req, res) => {
       biannual: '#preview-biannual',
       triannual: '#preview-triannual'
     };
-    const html = buildAssessmentEmailHTML(assessmentData, previewTokens);
+    const html = buildAssessmentEmailHTML(assessmentData, previewTokens, null);
     res.json({ html });
   } catch (err) {
     console.error('Assessment preview error:', err);
@@ -664,7 +820,29 @@ router.post('/send-assessment', rateLimit, async (req, res) => {
       }
     }
 
-    const html = buildAssessmentEmailHTML(assessmentData, enrollmentTokens);
+    let previousServiceData = null;
+    if (customerId) {
+      try {
+        const prevResult = await pool.query(
+          `SELECT rs.completion_data, rs.completed_at FROM route_stops rs WHERE rs.customer_id = $1 AND rs.completed_at IS NOT NULL ORDER BY rs.completed_at DESC LIMIT 1 OFFSET 1`,
+          [customerId]
+        );
+        if (prevResult.rows.length > 0) {
+          const prevRow = prevResult.rows[0];
+          const prevData = prevRow.completion_data ? (typeof prevRow.completion_data === 'string' ? JSON.parse(prevRow.completion_data) : prevRow.completion_data) : {};
+          previousServiceData = {
+            buildup_level: prevData.buildup_level || prevData.buildupLevel || null,
+            surface_damage: prevData.surface_damage || prevData.surfaceDamage || null,
+            system_checks: prevData.system_checks || prevData.systemChecks || null,
+            service_date: prevRow.completed_at
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching previous service data:', err);
+      }
+    }
+
+    const html = buildAssessmentEmailHTML(assessmentData, enrollmentTokens, previousServiceData);
     const subject = `Your Solar Panel Service Report - ${assessmentData.customerName || 'Customer'} - ${assessmentData.serviceDate ? new Date(assessmentData.serviceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent Service'}`;
 
     const { data, error } = await resend.emails.send({

@@ -14348,8 +14348,16 @@ onClick={exitRadiusMode}
           const ap = assessmentPreview;
           const d = ap.data;
           const BUILDUP_OPTS = ['Light', 'Moderate', 'Heavy'];
-          const DEBRIS_OPTS = ['Dust / Pollen', 'Bird Droppings', 'Sap', 'Pollution Film', 'Mixed'];
-          const DAMAGE_OPTS = ['None', 'Crack', 'Chip', 'Delamination', 'Other'];
+          const DEBRIS_OPTS = ['Dust / Pollen', 'Bird Droppings', 'Sap', 'Pollution Film', 'Mixed', 'Other'];
+          const DAMAGE_OPTS = [
+            { value: 'None' },
+            { value: 'Crack', hasCount: true },
+            { value: 'Chip', hasCount: true },
+            { value: 'Micro-cracks' },
+            { value: 'Delamination' },
+            { value: 'Hot Spots' },
+            { value: 'Discoloration' }
+          ];
           const SYSTEM_OPTS = ['No visible issues', 'Loose racking / hardware', 'Pest activity', 'Shading concern', 'Roof penetration concern', 'Conduit / wiring concern', 'Other'];
           const FREQ_OPTS = ['Annual', 'Bi-Annual', '3x Per Year'];
           const RECURRING_OPTS = [
@@ -14367,7 +14375,7 @@ onClick={exitRadiusMode}
           const toggleDebris = (item) => {
             const arr = [...(d.debris || [])];
             const idx = arr.indexOf(item);
-            if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
+            if (idx >= 0) arr.splice(idx, 1); else { if (arr.length >= 3) return; arr.push(item); }
             updateField('debris', arr);
           };
           const toggleSystemCheck = (item) => {
@@ -14375,6 +14383,39 @@ onClick={exitRadiusMode}
             const idx = arr.indexOf(item);
             if (idx >= 0) arr.splice(idx, 1); else arr.push(item);
             updateField('systemChecks', arr);
+          };
+          const normalizeDamage = (sd) => {
+            if (!sd) return [];
+            if (typeof sd === 'string') {
+              if (!sd || sd === 'None') return [{ type: 'None' }];
+              return [{ type: sd, count: 1 }];
+            }
+            if (Array.isArray(sd)) return sd;
+            return [];
+          };
+          const damageArr = normalizeDamage(d.surfaceDamage);
+          const isDamageSelected = (type) => damageArr.some(dd => dd.type === type);
+          const getDamageCount = (type) => { const f = damageArr.find(dd => dd.type === type); return f ? (f.count || 1) : 1; };
+          const toggleDamage = (value) => {
+            let arr = [...damageArr];
+            if (value === 'None') {
+              arr = [{ type: 'None' }];
+            } else {
+              arr = arr.filter(dd => dd.type !== 'None');
+              const idx = arr.findIndex(dd => dd.type === value);
+              if (idx >= 0) { arr.splice(idx, 1); } else {
+                const opt = DAMAGE_OPTS.find(o => o.value === value);
+                arr.push({ type: value, count: opt && opt.hasCount ? 1 : undefined });
+              }
+              if (arr.length === 0) arr = [{ type: 'None' }];
+            }
+            updateField('surfaceDamage', arr);
+          };
+          const setDamageCount = (type, count) => {
+            const arr = [...damageArr];
+            const item = arr.find(dd => dd.type === type);
+            if (item) item.count = Math.max(1, parseInt(count) || 1);
+            updateField('surfaceDamage', arr);
           };
 
           const loadPreview = async () => {
@@ -14450,16 +14491,29 @@ onClick={exitRadiusMode}
                       ))}</div>
                     </div>
                     <div style={{ marginBottom: '14px' }}>
-                      <label style={labelStyle}>Debris Type</label>
+                      <label style={labelStyle}>Debris Type <span style={{ fontWeight: 400, textTransform: 'none', fontSize: '9px', color: '#64748b' }}>Select up to 3</span></label>
                       <div>{DEBRIS_OPTS.map(opt => (
                         <span key={opt} style={chipStyle((d.debris || []).includes(opt))} onClick={() => toggleDebris(opt)}>{opt}</span>
                       ))}</div>
+                      {(d.debris || []).includes('Other') && (
+                        <input value={d.otherDebris || ''} onChange={(e) => updateField('otherDebris', e.target.value)} placeholder="Describe debris type..." style={{ ...inputStyle, marginTop: '6px' }} />
+                      )}
                     </div>
                     <div style={{ marginBottom: '14px' }}>
-                      <label style={labelStyle}>Surface Damage</label>
-                      <div>{DAMAGE_OPTS.map(opt => (
-                        <span key={opt} style={chipStyle(d.surfaceDamage === opt)} onClick={() => updateField('surfaceDamage', opt)}>{opt}</span>
-                      ))}</div>
+                      <label style={labelStyle}>Surface Damage <span style={{ fontWeight: 400, textTransform: 'none', fontSize: '9px', color: '#64748b' }}>Select all that apply</span></label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                        {DAMAGE_OPTS.map(opt => {
+                          const selected = isDamageSelected(opt.value);
+                          return (
+                            <span key={opt.value} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={chipStyle(selected)} onClick={() => toggleDamage(opt.value)}>{opt.value}</span>
+                              {selected && opt.hasCount && (
+                                <input type="number" min="1" max="99" value={getDamageCount(opt.value)} onChange={(e) => setDamageCount(opt.value, e.target.value)} style={{ width: '42px', padding: '3px 4px', background: '#1e293b', border: '1px solid #6366f1', borderRadius: '6px', color: '#a5b4fc', fontSize: '11px', fontWeight: 700, textAlign: 'center', fontFamily: 'Inter, sans-serif' }} onClick={(e) => e.stopPropagation()} />
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
 
                     <div style={{ borderTop: '1px solid #1e293b', paddingTop: '12px', marginBottom: '14px' }}>

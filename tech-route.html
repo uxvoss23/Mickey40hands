@@ -338,16 +338,16 @@
       { key: 'closeup_after', label: 'Close-Up Clean \u2013 After', icon: '\ud83e\uddfc' }
     ];
     const ISSUE_TAGS = ['Crack','Chip','Delamination','Loose hardware','Pest activity','Roof concern','Other'];
-    const DEBRIS_OPTIONS = ['Dust / Pollen','Bird Droppings','Sap','Pollution Film','Mixed'];
-    const DAMAGE_OPTIONS = ['None','Crack','Chip','Delamination','Other'];
+    const DEBRIS_OPTIONS = ['Dust / Pollen','Bird Droppings','Sap','Pollution Film','Mixed','Other'];
+    const DAMAGE_OPTIONS = [{value:'None'}, {value:'Crack', hasCount:true}, {value:'Chip', hasCount:true}, {value:'Micro-cracks'}, {value:'Delamination'}, {value:'Hot Spots'}, {value:'Discoloration'}];
     const SYSTEM_CHECKS = ['No visible issues','Loose racking / hardware','Pest activity','Shading concern','Roof penetration concern','Conduit / wiring concern','Other'];
     let modalState = {
       slotPhotos: {},
       issuePhotos: [],
       buildupLevel: '',
       debris: [],
-      surfaceDamage: '',
-      otherDamage: '',
+      otherDebris: '',
+      surfaceDamage: [],
       systemChecks: [],
       otherSystemCheck: '',
       inspectionNotes: '',
@@ -374,8 +374,8 @@
     function openCompletionModal(stopId) {
       activeModal = stopId;
       modalState = {
-        slotPhotos: {}, issuePhotos: [], buildupLevel: '', debris: [],
-        surfaceDamage: '', otherDamage: '', systemChecks: [], otherSystemCheck: '',
+        slotPhotos: {}, issuePhotos: [], buildupLevel: '', debris: [], otherDebris: '',
+        surfaceDamage: [], systemChecks: [], otherSystemCheck: '',
         inspectionNotes: '', recommendedFreq: '', recurringSelection: ''
       };
       renderModal();
@@ -446,7 +446,7 @@
     function isTagLocked(checkField, checkValue) {
       const tags = getActiveIssueTags();
       if (checkField === 'surfaceDamage') {
-        return tags.some(t => TAG_TO_DAMAGE[t] === checkValue);
+        return tags.some(t => TAG_TO_DAMAGE[t] === checkValue) && modalState.surfaceDamage.some(d => d.type === checkValue);
       }
       if (checkField === 'systemChecks') {
         return tags.some(t => TAG_TO_SYSTEM[t] === checkValue);
@@ -472,13 +472,13 @@
       const tags = getActiveIssueTags();
       const lockedDamage = tags.map(t => TAG_TO_DAMAGE[t]).filter(Boolean);
       const lockedSystem = tags.map(t => TAG_TO_SYSTEM[t]).filter(Boolean);
-      if (lockedDamage.length > 0) {
-        const dmgVal = lockedDamage[lockedDamage.length - 1];
-        if (modalState.surfaceDamage !== dmgVal) {
-          modalState.surfaceDamage = dmgVal;
-          if (modalState.otherDamage) modalState.otherDamage = '';
+      lockedDamage.forEach(dmgVal => {
+        if (!modalState.surfaceDamage.some(d => d.type === dmgVal)) {
+          modalState.surfaceDamage = modalState.surfaceDamage.filter(d => d.type !== 'None');
+          const opt = DAMAGE_OPTIONS.find(o => o.value === dmgVal);
+          modalState.surfaceDamage.push({ type: dmgVal, count: opt && opt.hasCount ? 1 : undefined });
         }
-      }
+      });
       lockedSystem.forEach(sysVal => {
         if (!modalState.systemChecks.includes(sysVal)) {
           modalState.systemChecks.push(sysVal);
@@ -506,23 +506,47 @@
     }
 
     function setRadio(field, value) {
-      if (field === 'surfaceDamage' && isTagLocked('surfaceDamage', modalState.surfaceDamage) && value !== modalState.surfaceDamage) {
-        showTagLockWarning('Cannot change — "' + modalState.surfaceDamage + '" is linked to an issue photo. Remove the photo first.');
-        return;
-      }
       modalState[field] = value;
       document.querySelectorAll('[data-radio-field="' + field + '"]').forEach(row => {
         const isSelected = row.dataset.radioValue === value;
         row.className = 'radio-row' + (isSelected ? ' selected' : '');
       });
-      if (field === 'surfaceDamage') {
-        const warn = document.getElementById('damage-warning');
-        const needsIssue = value && value !== 'None';
-        const hasIssue = modalState.issuePhotos.length > 0;
-        if (warn) warn.style.display = (needsIssue && !hasIssue) ? 'block' : 'none';
-        const otherBox = document.getElementById('other-damage-input');
-        if (otherBox) otherBox.style.display = value === 'Other' ? 'block' : 'none';
+      updateValidation();
+    }
+
+    function toggleDamage(value) {
+      const arr = modalState.surfaceDamage;
+      const idx = arr.findIndex(d => d.type === value);
+      if (idx >= 0) {
+        if (isTagLocked('surfaceDamage', value)) {
+          showTagLockWarning('Cannot uncheck — "' + value + '" is linked to an issue photo. Remove the photo first.');
+          return;
+        }
+        arr.splice(idx, 1);
+      } else {
+        if (value === 'None') {
+          const lockedTypes = arr.filter(d => isTagLocked('surfaceDamage', d.type));
+          if (lockedTypes.length > 0) {
+            showTagLockWarning('Cannot select None — damage types linked to issue photos are still active.');
+            return;
+          }
+          modalState.surfaceDamage = [{ type: 'None' }];
+        } else {
+          modalState.surfaceDamage = arr.filter(d => d.type !== 'None');
+          const opt = DAMAGE_OPTIONS.find(o => o.value === value);
+          if (opt && opt.hasCount) {
+            modalState.surfaceDamage.push({ type: value, count: 1 });
+          } else {
+            modalState.surfaceDamage.push({ type: value });
+          }
+        }
       }
+      renderModal();
+    }
+
+    function setDamageCount(type, count) {
+      const entry = modalState.surfaceDamage.find(d => d.type === type);
+      if (entry) entry.count = count;
       updateValidation();
     }
     function toggleCheck(field, value) {
@@ -534,7 +558,7 @@
           return;
         }
         arr.splice(idx, 1);
-      } else { if (field === 'debris' && arr.length >= 2) return; arr.push(value); }
+      } else { if (field === 'debris' && arr.length >= 3) return; arr.push(value); }
       document.querySelectorAll('[data-check-field="' + field + '"]').forEach(row => {
         const isChecked = arr.includes(row.dataset.checkValue);
         row.className = 'check-row' + (isChecked ? ' checked' : '');
@@ -544,24 +568,28 @@
         const otherBox = document.getElementById('other-system-input');
         if (otherBox) otherBox.style.display = arr.includes('Other') ? 'block' : 'none';
       }
+      if (field === 'debris') {
+        const otherBox = document.getElementById('other-debris-input');
+        if (otherBox) otherBox.style.display = arr.includes('Other') ? 'block' : 'none';
+      }
       updateValidation();
     }
 
     function updateNotes() {
       const el = document.getElementById('modal-inspection-notes'); if (el) modalState.inspectionNotes = el.value;
-      const od = document.getElementById('other-damage-text'); if (od) modalState.otherDamage = od.value;
       const os = document.getElementById('other-system-text'); if (os) modalState.otherSystemCheck = os.value;
+      const odr = document.getElementById('other-debris-text'); if (odr) modalState.otherDebris = odr.value;
     }
 
     function updateValidation() {
       updateNotes();
       const ms = modalState;
       const filledSlots = Object.keys(ms.slotPhotos).length;
-      const needsIssuePhoto = ms.surfaceDamage && ms.surfaceDamage !== 'None';
+      const needsIssuePhoto = ms.surfaceDamage.length > 0 && !ms.surfaceDamage.some(d => d.type === 'None');
       const hasIssuePhoto = ms.issuePhotos.length > 0;
       const v = {
         photos: filledSlots >= 4,
-        condition: !!ms.buildupLevel && !!ms.surfaceDamage && (!needsIssuePhoto || hasIssuePhoto),
+        condition: !!ms.buildupLevel && ms.surfaceDamage.length > 0 && (!needsIssuePhoto || hasIssuePhoto),
         system: ms.systemChecks.length > 0 && !!ms.inspectionNotes.trim(),
         maintenance: !!ms.recommendedFreq && !!ms.recurringSelection
       };
@@ -585,9 +613,9 @@
     function isModalValid() {
       const s = modalState;
       const filledSlots = Object.keys(s.slotPhotos).length;
-      const needsIssuePhoto = s.surfaceDamage && s.surfaceDamage !== 'None';
+      const needsIssuePhoto = s.surfaceDamage.length > 0 && !s.surfaceDamage.some(d => d.type === 'None');
       const hasIssuePhoto = s.issuePhotos.length > 0;
-      return filledSlots >= 4 && s.buildupLevel && s.surfaceDamage &&
+      return filledSlots >= 4 && s.buildupLevel && s.surfaceDamage.length > 0 &&
         (!needsIssuePhoto || hasIssuePhoto) &&
         s.systemChecks.length > 0 && s.inspectionNotes.trim() &&
         s.recommendedFreq && s.recurringSelection;
@@ -608,8 +636,8 @@
             recurring_selection: modalState.recurringSelection,
             completion_data: {
               buildup_level: modalState.buildupLevel,
-              debris: modalState.debris,
-              surface_damage: modalState.surfaceDamage === 'Other' ? 'Other: ' + (modalState.otherDamage || '').trim() : modalState.surfaceDamage,
+              debris: modalState.debris.map(d => d === 'Other' ? 'Other: ' + (modalState.otherDebris || '').trim() : d),
+              surface_damage: modalState.surfaceDamage,
               system_checks: modalState.systemChecks.map(c => c === 'Other' ? 'Other: ' + (modalState.otherSystemCheck || '').trim() : c),
               recommended_frequency: modalState.recommendedFreq,
               issue_tags: modalState.issuePhotos.map(p => p.tag).filter(Boolean)
@@ -634,11 +662,11 @@
 
       const ms = modalState;
       const filledSlots = Object.keys(ms.slotPhotos).length;
-      const needsIssuePhoto = ms.surfaceDamage && ms.surfaceDamage !== 'None';
+      const needsIssuePhoto = ms.surfaceDamage.length > 0 && !ms.surfaceDamage.some(d => d.type === 'None');
       const hasIssuePhoto = ms.issuePhotos.length > 0;
       const v = {
         photos: filledSlots >= 4,
-        condition: !!ms.buildupLevel && !!ms.surfaceDamage && (!needsIssuePhoto || hasIssuePhoto),
+        condition: !!ms.buildupLevel && ms.surfaceDamage.length > 0 && (!needsIssuePhoto || hasIssuePhoto),
         system: ms.systemChecks.length > 0 && !!ms.inspectionNotes.trim(),
         maintenance: !!ms.recommendedFreq && !!ms.recurringSelection
       };
@@ -649,6 +677,8 @@
       const biannualPrice = servicePrice > 0 ? (servicePrice * 0.85).toFixed(2) : null;
       const annualSavings = servicePrice > 0 ? (servicePrice * 0.10).toFixed(2) : null;
       const biannualSavings = servicePrice > 0 ? (servicePrice * 0.15).toFixed(2) : null;
+      const triannualPrice = servicePrice > 0 ? (servicePrice * 0.80).toFixed(2) : null;
+      const triannualSavings = servicePrice > 0 ? (servicePrice * 0.20).toFixed(2) : null;
 
       const slotsHTML = PHOTO_SLOTS.map(slot => {
         const filled = !!ms.slotPhotos[slot.key];
@@ -686,7 +716,8 @@
         { value: 'not_offered', label: 'Not Offered' },
         { value: 'offered_declined', label: 'Offered \u2014 Declined' },
         { value: 'enrolled_annual', label: 'Enrolled \u2014 Annual', price: annualPrice, savings: annualSavings, discount: '10% off' },
-        { value: 'enrolled_biannual', label: 'Enrolled \u2014 Bi-Annual', price: biannualPrice, savings: biannualSavings, discount: '15% off' }
+        { value: 'enrolled_biannual', label: 'Enrolled \u2014 Bi-Annual', price: biannualPrice, savings: biannualSavings, discount: '15% off' },
+        { value: 'enrolled_triannual', label: 'Enrolled \u2014 3x Per Year', price: triannualPrice, savings: triannualSavings, discount: '20% off' }
       ];
 
       document.getElementById('modal-root').innerHTML = `
@@ -725,7 +756,6 @@
                     <div style="font-size:8px;color:#ef4444;margin-top:2px;font-weight:600">Add Issue</div>
                   </div>
                 </div>
-                <div id="damage-warning" style="font-size:11px;color:#ef4444;margin-top:4px;font-weight:600;display:${needsIssuePhoto && !hasIssuePhoto ? 'block' : 'none'}">\u26A0 Surface damage selected \u2014 issue photo required</div>
               </div>
 
               <!-- SECTION 2: PANEL CONDITION -->
@@ -735,15 +765,23 @@
                 <div class="radio-group">${radioHTML('buildupLevel', ['Light', 'Moderate', 'Heavy'])}</div>
               </div>
               <div class="modal-section">
-                <div class="modal-label">Primary Debris <span style="font-size:10px;color:#64748b;font-weight:400">Select up to 2</span></div>
+                <div class="modal-label">Primary Debris <span style="font-size:10px;color:#64748b;font-weight:400">Select up to 3</span></div>
                 <div class="check-group">${checkHTML('debris', DEBRIS_OPTIONS)}</div>
+                <div id="other-debris-input" style="display:${ms.debris.includes('Other') ? 'block' : 'none'};margin-top:6px">
+                  <input type="text" id="other-debris-text" placeholder="Describe debris type..." value="${ms.otherDebris.replace(/"/g, '&quot;')}" oninput="updateNotes()" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b">
+                </div>
               </div>
               <div class="modal-section">
                 <div class="modal-label">Surface Damage Observed <span class="required">Required</span></div>
-                <div class="radio-group">${radioHTML('surfaceDamage', DAMAGE_OPTIONS)}</div>
-                <div id="other-damage-input" style="display:${ms.surfaceDamage === 'Other' ? 'block' : 'none'};margin-top:6px">
-                  <input type="text" id="other-damage-text" placeholder="Describe the damage..." value="${ms.otherDamage.replace(/"/g, '&quot;')}" oninput="updateNotes()" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b">
-                </div>
+                <div class="check-group">${DAMAGE_OPTIONS.map(opt => {
+                  const chk = ms.surfaceDamage.some(d => d.type === opt.value);
+                  const locked = isTagLocked('surfaceDamage', opt.value);
+                  const lockIcon = locked ? '<span style="margin-left:auto;font-size:10px;opacity:0.7" title="Linked to issue photo">\uD83D\uDD12</span>' : '';
+                  const entry = ms.surfaceDamage.find(d => d.type === opt.value);
+                  const countInput = (opt.hasCount && chk) ? ' <input type="number" min="1" max="99" value="' + (entry ? entry.count : 1) + '" onclick="event.stopPropagation()" onchange="setDamageCount(\'' + opt.value + '\', parseInt(this.value)||1)" style="width:48px;padding:4px;border:1.5px solid #cbd5e1;border-radius:6px;font-size:12px;font-family:Inter,sans-serif;text-align:center">' : '';
+                  return '<div class="check-row ' + (chk ? 'checked' : '') + '" onclick="toggleDamage(\'' + opt.value.replace(/'/g, "\\'") + '\')"><div class="check-box">' + (chk ? '\u2713' : '') + '</div><div style="flex:1;display:flex;align-items:center">' + opt.value + countInput + lockIcon + '</div></div>';
+                }).join('')}</div>
+                <div id="damage-warning" style="font-size:11px;color:#ef4444;margin-top:4px;font-weight:600;display:${needsIssuePhoto && !hasIssuePhoto ? 'block' : 'none'}">\u26A0 Surface damage selected \u2014 issue photo required</div>
               </div>
 
               <!-- SECTION 3: SYSTEM CHECK -->
