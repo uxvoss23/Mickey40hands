@@ -3120,14 +3120,32 @@
         }
 
         const dateKey = selectedDate.toDateString();
-        const scheduledForDay = customers
+        const dayRoute = routesByDay[dateKey] || [];
+        const scheduledFromState = customers
           .filter(c => {
             if (!c.scheduledDate || !c.scheduledTime) return false;
             return new Date(c.scheduledDate).toDateString() === dateKey;
-          })
-          .sort((a, b) => {
-            const [aH, aM] = a.scheduledTime.split(':').map(Number);
-            const [bH, bM] = b.scheduledTime.split(':').map(Number);
+          });
+        const mergedIds = new Set();
+        const mergedCustomers = [];
+        for (const rc of dayRoute) {
+          mergedIds.add(rc.id);
+          const latest = customers.find(c => c.id === rc.id) || rc;
+          mergedCustomers.push({
+            ...latest,
+            scheduledDate: latest.scheduledDate || selectedDate.toISOString(),
+            scheduledTime: latest.scheduledTime || rc.scheduledTime || '08:00'
+          });
+        }
+        for (const c of scheduledFromState) {
+          if (!mergedIds.has(c.id)) {
+            mergedIds.add(c.id);
+            mergedCustomers.push(c);
+          }
+        }
+        const scheduledForDay = mergedCustomers.sort((a, b) => {
+            const [aH, aM] = (a.scheduledTime || '08:00').split(':').map(Number);
+            const [bH, bM] = (b.scheduledTime || '08:00').split(':').map(Number);
             return (aH * 60 + aM) - (bH * 60 + bM);
           });
 
@@ -3338,20 +3356,37 @@
             routeTotalDistance += calculateDistance(stopsWithCoords[stopsWithCoords.length - 1].lat, stopsWithCoords[stopsWithCoords.length - 1].lng, homeBase.lat, homeBase.lng);
           }
 
-          const routeDateStr = dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-          const newRoute = {
-            id: Date.now().toString() + '_' + dayKey,
-            name: `Route - ${routeDateStr}`,
-            date: new Date().toISOString(),
-            scheduledDate: dayDate.toISOString(),
-            customers: routeCustomers,
-            totalDistance: routeTotalDistance,
-            confirmed: true,
-            sentToTech: false,
-            sentDate: null
-          };
+          const existingSavedRoute = savedRoutes.find(r => {
+            const rDate = new Date(r.scheduledDate);
+            return rDate.toDateString() === dayKey;
+          });
 
-          setSavedRoutes(prev => [...prev, newRoute]);
+          if (existingSavedRoute) {
+            setSavedRoutes(prev => prev.map(r => {
+              if (r.id === existingSavedRoute.id) {
+                return {
+                  ...r,
+                  customers: routeCustomers,
+                  totalDistance: routeTotalDistance
+                };
+              }
+              return r;
+            }));
+          } else {
+            const routeDateStr = dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            const newRoute = {
+              id: Date.now().toString() + '_' + dayKey,
+              name: `Route - ${routeDateStr}`,
+              date: new Date().toISOString(),
+              scheduledDate: dayDate.toISOString(),
+              customers: routeCustomers,
+              totalDistance: routeTotalDistance,
+              confirmed: true,
+              sentToTech: false,
+              sentDate: null
+            };
+            setSavedRoutes(prev => [...prev, newRoute]);
+          }
 
           const routeIds = new Set(routeCustomers.map(c => c.id));
           setCustomers(prev => prev.map(c => {
