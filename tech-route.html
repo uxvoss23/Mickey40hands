@@ -231,36 +231,65 @@
       font-size: 11px;
       font-weight: 600;
     }
-    .photo-upload-area {
-      border: 2px dashed #cbd5e1;
-      border-radius: 12px;
-      padding: 20px;
-      text-align: center;
-      cursor: pointer;
-      transition: all 0.2s;
+    .photos-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+    .photo-thumb {
       position: relative;
+      border-radius: 8px;
       overflow: hidden;
-      min-height: 120px;
+      aspect-ratio: 1;
+      border: 2px solid #e2e8f0;
+    }
+    .photo-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .photo-add-btn {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      aspect-ratio: 1;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-direction: column;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f8fafc;
     }
-    .photo-upload-area:active { background: #f8fafc; border-color: #6366f1; }
-    .photo-upload-area.has-photo {
-      border-style: solid;
-      border-color: #22c55e;
-      padding: 4px;
+    .photo-add-btn:active { background: #eef2ff; border-color: #6366f1; }
+    .photo-add-icon { font-size: 24px; }
+    .photo-add-text { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .photo-count { font-size: 12px; color: #64748b; margin-top: 6px; }
+    .service-price-card {
+      background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+      border: 1.5px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
     }
-    .photo-upload-area.has-photo img {
-      width: 100%;
-      height: 160px;
-      object-fit: cover;
-      border-radius: 8px;
+    .service-price-label { font-size: 12px; color: #64748b; font-weight: 600; }
+    .service-price-amount { font-size: 22px; font-weight: 800; color: #059669; }
+    .recurring-price-tag {
+      font-size: 11px;
+      font-weight: 700;
+      color: #059669;
+      background: #f0fdf4;
+      padding: 2px 8px;
+      border-radius: 6px;
+      margin-left: 6px;
     }
-    .photo-upload-icon { font-size: 32px; margin-bottom: 4px; }
-    .photo-upload-text { font-size: 13px; color: #64748b; }
-    .photo-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .recurring-savings {
+      font-size: 10px;
+      color: #64748b;
+      margin-top: 2px;
+    }
     .modal-textarea {
       width: 100%;
       min-height: 80px;
@@ -366,7 +395,7 @@
     let routeData = null;
     let completedStops = new Set();
     let activeModal = null;
-    let modalState = { beforePhoto: null, afterPhoto: null, inspectionNotes: '', recurringSelection: '' };
+    let modalState = { photos: [], inspectionNotes: '', recurringSelection: '' };
 
     async function loadRoute() {
       const app = document.getElementById('app');
@@ -386,7 +415,7 @@
 
     function openCompletionModal(stopId) {
       activeModal = stopId;
-      modalState = { beforePhoto: null, afterPhoto: null, inspectionNotes: '', recurringSelection: '' };
+      modalState = { photos: [], inspectionNotes: '', recurringSelection: '' };
       renderModal();
     }
 
@@ -420,26 +449,29 @@
       });
     }
 
-    async function handlePhotoUpload(type) {
+    async function handleAddPhotos() {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
+      input.multiple = true;
       input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        try {
-          const base64 = await fileToBase64(file);
-          modalState[type] = base64;
-          renderModal();
-        } catch (err) {
-          alert('Failed to process photo');
+        const files = Array.from(e.target.files);
+        if (!files.length) return;
+        for (const file of files) {
+          try {
+            const base64 = await fileToBase64(file);
+            modalState.photos.push(base64);
+          } catch (err) {
+            console.error('Failed to process photo:', err);
+          }
         }
+        renderModal();
       };
       input.click();
     }
 
-    function removePhoto(type) {
-      modalState[type] = null;
+    function removePhoto(index) {
+      modalState.photos.splice(index, 1);
       renderModal();
     }
 
@@ -454,7 +486,7 @@
     }
 
     function isModalValid() {
-      return modalState.beforePhoto && modalState.afterPhoto && modalState.inspectionNotes.trim() && modalState.recurringSelection;
+      return modalState.photos.length >= 1 && modalState.inspectionNotes.trim() && modalState.recurringSelection;
     }
 
     async function submitCompletion() {
@@ -467,8 +499,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            before_photo: modalState.beforePhoto,
-            after_photo: modalState.afterPhoto,
+            photos: modalState.photos,
             inspection_notes: modalState.inspectionNotes.trim(),
             recurring_selection: modalState.recurringSelection
           })
@@ -492,18 +523,27 @@
       if (!stop) return;
       updateNotes();
 
-      const hasBefore = !!modalState.beforePhoto;
-      const hasAfter = !!modalState.afterPhoto;
+      const hasPhotos = modalState.photos.length >= 1;
       const hasNotes = !!modalState.inspectionNotes.trim();
       const hasRecurring = !!modalState.recurringSelection;
-      const valid = hasBefore && hasAfter && hasNotes && hasRecurring;
+      const valid = hasPhotos && hasNotes && hasRecurring;
+
+      const servicePrice = stop.amount_paid ? parseFloat(stop.amount_paid) : 0;
+      const annualPrice = servicePrice > 0 ? (servicePrice * 0.90).toFixed(2) : null;
+      const biannualPrice = servicePrice > 0 ? (servicePrice * 0.85).toFixed(2) : null;
+      const annualSavings = servicePrice > 0 ? (servicePrice * 0.10).toFixed(2) : null;
+      const biannualSavings = servicePrice > 0 ? (servicePrice * 0.15).toFixed(2) : null;
 
       const recurringOptions = [
-        { value: 'not_offered', label: 'Not Offered' },
-        { value: 'offered_declined', label: 'Offered - Declined' },
-        { value: 'signed_annual', label: 'Signed Up Annual' },
-        { value: 'signed_biannual', label: 'Signed Up Bi-Annual' }
+        { value: 'not_offered', label: 'Not Offered', price: null, savings: null },
+        { value: 'offered_declined', label: 'Offered - Declined', price: null, savings: null },
+        { value: 'signed_annual', label: 'Annual Service', price: annualPrice, savings: annualSavings, discount: '10% off' },
+        { value: 'signed_biannual', label: 'Bi-Annual Service', price: biannualPrice, savings: biannualSavings, discount: '15% off' }
       ];
+
+      const photosHTML = modalState.photos.map((p, i) =>
+        '<div class="photo-thumb"><img src="' + p + '" alt="Photo ' + (i+1) + '"><button class="photo-remove" data-photo-idx="' + i + '">&times;</button></div>'
+      ).join('');
 
       document.getElementById('modal-root').innerHTML = `
         <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
@@ -513,38 +553,34 @@
               <button class="modal-close" onclick="closeModal()">&times;</button>
             </div>
             <div class="modal-body">
-              <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:16px">
+              <div style="background:#f8fafc;border-radius:10px;padding:10px 12px;margin-bottom:12px">
                 <div style="font-size:14px;font-weight:700;color:#1e293b">${stop.full_name || 'Customer'}</div>
                 <div style="font-size:12px;color:#64748b;margin-top:2px">${stop.address || ''}</div>
               </div>
 
+              ${servicePrice > 0 ? `
+                <div class="service-price-card">
+                  <div class="service-price-label">Service Price</div>
+                  <div class="service-price-amount">$${servicePrice.toFixed(2)}</div>
+                </div>
+              ` : ''}
+
               <div class="validation-checklist">
-                <span class="validation-item ${hasBefore ? 'done' : 'pending'}">${hasBefore ? '✓' : '○'} Before Photo</span>
-                <span class="validation-item ${hasAfter ? 'done' : 'pending'}">${hasAfter ? '✓' : '○'} After Photo</span>
+                <span class="validation-item ${hasPhotos ? 'done' : 'pending'}">${hasPhotos ? '✓' : '○'} Photos (${modalState.photos.length})</span>
                 <span class="validation-item ${hasNotes ? 'done' : 'pending'}">${hasNotes ? '✓' : '○'} Notes</span>
                 <span class="validation-item ${hasRecurring ? 'done' : 'pending'}">${hasRecurring ? '✓' : '○'} Recurring</span>
               </div>
 
               <div class="modal-section">
-                <div class="modal-label">Photos <span class="required">Required</span></div>
-                <div class="photo-row">
-                  <div>
-                    <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-align:center">BEFORE</div>
-                    <div class="photo-upload-area ${hasBefore ? 'has-photo' : ''}" id="before-photo-area">
-                      ${hasBefore
-                        ? '<img src="' + modalState.beforePhoto + '" alt="Before"><button class="photo-remove" id="remove-before-btn">&times;</button>'
-                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to add photo</div>'}
-                    </div>
-                  </div>
-                  <div>
-                    <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:4px;text-align:center">AFTER</div>
-                    <div class="photo-upload-area ${hasAfter ? 'has-photo' : ''}" id="after-photo-area">
-                      ${hasAfter
-                        ? '<img src="' + modalState.afterPhoto + '" alt="After"><button class="photo-remove" id="remove-after-btn">&times;</button>'
-                        : '<div class="photo-upload-icon">📷</div><div class="photo-upload-text">Tap to add photo</div>'}
-                    </div>
+                <div class="modal-label">Photos <span class="required">At least 1 required</span></div>
+                <div class="photos-grid">
+                  ${photosHTML}
+                  <div class="photo-add-btn" id="add-photo-btn">
+                    <div class="photo-add-icon">+</div>
+                    <div class="photo-add-text">Add Photos</div>
                   </div>
                 </div>
+                ${modalState.photos.length > 0 ? '<div class="photo-count">' + modalState.photos.length + ' photo' + (modalState.photos.length !== 1 ? 's' : '') + ' added</div>' : ''}
               </div>
 
               <div class="modal-section">
@@ -557,7 +593,8 @@
                 <div class="recurring-options">
                   ${recurringOptions.map(opt => `
                     <button class="recurring-option ${modalState.recurringSelection === opt.value ? 'selected' : ''}" onclick="setRecurring('${opt.value}')">
-                      ${opt.label}
+                      <div>${opt.label}</div>
+                      ${opt.price ? `<div class="recurring-price-tag">$${opt.price}</div><div class="recurring-savings">${opt.discount} &middot; Save $${opt.savings}</div>` : ''}
                     </button>
                   `).join('')}
                 </div>
@@ -572,37 +609,36 @@
       `;
 
       setTimeout(() => {
-        const beforeArea = document.getElementById('before-photo-area');
-        const afterArea = document.getElementById('after-photo-area');
-        const removeBeforeBtn = document.getElementById('remove-before-btn');
-        const removeAfterBtn = document.getElementById('remove-after-btn');
+        const addBtn = document.getElementById('add-photo-btn');
+        if (addBtn) addBtn.addEventListener('click', () => handleAddPhotos());
 
-        if (beforeArea && !modalState.beforePhoto) {
-          beforeArea.addEventListener('click', () => handlePhotoUpload('beforePhoto'));
-        }
-        if (afterArea && !modalState.afterPhoto) {
-          afterArea.addEventListener('click', () => handlePhotoUpload('afterPhoto'));
-        }
-        if (removeBeforeBtn) {
-          removeBeforeBtn.addEventListener('click', (e) => { e.stopPropagation(); removePhoto('beforePhoto'); });
-        }
-        if (removeAfterBtn) {
-          removeAfterBtn.addEventListener('click', (e) => { e.stopPropagation(); removePhoto('afterPhoto'); });
-        }
+        document.querySelectorAll('[data-photo-idx]').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            removePhoto(parseInt(btn.dataset.photoIdx));
+          });
+        });
       }, 0);
     }
 
     function renderValidation() {
       updateNotes();
-      const hasBefore = !!modalState.beforePhoto;
-      const hasAfter = !!modalState.afterPhoto;
+      const hasPhotos = modalState.photos.length >= 1;
       const hasNotes = !!modalState.inspectionNotes.trim();
       const hasRecurring = !!modalState.recurringSelection;
-      const valid = hasBefore && hasAfter && hasNotes && hasRecurring;
+      const valid = hasPhotos && hasNotes && hasRecurring;
       const items = document.querySelectorAll('.validation-item');
+      if (items.length >= 1) {
+        items[0].className = `validation-item ${hasPhotos ? 'done' : 'pending'}`;
+        items[0].textContent = `${hasPhotos ? '✓' : '○'} Photos (${modalState.photos.length})`;
+      }
+      if (items.length >= 2) {
+        items[1].className = `validation-item ${hasNotes ? 'done' : 'pending'}`;
+        items[1].textContent = `${hasNotes ? '✓' : '○'} Notes`;
+      }
       if (items.length >= 3) {
-        items[2].className = `validation-item ${hasNotes ? 'done' : 'pending'}`;
-        items[2].textContent = `${hasNotes ? '✓' : '○'} Notes`;
+        items[2].className = `validation-item ${hasRecurring ? 'done' : 'pending'}`;
+        items[2].textContent = `${hasRecurring ? '✓' : '○'} Recurring`;
       }
       const btn = document.getElementById('modal-submit-btn');
       if (btn) {

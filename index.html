@@ -1002,7 +1002,12 @@
             const stopCompletionData = {};
             data.stops.forEach(s => {
               if (s.completed_at) {
+                let parsedPhotos = [];
+                try { parsedPhotos = s.photos ? JSON.parse(s.photos) : []; } catch(e) { parsedPhotos = []; }
+                if (s.before_photo && parsedPhotos.length === 0) parsedPhotos.push(s.before_photo);
+                if (s.after_photo && parsedPhotos.length <= 1) parsedPhotos.push(s.after_photo);
                 stopCompletionData[s.customer_id] = {
+                  photos: parsedPhotos,
                   beforePhoto: s.before_photo || null,
                   afterPhoto: s.after_photo || null,
                   inspectionNotes: s.inspection_notes || '',
@@ -11961,20 +11966,14 @@ const createJob = async () => {
                                         🔍 {cd.inspectionNotes}
                                       </div>
                                     )}
-                                    {(cd.beforePhoto || cd.afterPhoto) && (
-                                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
-                                        {cd.beforePhoto && (
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '2px', textTransform: 'uppercase' }}>Before</div>
-                                            <img src={cd.beforePhoto} alt="Before" style={{ width: '100%', height: '60px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer' }} onClick={() => window.open(cd.beforePhoto, '_blank')} />
-                                          </div>
-                                        )}
-                                        {cd.afterPhoto && (
-                                          <div style={{ flex: 1 }}>
-                                            <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '2px', textTransform: 'uppercase' }}>After</div>
-                                            <img src={cd.afterPhoto} alt="After" style={{ width: '100%', height: '60px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer' }} onClick={() => window.open(cd.afterPhoto, '_blank')} />
-                                          </div>
-                                        )}
+                                    {cd.photos && cd.photos.length > 0 && (
+                                      <div style={{ marginTop: '6px' }}>
+                                        <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 700, marginBottom: '4px', textTransform: 'uppercase' }}>Photos ({cd.photos.length})</div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(50px, 1fr))', gap: '4px' }}>
+                                          {cd.photos.map((photo, pi) => (
+                                            <img key={pi} src={photo} alt={`Photo ${pi+1}`} style={{ width: '100%', height: '50px', objectFit: 'cover', borderRadius: '4px', cursor: 'pointer' }} onClick={() => window.open(photo, '_blank')} />
+                                          ))}
+                                        </div>
                                       </div>
                                     )}
                                   </div>
