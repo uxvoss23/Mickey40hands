@@ -560,4 +560,59 @@ router.post('/geocode', async (req, res) => {
   }
 });
 
+router.post('/sync', async (req, res) => {
+  try {
+    const allCustomers = await pool.query('SELECT id, full_name, status, is_recurring, existing_job, scheduled_date FROM customers');
+    const allJobs = await pool.query('SELECT id, customer_id, status, scheduled_date FROM jobs');
+
+    const jobsByCustomer = {};
+    for (const job of allJobs.rows) {
+      if (!jobsByCustomer[job.customer_id]) jobsByCustomer[job.customer_id] = [];
+      jobsByCustomer[job.customer_id].push(job);
+    }
+
+    let fixed = 0;
+    const fixes = [];
+
+    for (const c of allCustomers.rows) {
+      const jobs = jobsByCustomer[c.id] || [];
+      const hasJobs = jobs.length > 0;
+      const hasScheduledJob = jobs.some(j => j.status === 'scheduled' && j.scheduled_date);
+      const hasCompletedJob = jobs.some(j => j.status === 'completed');
+      const allCompleted = hasJobs && jobs.every(j => j.status === 'completed' || j.status === 'cancelled');
+
+      let correctStatus = c.status;
+      let correctExistingJob = c.existing_job;
+
+      if (hasScheduledJob) {
+        correctStatus = 'scheduled';
+      } else if (allCompleted) {
+        correctStatus = 'completed';
+      } else if (hasJobs) {
+        correctStatus = 'unscheduled';
+      } else {
+        correctStatus = 'new';
+      }
+
+      if (hasJobs && !c.existing_job) {
+        correctExistingJob = true;
+      }
+
+      if (correctStatus !== c.status || correctExistingJob !== c.existing_job) {
+        await pool.query(
+          'UPDATE customers SET status = $1, existing_job = $2, updated_at = NOW() WHERE id = $3',
+          [correctStatus, correctExistingJob, c.id]
+        );
+        fixed++;
+        fixes.push({ id: c.id, name: c.full_name, oldStatus: c.status, newStatus: correctStatus, oldExistingJob: c.existing_job, newExistingJob: correctExistingJob });
+      }
+    }
+
+    res.json({ success: true, totalCustomers: allCustomers.rows.length, totalJobs: allJobs.rows.length, fixed, fixes });
+  } catch (err) {
+    console.error('Sync error:', err);
+    res.status(500).json({ error: 'Sync failed: ' + err.message });
+  }
+});
+
 module.exports = router;

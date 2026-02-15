@@ -6348,13 +6348,64 @@ const createJob = async () => {
                 }} className="scrollbar-custom">
 
                   {/* Greeting */}
-                  <div style={{ marginBottom: '24px' }}>
-                    <h2 style={{ fontSize: '22px', fontWeight: 800, margin: '0 0 4px 0', color: '#f1f5f9' }}>
-                      {new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening'}
-                    </h2>
-                    <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
-                      {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-                    </p>
+                  <div style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div>
+                      <h2 style={{ fontSize: '22px', fontWeight: 800, margin: '0 0 4px 0', color: '#f1f5f9' }}>
+                        {new Date().getHours() < 12 ? 'Good Morning' : new Date().getHours() < 17 ? 'Good Afternoon' : 'Good Evening'}
+                      </h2>
+                      <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                        {today.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    </div>
+                    <button
+                      onClick={async (e) => {
+                        try {
+                          const btn = e.currentTarget;
+                          btn.textContent = 'Syncing...';
+                          btn.disabled = true;
+                          const resp = await fetch('/api/customers/sync', { method: 'POST' });
+                          const data = await resp.json();
+                          if (data.success) {
+                            btn.textContent = `✓ Fixed ${data.fixed} of ${data.totalCustomers}`;
+                            btn.style.borderColor = 'rgba(34, 197, 94, 0.5)';
+                            btn.style.color = '#4ade80';
+                            const custResp = await fetch('/api/customers');
+                            const custData = await custResp.json();
+                            const freshCustomers = Array.isArray(custData) ? custData : (custData.customers || []);
+                            if (freshCustomers.length) {
+                              setCustomers(freshCustomers.map(c => ({
+                                ...c,
+                                name: c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' '),
+                                panels: c.total_panels || c.panel_count || 0,
+                                isRecurring: c.is_recurring,
+                                lastServiceDate: c.last_service_date,
+                                scheduledDate: c.scheduled_date,
+                                scheduledTime: c.scheduled_time,
+                                customerType: c.customer_type || 'residential'
+                              })));
+                            }
+                            setTimeout(() => {
+                              btn.textContent = '⟳ Sync Database';
+                              btn.style.borderColor = 'rgba(139, 92, 246, 0.3)';
+                              btn.style.color = '#a78bfa';
+                              btn.disabled = false;
+                            }, 3000);
+                          } else {
+                            btn.textContent = '✗ Sync failed';
+                            btn.style.color = '#ef4444';
+                            btn.disabled = false;
+                          }
+                        } catch (err) {
+                          console.error('Sync error:', err);
+                        }
+                      }}
+                      style={{
+                        padding: '8px 16px', fontSize: '12px', fontWeight: 700,
+                        background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '8px', color: '#a78bfa', cursor: 'pointer', transition: 'all 0.2s',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >⟳ Sync Database</button>
                   </div>
 
                   {/* Stats Cards */}
