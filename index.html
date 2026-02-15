@@ -8137,14 +8137,25 @@ const createJob = async () => {
                                                   } else {
                                                     const [curH, curM] = (job.scheduledTime || '08:00').split(':').map(Number);
                                                     const clampedMin = Math.max(360, curH * 60 + curM - 75);
-                                                    const newH = Math.floor(clampedMin / 60);
-                                                    const newM = clampedMin % 60;
-                                                    const newTime = `${newH.toString().padStart(2, '0')}:${newM.toString().padStart(2, '0')}`;
-                                                    if (newTime !== job.scheduledTime) {
-                                                      await apiFetch(`/customers/${job.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: newTime }) });
-                                                      setCustomers(prev => prev.map(c => c.id === job.id ? { ...c, scheduledTime: newTime } : c));
+                                                    const firstNewH = Math.floor(clampedMin / 60);
+                                                    const firstNewM = clampedMin % 60;
+                                                    const firstNewTime = `${firstNewH.toString().padStart(2, '0')}:${firstNewM.toString().padStart(2, '0')}`;
+                                                    if (firstNewTime !== job.scheduledTime) {
+                                                      const newTimes = {};
+                                                      let runningMin = clampedMin;
+                                                      for (let i = 0; i < allJobsForDay.length; i++) {
+                                                        const h = Math.floor(runningMin / 60);
+                                                        const m = runningMin % 60;
+                                                        newTimes[allJobsForDay[i].id] = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+                                                        runningMin += 75;
+                                                      }
+                                                      const patchPromises = allJobsForDay.map(j =>
+                                                        apiFetch(`/customers/${j.id}`, { method: 'PATCH', body: JSON.stringify({ scheduled_time: newTimes[j.id] }) })
+                                                      );
+                                                      await Promise.all(patchPromises);
+                                                      setCustomers(prev => prev.map(c => newTimes[c.id] ? { ...c, scheduledTime: newTimes[c.id] } : c));
                                                       setRoutesByDay(prev => {
-                                                        const dayStops = (prev[dateKey] || []).map(c => c.id === job.id ? { ...c, scheduledTime: newTime } : c);
+                                                        const dayStops = (prev[dateKey] || []).map(c => newTimes[c.id] ? { ...c, scheduledTime: newTimes[c.id] } : c);
                                                         return { ...prev, [dateKey]: dayStops };
                                                       });
                                                     }
@@ -8167,7 +8178,7 @@ const createJob = async () => {
                                                 flexShrink: 0,
                                                 padding: 0
                                               }}
-                                              title={jobNumber > 1 ? "Swap with previous" : "Move earlier by 1h 15m"}
+                                              title={jobNumber > 1 ? "Swap with previous" : "Move all up by 1h 15m"}
                                             >
                                               ▲
                                             </button>
