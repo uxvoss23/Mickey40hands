@@ -2023,10 +2023,11 @@
         };
         
         const handleViewProfile = (event) => {
-          const customerId = event.detail;
-          const customer = customers.find(c => c.id === customerId);
+          const customerId = String(event.detail);
+          const customer = customers.find(c => String(c.id) === customerId);
           if (customer) {
-            setSelectedCustomer(customer);
+            setProfileCustomer(customer);
+            setShowCustomerProfile(true);
             if (mapInstanceRef.current) {
               mapInstanceRef.current.closePopup();
             }
