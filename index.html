@@ -2107,6 +2107,33 @@
           openJobPopupForCustomer(customer);
         };
 
+        const handleViewJobForCustomer = async (e) => {
+          const customerId = e.detail;
+          const customer = customers.find(c => c.id === customerId || String(c.id) === String(customerId));
+          if (!customer) return;
+          try {
+            const jobsData = await apiFetch(`/jobs/customer/${customer.id}`);
+            const activeJobs = (jobsData.jobs || []).filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+            if (activeJobs.length > 0) {
+              const j = activeJobs[0];
+              const mapped = {
+                jobId: j.id, jobDescription: j.job_description || '', panelCount: j.panel_count || 0,
+                pricePerPanel: j.price_per_panel || 9, price: j.price || 0, notes: j.notes || '',
+                preferredDays: j.preferred_days || '', preferredTime: j.preferred_time || '',
+                technician: j.technician || 'Chance T', isRecurring: j.is_recurring || false,
+                recurrenceInterval: j.recurrence_interval || '', nextServiceDate: j.next_service_date || '',
+                scheduledDate: j.scheduled_date || '', date: j.scheduled_date || ''
+              };
+              editJobFromHistory(mapped, customer);
+            } else {
+              openJobPopupForCustomer(customer);
+            }
+          } catch (err) {
+            console.error('Failed to fetch jobs for view:', err);
+            openJobPopupForCustomer(customer);
+          }
+        };
+
         const handleShowDayPicker = (e) => {
           const cust = customers.find(c => c.id === e.detail.customerId);
           if (cust && focusedDays.length >= 1) {
@@ -2121,6 +2148,7 @@
         window.addEventListener('markRecurring', handleMarkRecurring);
         window.addEventListener('autoVerifyProperty', handleAutoVerify);
         window.addEventListener('addJobForCustomer', handleAddJobForCustomer);
+        window.addEventListener('viewJobForCustomer', handleViewJobForCustomer);
         window.addEventListener('showDayPicker', handleShowDayPicker);
         
         return () => {
@@ -2131,11 +2159,12 @@
           window.removeEventListener('markRecurring', handleMarkRecurring);
           window.removeEventListener('autoVerifyProperty', handleAutoVerify);
           window.removeEventListener('addJobForCustomer', handleAddJobForCustomer);
+          window.removeEventListener('viewJobForCustomer', handleViewJobForCustomer);
           window.removeEventListener('showDayPicker', handleShowDayPicker);
         };
       }, [customers, focusedDays]);
       
-      // Highlight map marker when hovering sidebar card
+      // Highlight map marker and open popup when hovering sidebar card
       useEffect(() => {
         if (!hoveredCustomer || !markersMapRef.current) return;
         
@@ -2157,6 +2186,11 @@
           pinElement.style.transform = 'rotate(-45deg) scale(1.3)';
           pinElement.style.boxShadow = '0 8px 20px rgba(139, 92, 246, 0.6)';
         }
+
+        // Open the marker's popup when hovering from unrouted list
+        if (hoveredUnroutedCustomer?.customer?.id === hoveredCustomer.id) {
+          marker.openPopup();
+        }
         
         return () => {
           if (pinElement && !isInRoute && !isSuggested) {
@@ -2164,8 +2198,12 @@
             pinElement.style.transform = 'rotate(-45deg) scale(1)';
             pinElement.style.boxShadow = '0 4px 16px rgba(139, 92, 246, 0.5)';
           }
+          // Close popup when unhover
+          if (hoveredUnroutedCustomer?.customer?.id === hoveredCustomer.id) {
+            marker.closePopup();
+          }
         };
-      }, [hoveredCustomer, route, suggestedCustomers]);
+      }, [hoveredCustomer, route, suggestedCustomers, hoveredUnroutedCustomer]);
 
       // Update home base marker
       useEffect(() => {
@@ -2497,7 +2535,13 @@
                 <div style="margin-bottom: 8px;">
                   <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">${customer.name}</div>
                   <div style="font-size: 9px; color: #94a3b8; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">📍 ${customer.address}</div>
-                  ${customer.panelCount ? `<div style="font-size: 9px; color: #fbbf24;">${customer.panelCount} panels</div>` : ''}
+                  ${(() => {
+                    const jt = customer.jobDescription || customer.job_description || ((customer.customerType || customer.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
+                    const jp = parseFloat(customer.jobPrice || customer.amountPaid || 0) || 0;
+                    return '<div style="font-size: 9px; color: #a78bfa; margin-bottom: 2px;">' + jt + '</div>' +
+                      (customer.panelCount ? '<div style="font-size: 9px; color: #fbbf24;">☀️ ' + customer.panelCount + ' panels</div>' : '') +
+                      (jp > 0 ? '<div style="font-size: 9px; color: #22c55e;">💵 $' + jp.toFixed(2) + '</div>' : '');
+                  })()}
                   ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + formatTime12h(customer.scheduledTime) : ''}</div>` : ''}
                 </div>
                 
@@ -2518,11 +2562,19 @@
                     style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     👤 View Profile
                   </button>
+                  ${customer.activeJobCount > 0 ? `
+                  <button 
+                    onclick="window.dispatchEvent(new CustomEvent('viewJobForCustomer', {detail: '${customer.id}'}))"
+                    style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
+                    📋 View Job
+                  </button>
+                  ` : `
                   <button 
                     onclick="window.dispatchEvent(new CustomEvent('addJobForCustomer', {detail: '${customer.id}'}))"
                     style="background: rgba(34, 197, 94, 0.1); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); padding: 6px; border-radius: 4px; font-weight: 600; font-size: 10px; cursor: pointer; font-family: 'Inter', sans-serif;">
                     + Add Job
                   </button>
+                  `}
                   <a 
                     href="https://www.google.com/maps/@${customer.lat},${customer.lng},20z/data=!3m1!1e3"
                     target="_blank"
@@ -9124,23 +9176,6 @@ const createJob = async () => {
                                       return (
                                       <div
                                         key={customer.id}
-                                        style={{ position: 'relative' }}
-                                        onMouseEnter={(e) => {
-                                          clearTimeout(hoveredUnroutedTimer.current);
-                                          const rect = e.currentTarget.getBoundingClientRect();
-                                          setHoveredUnroutedCustomer({ customer, x: rect.left, y: rect.top, cardWidth: rect.width });
-                                          setHoveredUnroutedDays(prefDays);
-                                          setHoveredCustomer(customer);
-                                        }}
-                                        onMouseLeave={() => {
-                                          hoveredUnroutedTimer.current = setTimeout(() => {
-                                            setHoveredUnroutedCustomer(null);
-                                          }, 200);
-                                          setHoveredUnroutedDays([]);
-                                          setHoveredCustomer(null);
-                                        }}
-                                      >
-                                      <div
                                         onClick={() => {
                                           if (!routePlannerEditMode) {
                                             setRoutePlannerEditMode(true);
@@ -9156,10 +9191,22 @@ const createJob = async () => {
                                             setProfileCustomer(customer); setShowCustomerProfile(true);
                                           }
                                         }}
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.style.background = isPrefMatch ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 116, 139, 0.18)';
+                                          setHoveredUnroutedDays(prefDays);
+                                          setHoveredCustomer(customer);
+                                          setHoveredUnroutedCustomer({ customer });
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.style.background = isPrefMatch ? 'rgba(34, 197, 94, 0.12)' : 'rgba(100, 116, 139, 0.08)';
+                                          setHoveredUnroutedDays([]);
+                                          setHoveredCustomer(null);
+                                          setHoveredUnroutedCustomer(null);
+                                        }}
                                         style={{
                                           display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px',
                                           borderRadius: '8px', cursor: 'pointer', marginBottom: '3px',
-                                          background: isPrefMatch ? 'rgba(34, 197, 94, 0.12)' : hoveredUnroutedCustomer?.customer?.id === customer.id ? 'rgba(100, 116, 139, 0.15)' : 'rgba(100, 116, 139, 0.08)',
+                                          background: isPrefMatch ? 'rgba(34, 197, 94, 0.12)' : 'rgba(100, 116, 139, 0.08)',
                                           border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(100, 116, 139, 0.15)',
                                           transition: 'all 0.15s'
                                         }}
@@ -9189,71 +9236,6 @@ const createJob = async () => {
                                             justifyContent: 'center', fontSize: '13px', padding: 0
                                           }}
                                         >📋</button>
-                                      </div>
-
-                                      {hoveredUnroutedCustomer?.customer?.id === customer.id && ReactDOM.createPortal(
-                                        <div
-                                          onMouseEnter={() => clearTimeout(hoveredUnroutedTimer.current)}
-                                          onMouseLeave={() => {
-                                            setHoveredUnroutedCustomer(null);
-                                            setHoveredUnroutedDays([]);
-                                            setHoveredCustomer(null);
-                                          }}
-                                          style={{
-                                            position: 'fixed',
-                                            left: Math.max(10, hoveredUnroutedCustomer.x - 220) + 'px',
-                                            top: Math.max(10, Math.min(hoveredUnroutedCustomer.y, window.innerHeight - 320)) + 'px',
-                                            zIndex: 99999,
-                                            width: '210px', background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-                                            border: '1px solid rgba(139, 92, 246, 0.4)', borderRadius: '10px',
-                                            padding: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                                            fontFamily: "'Inter', sans-serif"
-                                          }}
-                                        >
-                                          <div style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9', marginBottom: '4px' }}>{customer.name}</div>
-                                          <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {customer.address}
-                                          </div>
-
-                                          <div style={{ padding: '6px 8px', background: 'rgba(139, 92, 246, 0.1)', border: '1px solid rgba(139, 92, 246, 0.25)', borderRadius: '6px', marginBottom: '8px' }}>
-                                            <div style={{ fontSize: '8px', color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '4px' }}>Job Details</div>
-                                            <div style={{ fontSize: '10px', color: '#e2e8f0', fontWeight: 600, marginBottom: '3px' }}>{jobType}</div>
-                                            {jobType.toLowerCase().includes('panel') && panels > 0 && <div style={{ fontSize: '9px', color: '#fbbf24', marginBottom: '2px' }}>☀️ {panels} panels</div>}
-                                            {price > 0 && <div style={{ fontSize: '9px', color: '#22c55e' }}>💵 ${price.toFixed(2)}</div>}
-                                          </div>
-
-                                          {(customer.preferredDate || customer.preferredTimeWindow) && (
-                                            <div style={{ padding: '6px 8px', background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.2)', borderRadius: '6px', marginBottom: '8px' }}>
-                                              <div style={{ fontSize: '8px', color: '#fbbf24', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '3px' }}>Preferred Schedule</div>
-                                              {customer.preferredDate && <div style={{ fontSize: '10px', color: '#e2e8f0', marginBottom: '2px' }}>📅 {customer.preferredDate}</div>}
-                                              {customer.preferredTimeWindow && <div style={{ fontSize: '10px', color: '#e2e8f0' }}>🕐 {customer.preferredTimeWindow}</div>}
-                                            </div>
-                                          )}
-
-                                          {customer.lastServiceDate && (
-                                            <div style={{ fontSize: '9px', color: '#94a3b8', marginBottom: '8px' }}>
-                                              Last service: {new Date(customer.lastServiceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                                            </div>
-                                          )}
-
-                                          <div style={{ display: 'flex', gap: '4px' }}>
-                                            <button
-                                              onClick={(e) => { e.stopPropagation(); setProfileCustomer(customer); setShowCustomerProfile(true); setHoveredUnroutedCustomer(null); }}
-                                              style={{ flex: 1, background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)', color: 'white', border: 'none', padding: '6px', borderRadius: '5px', fontWeight: 600, fontSize: '10px', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
-                                            >👤 View Profile</button>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                setProfileCustomer(customer);
-                                                setShowCustomerProfile(true);
-                                                setHoveredUnroutedCustomer(null);
-                                              }}
-                                              style={{ flex: 1, background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)', padding: '6px', borderRadius: '5px', fontWeight: 600, fontSize: '10px', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}
-                                            >📋 View Job</button>
-                                          </div>
-                                        </div>,
-                                        document.body
-                                      )}
                                       </div>
                                     );})
                                   )}
