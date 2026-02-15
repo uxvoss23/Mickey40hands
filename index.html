@@ -8754,14 +8754,31 @@ const createJob = async () => {
                                         <div key={idx}
                                           onClick={() => {
                                             const clickedDate = new Date(date); clickedDate.setHours(0,0,0,0);
-                                            setSelectedDate(clickedDate);
                                             if (multiSelectDays) {
-                                              setFocusedDays(prev => {
-                                                const exists = prev.some(d => d.toDateString() === clickedDate.toDateString());
-                                                if (exists) return prev.filter(d => d.toDateString() !== clickedDate.toDateString());
-                                                return [...prev, clickedDate];
-                                              });
+                                              const isDeselecting = focusedDays.some(d => d.toDateString() === clickedDate.toDateString());
+                                              if (isDeselecting) {
+                                                const remaining = focusedDays.filter(d => d.toDateString() !== clickedDate.toDateString());
+                                                setFocusedDays(remaining);
+                                                if (remaining.length > 0) {
+                                                  const sorted = [...remaining].sort((a, b) => a - b);
+                                                  const deselectedTime = clickedDate.getTime();
+                                                  let nearest = sorted[0];
+                                                  let minDist = Math.abs(sorted[0].getTime() - deselectedTime);
+                                                  for (let i = 1; i < sorted.length; i++) {
+                                                    const dist = Math.abs(sorted[i].getTime() - deselectedTime);
+                                                    if (dist < minDist || (dist === minDist && sorted[i] < nearest)) {
+                                                      nearest = sorted[i];
+                                                      minDist = dist;
+                                                    }
+                                                  }
+                                                  setSelectedDate(nearest);
+                                                }
+                                              } else {
+                                                setSelectedDate(clickedDate);
+                                                setFocusedDays(prev => [...prev, clickedDate]);
+                                              }
                                             } else {
+                                              setSelectedDate(clickedDate);
                                               setFocusedDays([clickedDate]);
                                             }
                                             const weekStart = new Date(clickedDate);
@@ -8811,14 +8828,31 @@ const createJob = async () => {
                                     onClick={() => {
                                       const clickedDate = new Date(date);
                                       clickedDate.setHours(0,0,0,0);
-                                      setSelectedDate(clickedDate);
                                       if (multiSelectDays) {
-                                        setFocusedDays(prev => {
-                                          const exists = prev.some(d => d.toDateString() === clickedDate.toDateString());
-                                          if (exists) return prev.filter(d => d.toDateString() !== clickedDate.toDateString());
-                                          return [...prev, clickedDate];
-                                        });
+                                        const isDeselecting = focusedDays.some(d => d.toDateString() === clickedDate.toDateString());
+                                        if (isDeselecting) {
+                                          const remaining = focusedDays.filter(d => d.toDateString() !== clickedDate.toDateString());
+                                          setFocusedDays(remaining);
+                                          if (remaining.length > 0) {
+                                            const sorted = [...remaining].sort((a, b) => a - b);
+                                            const deselectedTime = clickedDate.getTime();
+                                            let nearest = sorted[0];
+                                            let minDist = Math.abs(sorted[0].getTime() - deselectedTime);
+                                            for (let i = 1; i < sorted.length; i++) {
+                                              const dist = Math.abs(sorted[i].getTime() - deselectedTime);
+                                              if (dist < minDist || (dist === minDist && sorted[i] < nearest)) {
+                                                nearest = sorted[i];
+                                                minDist = dist;
+                                              }
+                                            }
+                                            setSelectedDate(nearest);
+                                          }
+                                        } else {
+                                          setSelectedDate(clickedDate);
+                                          setFocusedDays(prev => [...prev, clickedDate]);
+                                        }
                                       } else {
+                                        setSelectedDate(clickedDate);
                                         setFocusedDays([clickedDate]);
                                       }
                                     }}
