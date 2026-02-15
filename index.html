@@ -499,6 +499,7 @@
       const [hoveredUnroutedDays, setHoveredUnroutedDays] = useState([]);
       const [hoveredUnroutedCustomer, setHoveredUnroutedCustomer] = useState(null);
       const hoveredUnroutedTimer = React.useRef(null);
+      const [unroutedJobTypeFilter, setUnroutedJobTypeFilter] = useState('all');
       const [hoveredRouteDay, setHoveredRouteDay] = useState(null);
       const [dayPickerPopup, setDayPickerPopup] = useState(null);
       const [verifyingCustomer, setVerifyingCustomer] = useState(false);
@@ -9059,28 +9060,67 @@ const createJob = async () => {
 
                           {/* Unrouted Jobs */}
                           {(() => {
-                            const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0);
                             const parsePrefDays = (prefStr) => {
                               if (!prefStr) return [];
                               const dayMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0,
                                 'monday': 1, 'tuesday': 2, 'wednesday': 3, 'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0 };
                               return prefStr.toLowerCase().split(/[,\s]+/).map(d => dayMap[d.trim()]).filter(d => d !== undefined);
                             };
+                            const getJobType = (c) => c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
+                            const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0);
+                            const jobTypes = [...new Set(allUnrouted.map(c => getJobType(c)))].sort();
+                            const filtered = unroutedJobTypeFilter === 'all' ? allUnrouted : allUnrouted.filter(c => getJobType(c) === unroutedJobTypeFilter);
+                            const activeDay = hoveredRouteDay || (focusedDays.length === 1 ? focusedDays[0] : null) || selectedDate;
+                            const activeDayOfWeek = activeDay ? activeDay.getDay() : null;
+                            const sorted = [...filtered].sort((a, b) => {
+                              if (activeDayOfWeek === null) return 0;
+                              const aDays = parsePrefDays(a.preferredDate);
+                              const bDays = parsePrefDays(b.preferredDate);
+                              const aMatch = aDays.includes(activeDayOfWeek);
+                              const bMatch = bDays.includes(activeDayOfWeek);
+                              if (aMatch && !bMatch) return -1;
+                              if (!aMatch && bMatch) return 1;
+                              return 0;
+                            });
+                            const matchCount = activeDayOfWeek !== null ? sorted.filter(c => parsePrefDays(c.preferredDate).includes(activeDayOfWeek)).length : 0;
                             return (
                               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                                 <div style={{ padding: '12px 12px 6px', flexShrink: 0 }}>
-                                  <h4 style={{ fontSize: '12px', fontWeight: 700, margin: 0, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                    Unrouted Jobs ({unroutedCustomers.length})
-                                  </h4>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                    <h4 style={{ fontSize: '12px', fontWeight: 700, margin: 0, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                      Unrouted Jobs ({filtered.length})
+                                    </h4>
+                                    {matchCount > 0 && activeDayOfWeek !== null && (
+                                      <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 600, background: 'rgba(34, 197, 94, 0.1)', padding: '2px 6px', borderRadius: '4px' }}>
+                                        {matchCount} match {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][activeDayOfWeek]}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {jobTypes.length > 1 && (
+                                    <select
+                                      value={unroutedJobTypeFilter}
+                                      onChange={(e) => setUnroutedJobTypeFilter(e.target.value)}
+                                      style={{
+                                        width: '100%', padding: '4px 6px', fontSize: '10px', fontWeight: 600,
+                                        background: '#1e293b', color: '#e2e8f0', border: '1px solid rgba(139, 92, 246, 0.3)',
+                                        borderRadius: '5px', cursor: 'pointer', fontFamily: "'Inter', sans-serif"
+                                      }}
+                                    >
+                                      <option value="all">All Job Types</option>
+                                      {jobTypes.map(jt => <option key={jt} value={jt}>{jt}</option>)}
+                                    </select>
+                                  )}
                                 </div>
                                 <div className="scrollbar-custom" style={{ flex: 1, overflow: 'auto', padding: '0 12px 12px' }}>
-                                  {unroutedCustomers.length === 0 ? (
-                                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#475569', fontSize: '11px' }}>All jobs are routed</div>
+                                  {sorted.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#475569', fontSize: '11px' }}>{allUnrouted.length === 0 ? 'All jobs are routed' : 'No jobs match filter'}</div>
                                   ) : (
-                                    unroutedCustomers.map(customer => {
-                                      const jobType = customer.jobDescription || customer.job_description || ((customer.customerType || customer.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
+                                    sorted.map(customer => {
+                                      const jobType = getJobType(customer);
                                       const panels = parseInt(customer.panelCount || customer.totalPanels || 0) || 0;
                                       const price = parseFloat(customer.jobPrice || customer.amountPaid || 0) || 0;
+                                      const prefDays = parsePrefDays(customer.preferredDate);
+                                      const isPrefMatch = activeDayOfWeek !== null && prefDays.includes(activeDayOfWeek);
                                       return (
                                       <div
                                         key={customer.id}
@@ -9089,8 +9129,7 @@ const createJob = async () => {
                                           clearTimeout(hoveredUnroutedTimer.current);
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           setHoveredUnroutedCustomer({ customer, x: rect.left, y: rect.top, cardWidth: rect.width });
-                                          const days = parsePrefDays(customer.preferredDate);
-                                          setHoveredUnroutedDays(days);
+                                          setHoveredUnroutedDays(prefDays);
                                           setHoveredCustomer(customer);
                                         }}
                                         onMouseLeave={() => {
@@ -9120,19 +9159,19 @@ const createJob = async () => {
                                         style={{
                                           display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px',
                                           borderRadius: '8px', cursor: 'pointer', marginBottom: '3px',
-                                          background: hoveredUnroutedCustomer?.customer?.id === customer.id ? 'rgba(100, 116, 139, 0.15)' : 'rgba(100, 116, 139, 0.08)',
-                                          border: '1px solid rgba(100, 116, 139, 0.15)',
+                                          background: isPrefMatch ? 'rgba(34, 197, 94, 0.12)' : hoveredUnroutedCustomer?.customer?.id === customer.id ? 'rgba(100, 116, 139, 0.15)' : 'rgba(100, 116, 139, 0.08)',
+                                          border: isPrefMatch ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(100, 116, 139, 0.15)',
                                           transition: 'all 0.15s'
                                         }}
                                       >
-                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#64748b', flexShrink: 0 }} />
+                                        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: isPrefMatch ? '#22c55e' : '#64748b', flexShrink: 0 }} />
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                           <div style={{ fontSize: '12px', fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{customer.name}</div>
-                                          <div style={{ fontSize: '10px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(customer.address || '').slice(0, 35)}</div>
+                                          <div style={{ fontSize: '9px', color: '#a78bfa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>{jobType}{price > 0 ? ` · $${price.toFixed(0)}` : ''}</div>
                                         </div>
                                         {(customer.preferredDate || customer.preferredTimeWindow) && (
                                           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                            {customer.preferredDate && <div style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 600 }}>{customer.preferredDate}</div>}
+                                            {customer.preferredDate && <div style={{ fontSize: '9px', color: isPrefMatch ? '#22c55e' : '#fbbf24', fontWeight: 600 }}>{customer.preferredDate}</div>}
                                             {customer.preferredTimeWindow && <div style={{ fontSize: '9px', color: '#94a3b8' }}>{customer.preferredTimeWindow}</div>}
                                           </div>
                                         )}
@@ -9217,7 +9256,6 @@ const createJob = async () => {
                                       )}
                                       </div>
                                     );})
-                                  )
                                   )}
                                 </div>
                               </div>
