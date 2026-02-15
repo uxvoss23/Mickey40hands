@@ -339,7 +339,7 @@
     ];
     const ISSUE_TAGS = ['Crack','Chip','Delamination','Loose hardware','Pest activity','Roof concern','Other'];
     const DEBRIS_OPTIONS = ['Dust / Pollen','Bird Droppings','Sap','Pollution Film','Mixed'];
-    const DAMAGE_OPTIONS = ['None','Crack','Chip','Delamination'];
+    const DAMAGE_OPTIONS = ['None','Crack','Chip','Delamination','Other'];
     const SYSTEM_CHECKS = ['No visible issues','Loose racking / hardware','Pest activity','Shading concern','Roof penetration concern','Conduit / wiring concern','Other'];
     let modalState = {
       slotPhotos: {},
@@ -347,7 +347,9 @@
       buildupLevel: '',
       debris: [],
       surfaceDamage: '',
+      otherDamage: '',
       systemChecks: [],
+      otherSystemCheck: '',
       inspectionNotes: '',
       recommendedFreq: '',
       recurringSelection: ''
@@ -373,8 +375,8 @@
       activeModal = stopId;
       modalState = {
         slotPhotos: {}, issuePhotos: [], buildupLevel: '', debris: [],
-        surfaceDamage: '', systemChecks: [], inspectionNotes: '',
-        recommendedFreq: '', recurringSelection: ''
+        surfaceDamage: '', otherDamage: '', systemChecks: [], otherSystemCheck: '',
+        inspectionNotes: '', recommendedFreq: '', recurringSelection: ''
       };
       renderModal();
     }
@@ -455,6 +457,8 @@
         const needsIssue = value && value !== 'None';
         const hasIssue = modalState.issuePhotos.length > 0;
         if (warn) warn.style.display = (needsIssue && !hasIssue) ? 'block' : 'none';
+        const otherBox = document.getElementById('other-damage-input');
+        if (otherBox) otherBox.style.display = value === 'Other' ? 'block' : 'none';
       }
       updateValidation();
     }
@@ -467,10 +471,18 @@
         row.className = 'check-row' + (isChecked ? ' checked' : '');
         row.querySelector('.check-box').innerHTML = isChecked ? '\u2713' : '';
       });
+      if (field === 'systemChecks') {
+        const otherBox = document.getElementById('other-system-input');
+        if (otherBox) otherBox.style.display = arr.includes('Other') ? 'block' : 'none';
+      }
       updateValidation();
     }
 
-    function updateNotes() { const el = document.getElementById('modal-inspection-notes'); if (el) modalState.inspectionNotes = el.value; }
+    function updateNotes() {
+      const el = document.getElementById('modal-inspection-notes'); if (el) modalState.inspectionNotes = el.value;
+      const od = document.getElementById('other-damage-text'); if (od) modalState.otherDamage = od.value;
+      const os = document.getElementById('other-system-text'); if (os) modalState.otherSystemCheck = os.value;
+    }
 
     function updateValidation() {
       updateNotes();
@@ -528,8 +540,8 @@
             completion_data: {
               buildup_level: modalState.buildupLevel,
               debris: modalState.debris,
-              surface_damage: modalState.surfaceDamage,
-              system_checks: modalState.systemChecks,
+              surface_damage: modalState.surfaceDamage === 'Other' ? 'Other: ' + (modalState.otherDamage || '').trim() : modalState.surfaceDamage,
+              system_checks: modalState.systemChecks.map(c => c === 'Other' ? 'Other: ' + (modalState.otherSystemCheck || '').trim() : c),
               recommended_frequency: modalState.recommendedFreq,
               issue_tags: modalState.issuePhotos.map(p => p.tag).filter(Boolean)
             }
@@ -656,6 +668,9 @@
               <div class="modal-section">
                 <div class="modal-label">Surface Damage Observed <span class="required">Required</span></div>
                 <div class="radio-group">${radioHTML('surfaceDamage', DAMAGE_OPTIONS)}</div>
+                <div id="other-damage-input" style="display:${ms.surfaceDamage === 'Other' ? 'block' : 'none'};margin-top:6px">
+                  <input type="text" id="other-damage-text" placeholder="Describe the damage..." value="${ms.otherDamage.replace(/"/g, '&quot;')}" oninput="updateNotes()" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b">
+                </div>
               </div>
 
               <!-- SECTION 3: SYSTEM CHECK -->
@@ -663,6 +678,9 @@
               <div class="modal-section">
                 <div class="modal-label">System Condition <span class="required">Select all that apply</span></div>
                 <div class="check-group">${checkHTML('systemChecks', SYSTEM_CHECKS)}</div>
+                <div id="other-system-input" style="display:${ms.systemChecks.includes('Other') ? 'block' : 'none'};margin-top:6px">
+                  <input type="text" id="other-system-text" placeholder="Describe the issue..." value="${ms.otherSystemCheck.replace(/"/g, '&quot;')}" oninput="updateNotes()" style="width:100%;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;color:#1e293b">
+                </div>
               </div>
               <div class="modal-section">
                 <div class="modal-label">Inspection Notes <span class="required">Required</span></div>
