@@ -322,7 +322,49 @@ router.delete('/:id', async (req, res) => {
   try {
     const result = await pool.query('DELETE FROM jobs WHERE id = $1 RETURNING *', [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Job not found' });
-    res.json({ deleted: true });
+
+    const deletedJob = result.rows[0];
+    const customerId = deletedJob.customer_id;
+
+    const remaining = await pool.query(
+      `SELECT * FROM jobs WHERE customer_id = $1 ORDER BY COALESCE(completed_date, scheduled_date) DESC`,
+      [customerId]
+    );
+    const jobs = remaining.rows;
+
+    const completedJobs = jobs.filter(j => j.status === 'completed' && (j.completed_date || j.scheduled_date));
+    const lastServiceDate = completedJobs.length > 0
+      ? (completedJobs[0].completed_date || completedJobs[0].scheduled_date)
+      : null;
+
+    const activeJobs = jobs.filter(j => j.status !== 'completed' && j.status !== 'cancelled');
+    let nextServiceDate = null;
+    let newStatus = '';
+
+    if (activeJobs.length > 0) {
+      const upcoming = activeJobs
+        .filter(j => j.scheduled_date)
+        .sort((a, b) => new Date(a.scheduled_date) - new Date(b.scheduled_date));
+      if (upcoming.length > 0) {
+        nextServiceDate = upcoming[0].scheduled_date;
+        const isRecurring = upcoming[0].is_recurring;
+        if (isRecurring) {
+          const daysUntil = Math.floor((new Date(nextServiceDate) - new Date()) / (1000 * 60 * 60 * 24));
+          newStatus = daysUntil <= 30 ? 'scheduled' : '';
+        } else {
+          newStatus = 'scheduled';
+        }
+      } else {
+        newStatus = 'unscheduled';
+      }
+    }
+
+    await pool.query(
+      `UPDATE customers SET last_service_date = $1, next_service_date = $2, status = $3 WHERE id = $4`,
+      [lastServiceDate || null, nextServiceDate || null, newStatus, customerId]
+    );
+
+    res.json({ deleted: true, customer_update: { last_service_date: lastServiceDate, next_service_date: nextServiceDate, status: newStatus } });
   } catch (err) {
     console.error('Error deleting job:', err);
     res.status(500).json({ error: 'Failed to delete job' });
