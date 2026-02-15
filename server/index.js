@@ -104,21 +104,42 @@ const pool = require('./db/pool');
 
 const updateScheduledStatuses = async () => {
   try {
+    const today = new Date().toISOString().split('T')[0];
     const thirtyDaysFromNow = new Date();
     thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
     const cutoffDate = thirtyDaysFromNow.toISOString().split('T')[0];
     
-    const flipped = await pool.query(`
-      UPDATE customers SET status = 'scheduled'
-      WHERE is_recurring = true
-        AND next_service_date != '' AND next_service_date IS NOT NULL
-        AND next_service_date <= $1
-        AND (status = '' OR status IS NULL)
-      RETURNING id, full_name, next_service_date
-    `, [cutoffDate]);
+    const recurringCustomers = await pool.query(
+      `SELECT id FROM customers WHERE is_recurring = true`
+    );
+
+    let flippedCount = 0;
+    for (const cust of recurringCustomers.rows) {
+      const nextJob = await pool.query(
+        `SELECT scheduled_date FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' AND scheduled_date >= $2 ORDER BY scheduled_date ASC LIMIT 1`,
+        [cust.id, today]
+      );
+
+      if (nextJob.rows.length > 0) {
+        const nextDate = nextJob.rows[0].scheduled_date;
+        const daysUntil = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
+        const newStatus = daysUntil <= 30 ? 'scheduled' : '';
+
+        await pool.query(
+          `UPDATE customers SET next_service_date = $1, status = CASE WHEN (status = '' OR status IS NULL) AND $2 = 'scheduled' THEN 'scheduled' WHEN (status = 'scheduled') AND $2 = '' THEN '' ELSE status END WHERE id = $3`,
+          [nextDate, newStatus, cust.id]
+        );
+        if (newStatus === 'scheduled') flippedCount++;
+      } else {
+        await pool.query(
+          `UPDATE customers SET next_service_date = NULL WHERE id = $1 AND is_recurring = true`,
+          [cust.id]
+        );
+      }
+    }
     
-    if (flipped.rows.length > 0) {
-      console.log(`30-day check: flipped ${flipped.rows.length} recurring customers to 'scheduled'`);
+    if (flippedCount > 0) {
+      console.log(`30-day check: ${flippedCount} recurring customers within 30-day window`);
     }
   } catch (err) {
     console.error('Error in 30-day schedule check:', err);

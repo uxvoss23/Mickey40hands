@@ -179,8 +179,8 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
 
     if (stop.is_recurring) {
       const jobsResult = await client.query(
-        `SELECT * FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' ORDER BY id DESC LIMIT 1`,
-        [stop.customer_id]
+        `SELECT * FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' AND scheduled_date <= $2 ORDER BY scheduled_date ASC LIMIT 1`,
+        [stop.customer_id, scheduledDate]
       );
       if (jobsResult.rows.length > 0) {
         const job = jobsResult.rows[0];
@@ -188,31 +188,26 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
           `UPDATE jobs SET status = 'completed', completed_date = $1 WHERE id = $2`,
           [scheduledDate, job.id]
         );
+      }
 
-        const recurrence = parseInt(job.recurrence_interval) || 0;
-        if (recurrence > 0) {
-          const nextDate = new Date(scheduledDate);
-          nextDate.setDate(nextDate.getDate() + recurrence);
-          const nextDateStr = nextDate.toISOString().split('T')[0];
-          const daysUntilNext = Math.floor((nextDate - new Date()) / (1000 * 60 * 60 * 24));
-          const newStatus = daysUntilNext <= 30 ? 'scheduled' : '';
+      const nextUpcoming = await client.query(
+        `SELECT scheduled_date FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' AND scheduled_date > $2 ORDER BY scheduled_date ASC LIMIT 1`,
+        [stop.customer_id, scheduledDate]
+      );
 
-          await client.query(`
-            INSERT INTO jobs (customer_id, job_description, status, scheduled_date, is_recurring, recurrence_interval, panel_count, amount, notes, employee)
-            VALUES ($1, $2, $3, $4, true, $5, $6, $7, $8, $9)
-          `, [stop.customer_id, job.job_description || '', newStatus || '', nextDateStr, recurrence,
-              job.panel_count || 0, job.amount || 0, job.notes || '', job.employee || '']);
-
-          await client.query(
-            `UPDATE customers SET status = $1, last_service_date = $2, scheduled_date = $3, route_confirmed = false WHERE id = $4`,
-            [newStatus, scheduledDate, nextDateStr, stop.customer_id]
-          );
-        } else {
-          await client.query(
-            `UPDATE customers SET status = '', last_service_date = $1, scheduled_date = NULL, route_confirmed = false WHERE id = $2`,
-            [scheduledDate, stop.customer_id]
-          );
-        }
+      if (nextUpcoming.rows.length > 0) {
+        const nextDate = nextUpcoming.rows[0].scheduled_date;
+        const daysUntilNext = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
+        const newStatus = daysUntilNext <= 30 ? 'scheduled' : '';
+        await client.query(
+          `UPDATE customers SET status = $1, last_service_date = $2, next_service_date = $3, route_confirmed = false WHERE id = $4`,
+          [newStatus, scheduledDate, nextDate, stop.customer_id]
+        );
+      } else {
+        await client.query(
+          `UPDATE customers SET status = '', last_service_date = $1, next_service_date = NULL, route_confirmed = false WHERE id = $2`,
+          [scheduledDate, stop.customer_id]
+        );
       }
     } else {
       await client.query(
