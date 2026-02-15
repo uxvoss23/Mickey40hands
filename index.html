@@ -899,6 +899,12 @@
             console.error('Failed to load routes from database:', e);
           }
 
+          if (!localStorage.getItem('routeLogicV2')) {
+            localStorage.removeItem('savedRoutes');
+            localStorage.setItem('routeLogicV2', 'true');
+            console.log('One-time cleanup: cleared old route data from localStorage');
+          }
+
           try {
             const saved = localStorage.getItem('savedRoutes');
             if (saved) {
