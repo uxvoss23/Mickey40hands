@@ -289,7 +289,52 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
     `).join('');
   };
 
-  const enrollmentCards = enrollmentTokens ? `
+  const isEnrolled = recurringStatus && recurringStatus.startsWith('enrolled_');
+  const enrolledPlanType = isEnrolled ? recurringStatus.replace('enrolled_', '') : null;
+  const enrolledPlanLabels = { annual: 'Annual', biannual: 'Bi-Annual', triannual: '3x Per Year' };
+  const enrolledPlanFreq = { annual: '1x per year', biannual: '2x per year', triannual: 'Every 4 months' };
+  const enrolledPlanPrices = { annual: annualPrice, biannual: biannualPrice, triannual: triannualPrice };
+  const enrolledPlanSavings = { annual: annualSave, biannual: biannualSave, triannual: triannualSave };
+  const enrolledPlanDiscounts = { annual: '10%', biannual: '15%', triannual: '20%' };
+
+  const enrolledConfirmation = isEnrolled ? `
+    <tr>
+      <td style="background:#ffffff;padding:0 24px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:linear-gradient(135deg,#059669 0%,#10b981 100%);border-radius:16px;padding:28px 24px;text-align:center;">
+              <div style="font-size:40px;margin-bottom:10px;">🎉</div>
+              <h2 style="color:#ffffff;margin:0 0 6px;font-size:20px;font-weight:800;">You're Enrolled in Recurring Maintenance!</h2>
+              <p style="color:rgba(255,255,255,0.85);margin:0 0 24px;font-size:14px;line-height:1.5;">Great news — you've signed up for our recurring maintenance plan. Your panels will stay at peak performance with regularly scheduled professional cleanings.</p>
+
+              <div style="background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:24px 20px;text-align:center;max-width:280px;margin:0 auto;">
+                <div style="background:rgba(255,255,255,0.2);color:#ffffff;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:800;display:inline-block;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px;">Your Plan</div>
+                <div style="font-size:22px;font-weight:800;color:#ffffff;margin-bottom:2px;">${enrolledPlanLabels[enrolledPlanType] || enrolledPlanType}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-bottom:16px;">${enrolledPlanFreq[enrolledPlanType] || ''}</div>
+                <div style="font-size:32px;font-weight:800;color:#ffffff;">$${enrolledPlanPrices[enrolledPlanType] || fullPrice}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.7);margin:4px 0 12px;">per cleaning</div>
+                <div style="background:rgba(255,255,255,0.25);border-radius:10px;padding:10px 16px;margin-top:8px;">
+                  <div style="color:#ffffff;font-size:13px;font-weight:700;">You save ${enrolledPlanDiscounts[enrolledPlanType] || ''} per cleaning</div>
+                  <div style="color:rgba(255,255,255,0.7);font-size:11px;margin-top:2px;">$${enrolledPlanSavings[enrolledPlanType] || '0'} savings per year vs standard pricing</div>
+                </div>
+              </div>
+
+              <div style="margin-top:20px;text-align:left;max-width:320px;margin-left:auto;margin-right:auto;">
+                <div style="color:rgba(255,255,255,0.9);font-size:13px;padding:6px 0;">✅ Priority scheduling for all appointments</div>
+                <div style="color:rgba(255,255,255,0.9);font-size:13px;padding:6px 0;">✅ Locked-in discounted rate</div>
+                <div style="color:rgba(255,255,255,0.9);font-size:13px;padding:6px 0;">✅ Automatic scheduling — no calls needed</div>
+                <div style="color:rgba(255,255,255,0.9);font-size:13px;padding:6px 0;">✅ Cancel or adjust anytime — no contracts</div>
+              </div>
+
+              <p style="color:rgba(255,255,255,0.5);font-size:11px;margin:16px 0 0;">We'll reach out before each service to confirm your appointment.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  ` : '';
+
+  const enrollmentCards = (!isEnrolled && enrollmentTokens) ? `
     <tr>
       <td style="background:#ffffff;padding:0 24px 24px;">
         <table width="100%" cellpadding="0" cellspacing="0">
@@ -496,8 +541,8 @@ function buildAssessmentEmailHTML(data, enrollmentTokens) {
             </td>
           </tr>
 
-          <!-- Section 5: Recurring Plan Cards -->
-          ${enrollmentCards}
+          <!-- Section 5: Recurring Plan / Enrollment -->
+          ${isEnrolled ? enrolledConfirmation : enrollmentCards}
 
           <!-- Footer -->
           <tr>
@@ -561,13 +606,52 @@ router.post('/send-assessment', rateLimit, async (req, res) => {
     const servicePrice = parseFloat(assessmentData.servicePrice) || 0;
     const pricePerPanel = parseFloat(assessmentData.pricePerPanel) || 9;
     const panelCount = parseInt(assessmentData.panelCount) || 0;
+    const recurringStatus = assessmentData.recurringStatus || '';
+    const isEnrolledByTech = recurringStatus.startsWith('enrolled_');
 
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const baseUrl = `${protocol}://${host}`;
 
     let enrollmentTokens = null;
-    if (customerId) {
+
+    if (isEnrolledByTech && customerId) {
+      const planType = recurringStatus.replace('enrolled_', '');
+      const planIntervals = { annual: '12', biannual: '6', triannual: '4' };
+      const discountMultiplier = { annual: 0.90, biannual: 0.85, triannual: 0.80 };
+      const interval = planIntervals[planType] || '6';
+      const discount = discountMultiplier[planType] || 0.85;
+
+      const panels = panelCount || 0;
+      const ppp = pricePerPanel || 9;
+      const discountedPrice = panels > 0 ? (panels * ppp * discount).toFixed(2) : (servicePrice * discount).toFixed(2);
+      const discountedPPP = (ppp * discount).toFixed(2);
+
+      await pool.query(
+        `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status IS NULL OR status = 'scheduled') AND completed_date IS NULL`,
+        [customerId]
+      );
+
+      await pool.query('UPDATE customers SET is_recurring = true WHERE id = $1', [customerId]);
+
+      const customerResult = await pool.query('SELECT * FROM customers WHERE id = $1', [customerId]);
+      const customer = customerResult.rows[0] || {};
+
+      const baseJob = {
+        job_description: 'Solar Panel Cleaning',
+        price: discountedPrice,
+        price_per_panel: discountedPPP,
+        panel_count: panels,
+        preferred_days: customer.preferred_days || '',
+        preferred_time: customer.preferred_time || '',
+        technician: ''
+      };
+
+      const { generateRecurringJobs } = require('./jobs');
+      await generateRecurringJobs(customerId, baseJob, interval, new Date());
+
+      console.log(`Auto-enrolled customer ${customerId} in ${planType} plan at $${discountedPrice}/cleaning`);
+    } else if (customerId && !isEnrolledByTech) {
       const plans = ['annual', 'biannual', 'triannual'];
       enrollmentTokens = {};
       for (const plan of plans) {
