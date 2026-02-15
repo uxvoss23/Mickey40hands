@@ -2916,6 +2916,22 @@
           }));
           propagateCustomerUpdate(customer.id, unscheduleUpdates);
 
+          const routeDayStr = effectiveDate.toISOString().split('T')[0];
+          apiFetch('/jobs?customer_id=' + customer.id).then(data => {
+            if (data && data.jobs) {
+              const activeJobs = data.jobs
+                .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+                .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
+              const jobForThisDay = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDayStr);
+              if (jobForThisDay) {
+                apiFetch(`/jobs/${jobForThisDay.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ scheduled_date: '', scheduled_time: '', status: 'unscheduled' })
+                }).catch(e => console.error('Failed to clear job on route removal:', e));
+              }
+            }
+          }).catch(e => console.error('Failed to fetch jobs for route removal:', e));
+
           const savedRoutesForDay = savedRoutes.filter(r => {
             const rDate = new Date(r.scheduledDate);
             return rDate.toDateString() === dateKey;
@@ -3571,12 +3587,30 @@
           });
         });
 
-        // Persist scheduling to database
         propagateCustomerUpdate(customer.id, {
           scheduledDate: date.toISOString(),
           scheduledTime: timeSlot,
           status: 'scheduled'
         });
+
+        const routeDateStr = date.toISOString().split('T')[0];
+        apiFetch('/jobs?customer_id=' + customer.id).then(data => {
+          if (data && data.jobs) {
+            const activeJobs = data.jobs
+              .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+              .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
+            const dateMatchJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDateStr);
+            const unscheduledJob = activeJobs.find(j => !j.scheduled_date || j.scheduled_date === '' || j.status === 'unscheduled');
+            const nearestFutureJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] >= routeDateStr);
+            const jobToUpdate = dateMatchJob || unscheduledJob || nearestFutureJob || activeJobs[0];
+            if (jobToUpdate) {
+              apiFetch(`/jobs/${jobToUpdate.id}`, {
+                method: 'PATCH',
+                body: JSON.stringify({ status: 'scheduled', scheduled_date: routeDateStr, scheduled_time: timeSlot || '' })
+              }).catch(e => console.error('Failed to update job on route add:', e));
+            }
+          }
+        }).catch(e => console.error('Failed to fetch jobs for route add:', e));
 
         setUnsavedRouteChanges(true);
         setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
@@ -3632,8 +3666,24 @@
               method: 'PATCH',
               body: JSON.stringify({ status: 'in progress' })
             });
+            const routeDateStr = (savedRoute.scheduledDate || new Date().toISOString()).split('T')[0];
+            const jobsData = await apiFetch('/jobs?customer_id=' + rc.id);
+            if (jobsData && jobsData.jobs) {
+              const activeJobs = jobsData.jobs
+                .filter(j => j.status !== 'completed' && j.status !== 'cancelled')
+                .sort((a, b) => (a.scheduled_date || '9999').localeCompare(b.scheduled_date || '9999'));
+              const dateMatchJob = activeJobs.find(j => j.scheduled_date && j.scheduled_date.split('T')[0] === routeDateStr);
+              const scheduledJob = activeJobs.find(j => j.status === 'scheduled');
+              const jobToUpdate = dateMatchJob || scheduledJob || activeJobs[0];
+              if (jobToUpdate) {
+                await apiFetch(`/jobs/${jobToUpdate.id}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({ status: 'in progress' })
+                });
+              }
+            }
           } catch (err) {
-            console.error('Error updating customer status to in progress:', err);
+            console.error('Error updating customer/job status to in progress:', err);
           }
         });
 
@@ -5548,20 +5598,27 @@ const createJob = async () => {
             createdAt: new Date().toISOString()
           };
 
-          // Update customer with panel count if new customer or not set
-          if (jobForm.isNewCustomer || !customerData.totalPanels) {
-            const updatedCustomers = customers.map(c => 
-              c.id === customerId 
-                ? { ...c, totalPanels: parseInt(jobForm.panelCount) || 0 }
-                : c
-            );
-            if (jobForm.isNewCustomer) {
-              updatedCustomers.push({
-                ...customerData,
-                totalPanels: parseInt(jobForm.panelCount) || 0
-              });
+          const jobStatus = jobForm.scheduledDate ? 'scheduled' : 'unscheduled';
+          const recurringJobsCreated = apiResult?.recurring_jobs_created || 0;
+          const jobCountIncrement = 1 + recurringJobsCreated;
+          setCustomers(prev => prev.map(c => {
+            if (c.id === customerId) {
+              return {
+                ...c,
+                totalPanels: parseInt(jobForm.panelCount) || c.totalPanels || 0,
+                activeJobCount: (c.activeJobCount || 0) + jobCountIncrement,
+                totalJobCount: (c.totalJobCount || 0) + jobCountIncrement,
+                status: jobStatus,
+                existingJob: true
+              };
             }
-            setCustomers(updatedCustomers);
+            return c;
+          }));
+          if (jobForm.isNewCustomer) {
+            setCustomers(prev => {
+              if (prev.some(c => c.id === customerId)) return prev;
+              return [...prev, { ...customerData, totalPanels: parseInt(jobForm.panelCount) || 0, activeJobCount: jobCountIncrement, totalJobCount: jobCountIncrement, status: jobStatus, existingJob: true }];
+            });
           }
 
           // If job has a scheduled date/time, add to calendar

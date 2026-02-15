@@ -282,23 +282,26 @@ router.patch('/:id', async (req, res) => {
 
         if (updatedJob.is_recurring) {
           const nextUpcoming = await pool.query(
-            `SELECT id, scheduled_date FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' AND id != $2 AND scheduled_date > $3 ORDER BY scheduled_date ASC LIMIT 1`,
+            `SELECT * FROM jobs WHERE customer_id = $1 AND is_recurring = true AND status != 'completed' AND status != 'cancelled' AND id != $2 AND scheduled_date > $3 ORDER BY scheduled_date ASC LIMIT 1`,
             [updatedJob.customer_id, updatedJob.id, completedDateStr]
           );
 
           if (nextUpcoming.rows.length > 0) {
-            const nextDate = nextUpcoming.rows[0].scheduled_date;
+            const nextJob = nextUpcoming.rows[0];
+            const nextDate = nextJob.scheduled_date;
             const daysUntilNext = Math.floor((new Date(nextDate) - new Date()) / (1000 * 60 * 60 * 24));
             const customerStatus = daysUntilNext <= 30 && daysUntilNext >= 0 ? 'scheduled' : '';
             await pool.query(
               `UPDATE customers SET status = $1, next_service_date = $2 WHERE id = $3`,
               [customerStatus, nextDate, updatedJob.customer_id]
             );
+            updatedJob.next_job = nextJob;
           } else {
             await pool.query(
               `UPDATE customers SET status = '', next_service_date = NULL WHERE id = $1`,
               [updatedJob.customer_id]
             );
+            updatedJob.next_job = null;
           }
         } else {
           await pool.query(
