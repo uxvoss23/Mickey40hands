@@ -8658,7 +8658,7 @@ const createJob = async () => {
 
                           {/* Unrouted Jobs */}
                           {(() => {
-                            const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled');
+                            const unroutedCustomers = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0);
                             const parsePrefDays = (prefStr) => {
                               if (!prefStr) return [];
                               const dayMap = { 'mon': 1, 'tue': 2, 'wed': 3, 'thu': 4, 'fri': 5, 'sat': 6, 'sun': 0,
