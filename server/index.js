@@ -92,6 +92,140 @@ app.get('/tech-route/:id', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'tech-route.html'));
 });
 
+app.get('/enroll/:token', async (req, res) => {
+  const pool = require('./db/pool');
+  const { token } = req.params;
+  try {
+    const result = await pool.query('SELECT * FROM enrollment_tokens WHERE token = $1', [token]);
+    if (result.rows.length === 0) {
+      return res.send(buildEnrollmentPage('Token Not Found', 'This enrollment link is invalid or has expired.', 'error'));
+    }
+    const enrollment = result.rows[0];
+    if (enrollment.used_at) {
+      return res.send(buildEnrollmentPage('Already Enrolled', 'You have already enrolled in a recurring maintenance plan. We look forward to your next service!', 'info'));
+    }
+    if (enrollment.expired) {
+      return res.send(buildEnrollmentPage('Link Expired', 'This enrollment link has expired. Please contact us to set up your recurring service plan.', 'error'));
+    }
+
+    const customerResult = await pool.query('SELECT * FROM customers WHERE id = $1', [enrollment.customer_id]);
+    if (customerResult.rows.length === 0) {
+      return res.send(buildEnrollmentPage('Customer Not Found', 'We could not find your account. Please contact us for assistance.', 'error'));
+    }
+    const customer = customerResult.rows[0];
+
+    const planLabels = { annual: 'Annual (1x/year)', biannual: 'Bi-Annual (2x/year)', triannual: '3x Per Year' };
+    const planIntervals = { annual: '12', biannual: '6', triannual: '4' };
+    const planDiscounts = { annual: '10%', biannual: '15%', triannual: '20%' };
+
+    const interval = planIntervals[enrollment.plan_type] || '6';
+    const label = planLabels[enrollment.plan_type] || enrollment.plan_type;
+    const discount = planDiscounts[enrollment.plan_type] || '';
+
+    const ppp = parseFloat(enrollment.price_per_panel) || 9;
+    const panels = parseInt(enrollment.panel_count) || parseInt(customer.panels) || 0;
+    const basePrice = panels > 0 ? panels * ppp : parseFloat(enrollment.service_price) || 0;
+    const discountMultiplier = { annual: 0.90, biannual: 0.85, triannual: 0.80 };
+    const discountedPrice = (basePrice * (discountMultiplier[enrollment.plan_type] || 0.85)).toFixed(2);
+
+    await pool.query('UPDATE enrollment_tokens SET used_at = NOW() WHERE id = $1', [enrollment.id]);
+    await pool.query('UPDATE enrollment_tokens SET expired = TRUE WHERE customer_id = $1 AND id != $2 AND used_at IS NULL', [enrollment.customer_id, enrollment.id]);
+
+    await pool.query(
+      `DELETE FROM jobs WHERE customer_id = $1 AND is_recurring = true AND (status IS NULL OR status = 'scheduled') AND completed_date IS NULL`,
+      [enrollment.customer_id]
+    );
+
+    await pool.query('UPDATE customers SET is_recurring = true WHERE id = $1', [enrollment.customer_id]);
+
+    const baseJob = {
+      job_description: 'Solar Panel Cleaning',
+      price: discountedPrice,
+      price_per_panel: (ppp * (discountMultiplier[enrollment.plan_type] || 0.85)).toFixed(2),
+      panel_count: panels,
+      preferred_days: customer.preferred_days || '',
+      preferred_time: customer.preferred_time || '',
+      technician: ''
+    };
+
+    const { generateRecurringJobs } = require('./routes/jobs');
+    const startDate = new Date();
+    const jobs = await generateRecurringJobs(enrollment.customer_id, baseJob, interval, startDate);
+
+    return res.send(buildEnrollmentPage(
+      'You\'re All Set!',
+      `Thank you, ${customer.name || 'valued customer'}! You've been enrolled in our <strong>${label}</strong> maintenance plan at <strong>$${discountedPrice} per cleaning</strong> (${discount} off). We've scheduled your upcoming cleanings — you don't need to do anything else. We'll reach out before each service to confirm your appointment.`,
+      'success',
+      { planName: label, price: discountedPrice, jobsCreated: jobs.length, discount }
+    ));
+  } catch (err) {
+    console.error('Enrollment error:', err);
+    return res.send(buildEnrollmentPage('Something Went Wrong', 'We encountered an issue processing your enrollment. Please contact us and we\'ll get you set up right away.', 'error'));
+  }
+});
+
+function buildEnrollmentPage(title, message, type, details) {
+  const colors = {
+    success: { bg: '#f0fdf4', border: '#22c55e', icon: '✅', accent: '#16a34a' },
+    error: { bg: '#fef2f2', border: '#ef4444', icon: '❌', accent: '#dc2626' },
+    info: { bg: '#eef2ff', border: '#6366f1', icon: 'ℹ️', accent: '#4f46e5' }
+  };
+  const c = colors[type] || colors.info;
+
+  const detailsHTML = details ? `
+    <div style="margin-top:24px;background:#f8fafc;border-radius:12px;padding:20px;text-align:left;">
+      <div style="font-size:13px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Your Plan Details</div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+        <span style="color:#64748b;font-size:14px;">Plan</span>
+        <span style="color:#1e293b;font-size:14px;font-weight:600;">${details.planName}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+        <span style="color:#64748b;font-size:14px;">Price Per Cleaning</span>
+        <span style="color:#16a34a;font-size:14px;font-weight:700;">$${details.price}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;">
+        <span style="color:#64748b;font-size:14px;">Your Discount</span>
+        <span style="color:#4f46e5;font-size:14px;font-weight:600;">${details.discount} off</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;">
+        <span style="color:#64748b;font-size:14px;">Cleanings Scheduled</span>
+        <span style="color:#1e293b;font-size:14px;font-weight:600;">${details.jobsCreated} upcoming</span>
+      </div>
+    </div>
+  ` : '';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} - Sunton Solutions</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;">
+  <div style="max-width:480px;width:90%;margin:40px auto;text-align:center;">
+    <div style="background:#ffffff;border-radius:20px;box-shadow:0 10px 40px rgba(0,0,0,0.08);overflow:hidden;">
+      <div style="background:linear-gradient(135deg,#0f172a,#1e293b);padding:32px 24px;">
+        <div style="font-size:13px;color:#fbbf24;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Sunton Solutions</div>
+        <div style="font-size:11px;color:#94a3b8;">Solar Panel Cleaning & Maintenance</div>
+      </div>
+      <div style="padding:32px 24px;">
+        <div style="font-size:48px;margin-bottom:16px;">${c.icon}</div>
+        <h1 style="font-size:24px;font-weight:800;color:#1e293b;margin:0 0 12px;">${title}</h1>
+        <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${message}</p>
+        ${detailsHTML}
+      </div>
+      <div style="padding:16px 24px 24px;border-top:1px solid #f1f5f9;">
+        <p style="font-size:12px;color:#94a3b8;margin:0;">Questions? Reply to your service email or contact us anytime.</p>
+      </div>
+    </div>
+    <p style="font-size:11px;color:#cbd5e1;margin-top:16px;">© ${new Date().getFullYear()} Sunton Solutions</p>
+  </div>
+</body>
+</html>`;
+}
+
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) {
     res.sendFile(path.join(__dirname, '..', 'index.html'));

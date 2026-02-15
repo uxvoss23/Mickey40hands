@@ -12011,11 +12011,13 @@ const createJob = async () => {
                                           setAssessmentPreview({
                                             to: customer.email,
                                             data: {
+                                              customerId: customer.id,
                                               customerName: customer.name,
                                               address: customer.address,
                                               serviceDate: savedRoute.scheduledDate,
                                               panelCount: customer.panelCount,
-                                              servicePrice: customer.amountPaid,
+                                              servicePrice: parseFloat(customer.amountPaid) || 0,
+                                              pricePerPanel: parseFloat(customer.pricePerPanel) || 9,
                                               buildupLevel: cd.buildup_level || '',
                                               debris: cd.debris || [],
                                               surfaceDamage: cd.surface_damage || '',

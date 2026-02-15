@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { Resend } = require('resend');
+const pool = require('../db/pool');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -238,46 +239,113 @@ function buildRouteEmailHTML(routeData, baseUrl) {
 </html>`;
 }
 
-function buildAssessmentEmailHTML(data) {
-  const { customerName, address, serviceDate, panelCount, servicePrice,
+function buildAssessmentEmailHTML(data, enrollmentTokens) {
+  const { customerName, address, serviceDate, panelCount, servicePrice, pricePerPanel,
           buildupLevel, debris, surfaceDamage, systemChecks, inspectionNotes,
-          recommendedFrequency, recurringStatus, issuePhotos, photos } = data;
+          recommendedFrequency, recurringStatus, photos } = data;
 
+  const firstName = (customerName || 'there').split(' ')[0];
   const formattedDate = serviceDate ? new Date(serviceDate).toLocaleDateString('en-US', {
     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-  }) : 'N/A';
-
-  const recurringLabels = {
-    not_offered: 'Not Discussed', offered_declined: 'Discussed', enrolled_annual: 'Enrolled - Annual', enrolled_biannual: 'Enrolled - Bi-Annual',
-    signed_annual: 'Enrolled - Annual', signed_biannual: 'Enrolled - Bi-Annual'
-  };
-
-  const buildupColors = { Light: '#22c55e', Moderate: '#f59e0b', Heavy: '#ef4444' };
-  const buildupColor = buildupColors[buildupLevel] || '#64748b';
-
-  const damageIsNone = !surfaceDamage || surfaceDamage === 'None';
-  const damageColor = damageIsNone ? '#22c55e' : '#ef4444';
-
-  const systemIssues = (systemChecks || []).filter(c => c !== 'No visible issues');
-  const noIssues = systemChecks && systemChecks.includes('No visible issues') && systemIssues.length === 0;
+  }) : 'your recent service';
 
   const beforePhotos = (photos || []).filter(p => p.label && (p.label.includes('Before') || p.label.includes('Buildup')));
   const afterPhotos = (photos || []).filter(p => p.label && (p.label.includes('After') || p.label.includes('Clean')));
   const issuePhotosList = (photos || []).filter(p => p.label && p.label.startsWith('Issue:'));
 
-  const photoRow = (photoList, title) => {
-    if (!photoList || photoList.length === 0) return '';
-    return `
-      <tr><td style="padding: 8px 20px 0;">
-        <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">${title}</div>
-        <table width="100%" cellpadding="0" cellspacing="0"><tr>
-          ${photoList.map(p => `<td style="padding: 0 4px; width: ${100/photoList.length}%; vertical-align: top;">
-            <img src="${p.data}" alt="${p.label}" style="width: 100%; border-radius: 8px; display: block;" />
-            <div style="font-size: 10px; color: #64748b; text-align: center; margin-top: 4px;">${p.label}</div>
-          </td>`).join('')}
-        </tr></table>
-      </td></tr>`;
+  const damageIsNone = !surfaceDamage || surfaceDamage === 'None';
+  const systemIssues = (systemChecks || []).filter(c => c !== 'No visible issues');
+  const noSystemIssues = systemChecks && systemChecks.includes('No visible issues') && systemIssues.length === 0;
+
+  const buildupNarrative = {
+    'Light': 'a light layer of dust and residue',
+    'Moderate': 'a moderate buildup of dirt and debris that was reducing your panel efficiency',
+    'Heavy': 'a heavy accumulation of grime that was significantly impacting your solar production'
   };
+  const buildupDesc = buildupNarrative[buildupLevel] || 'some buildup on your panels';
+
+  const debrisDesc = debris && debris.length > 0 ?
+    ` The primary contaminants were ${debris.join(' and ').toLowerCase()}.` : '';
+
+  const price = parseFloat(servicePrice) || 0;
+  const ppp = parseFloat(pricePerPanel) || 9;
+  const panels = parseInt(panelCount) || 0;
+  const annualPrice = panels > 0 ? (panels * ppp * 0.90).toFixed(2) : (price * 0.90).toFixed(2);
+  const biannualPrice = panels > 0 ? (panels * ppp * 0.85).toFixed(2) : (price * 0.85).toFixed(2);
+  const triannualPrice = panels > 0 ? (panels * ppp * 0.80).toFixed(2) : (price * 0.80).toFixed(2);
+  const fullPrice = panels > 0 ? (panels * ppp).toFixed(2) : (price > 0 ? price.toFixed(2) : '0.00');
+  const annualSave = (parseFloat(fullPrice) - parseFloat(annualPrice)).toFixed(2);
+  const biannualSave = ((parseFloat(fullPrice) * 2) - (parseFloat(biannualPrice) * 2)).toFixed(2);
+  const triannualSave = ((parseFloat(fullPrice) * 3) - (parseFloat(triannualPrice) * 3)).toFixed(2);
+
+  const photoGrid = (photoList, maxWidth) => {
+    if (!photoList || photoList.length === 0) return '';
+    const width = photoList.length === 1 ? '100%' : (photoList.length === 2 ? '48%' : '31%');
+    return photoList.map(p => `
+      <div style="display:inline-block;width:${width};vertical-align:top;padding:4px;">
+        <img src="${p.data}" alt="${p.label}" style="width:100%;border-radius:12px;display:block;" />
+        <div style="font-size:11px;color:#64748b;text-align:center;margin-top:6px;font-weight:500;">${p.label.replace('Issue: ', '')}</div>
+      </div>
+    `).join('');
+  };
+
+  const enrollmentCards = enrollmentTokens ? `
+    <tr>
+      <td style="background:#ffffff;padding:0 24px 24px;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);border-radius:16px;padding:28px 24px;text-align:center;">
+              <h2 style="color:#ffffff;margin:0 0 6px;font-size:20px;font-weight:800;">Keep Your Panels at Peak Performance</h2>
+              <p style="color:rgba(255,255,255,0.85);margin:0 0 20px;font-size:14px;line-height:1.5;">Lock in your maintenance plan today and save on every cleaning. Our recurring customers enjoy priority scheduling, discounted rates, and the peace of mind that their solar investment is always performing at its best.</p>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:8px;">
+                <tr>
+                  <td width="33%" style="padding:0 4px;vertical-align:top;">
+                    <div style="background:rgba(255,255,255,0.12);border:2px solid rgba(255,255,255,0.25);border-radius:14px;padding:20px 12px;text-align:center;">
+                      <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Annual</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.5);margin:2px 0 8px;">1x per year</div>
+                      <div style="font-size:26px;font-weight:800;color:#ffffff;">$${annualPrice}</div>
+                      <div style="font-size:11px;color:#a5f3fc;margin:2px 0 0;">per cleaning</div>
+                      <div style="background:#22c55e;color:#ffffff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;display:inline-block;margin:10px 0;">Save $${annualSave}/yr</div>
+                      <div style="margin-top:12px;">
+                        <a href="${enrollmentTokens.annual || '#'}" style="display:inline-block;background:#ffffff;color:#4f46e5;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;width:80%;box-sizing:border-box;">Select Plan</a>
+                      </div>
+                    </div>
+                  </td>
+                  <td width="33%" style="padding:0 4px;vertical-align:top;">
+                    <div style="background:rgba(255,255,255,0.18);border:2px solid #fbbf24;border-radius:14px;padding:20px 12px;text-align:center;position:relative;">
+                      <div style="background:#fbbf24;color:#1e293b;padding:3px 12px;border-radius:10px;font-size:10px;font-weight:800;display:inline-block;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Most Popular</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Bi-Annual</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.5);margin:2px 0 8px;">2x per year</div>
+                      <div style="font-size:26px;font-weight:800;color:#ffffff;">$${biannualPrice}</div>
+                      <div style="font-size:11px;color:#a5f3fc;margin:2px 0 0;">per cleaning</div>
+                      <div style="background:#22c55e;color:#ffffff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;display:inline-block;margin:10px 0;">Save $${biannualSave}/yr</div>
+                      <div style="margin-top:12px;">
+                        <a href="${enrollmentTokens.biannual || '#'}" style="display:inline-block;background:#fbbf24;color:#1e293b;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;width:80%;box-sizing:border-box;">Select Plan</a>
+                      </div>
+                    </div>
+                  </td>
+                  <td width="33%" style="padding:0 4px;vertical-align:top;">
+                    <div style="background:rgba(255,255,255,0.12);border:2px solid rgba(255,255,255,0.25);border-radius:14px;padding:20px 12px;text-align:center;">
+                      <div style="font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">3x Per Year</div>
+                      <div style="font-size:11px;color:rgba(255,255,255,0.5);margin:2px 0 8px;">Every 4 months</div>
+                      <div style="font-size:26px;font-weight:800;color:#ffffff;">$${triannualPrice}</div>
+                      <div style="font-size:11px;color:#a5f3fc;margin:2px 0 0;">per cleaning</div>
+                      <div style="background:#22c55e;color:#ffffff;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;display:inline-block;margin:10px 0;">Save $${triannualSave}/yr</div>
+                      <div style="margin-top:12px;">
+                        <a href="${enrollmentTokens.triannual || '#'}" style="display:inline-block;background:#ffffff;color:#4f46e5;padding:10px 20px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;width:80%;box-sizing:border-box;">Select Plan</a>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:rgba(255,255,255,0.5);font-size:11px;margin:12px 0 0;">Cancel or adjust your plan anytime. No contracts, no hassle.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  ` : '';
 
   return `<!DOCTYPE html>
 <html>
@@ -285,118 +353,160 @@ function buildAssessmentEmailHTML(data) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9;">
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9;">
     <tr>
-      <td align="center" style="padding: 16px;">
-        <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px;">
+      <td align="center" style="padding:16px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;">
 
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 16px 16px 0 0; padding: 28px 20px; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0 0 4px 0; font-size: 22px; font-weight: 700;">Post-Service Assessment</h1>
-              <p style="color: rgba(255,255,255,0.8); margin: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase;">Sunton Solutions - Solar Panel Cleaning</p>
+            <td style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:20px 20px 0 0;padding:32px 24px;text-align:center;">
+              <div style="font-size:13px;color:#fbbf24;text-transform:uppercase;letter-spacing:2px;font-weight:700;margin-bottom:8px;">Sunton Solutions</div>
+              <h1 style="color:#ffffff;margin:0 0 8px;font-size:24px;font-weight:800;line-height:1.3;">Your Solar Panel<br/>Service Report</h1>
+              <div style="display:inline-block;background:rgba(99,102,241,0.3);border:1px solid rgba(99,102,241,0.5);border-radius:20px;padding:6px 16px;">
+                <span style="color:#a5b4fc;font-size:12px;font-weight:600;">${formattedDate}</span>
+              </div>
             </td>
           </tr>
 
-          <!-- Customer Info -->
+          <!-- Personal Greeting -->
           <tr>
-            <td style="background: #ffffff; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
-              <table width="100%" cellpadding="0" cellspacing="0">
+            <td style="background:#ffffff;padding:24px 24px 16px;">
+              <p style="margin:0;color:#1e293b;font-size:15px;line-height:1.6;">
+                Hi ${firstName},
+              </p>
+              <p style="margin:10px 0 0;color:#475569;font-size:14px;line-height:1.6;">
+                Thank you for trusting Sunton Solutions with your solar panel maintenance${panels > 0 ? ` — all ${panels} panels have been professionally cleaned and inspected` : ''}. Below is a complete summary of what our technician found and what was done during your service.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Section 1: What We Found -->
+          <tr>
+            <td style="background:#ffffff;padding:8px 24px 20px;">
+              <div style="border-left:4px solid #f59e0b;padding-left:16px;margin-bottom:16px;">
+                <h2 style="margin:0 0 4px;color:#1e293b;font-size:18px;font-weight:800;">What We Found</h2>
+                <p style="margin:0;color:#64748b;font-size:12px;">Initial panel condition before cleaning</p>
+              </div>
+              <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
+                During our inspection, we observed ${buildupDesc}.${debrisDesc}${!damageIsNone ? ` We also identified ${surfaceDamage.toLowerCase()} damage on the panel surface, which we've documented below.` : ' The good news is that no surface damage was found on any of your panels.'}
+              </p>
+              ${beforePhotos.length > 0 ? `
+                <div style="margin-bottom:8px;">
+                  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Before Cleaning</div>
+                  ${photoGrid(beforePhotos)}
+                </div>
+              ` : ''}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:12px;">
                 <tr>
-                  <td>
-                    <h2 style="margin: 0 0 4px 0; color: #1e293b; font-size: 17px; font-weight: 700;">${customerName || 'Customer'}</h2>
-                    <p style="margin: 0; color: #64748b; font-size: 13px;">📍 ${address || 'N/A'}</p>
-                    <p style="margin: 4px 0 0; color: #6366f1; font-size: 13px; font-weight: 500;">📅 ${formattedDate}</p>
+                  <td width="50%" style="padding:6px 4px 6px 0;">
+                    <div style="background:${buildupLevel === 'Heavy' ? '#fef2f2' : buildupLevel === 'Moderate' ? '#fffbeb' : '#f0fdf4'};border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Buildup Level</div>
+                      <div style="font-size:20px;font-weight:800;color:${buildupLevel === 'Heavy' ? '#dc2626' : buildupLevel === 'Moderate' ? '#d97706' : '#16a34a'};margin-top:4px;">${buildupLevel || 'N/A'}</div>
+                    </div>
                   </td>
-                  <td style="text-align: right; vertical-align: top;">
-                    ${panelCount ? `<span style="background: #fef3c7; color: #92400e; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600;">☀️ ${panelCount} panels</span>` : ''}
+                  <td width="50%" style="padding:6px 0 6px 4px;">
+                    <div style="background:${damageIsNone ? '#f0fdf4' : '#fef2f2'};border-radius:10px;padding:14px;text-align:center;">
+                      <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Surface Condition</div>
+                      <div style="font-size:20px;font-weight:800;color:${damageIsNone ? '#16a34a' : '#dc2626'};margin-top:4px;">${damageIsNone ? 'No Damage' : surfaceDamage}</div>
+                    </div>
                   </td>
                 </tr>
               </table>
+              ${debris && debris.length > 0 ? `
+                <div style="margin-top:10px;">
+                  <div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px;">Contaminants Removed</div>
+                  ${debris.map(d => `<span style="display:inline-block;background:#f1f5f9;color:#475569;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;margin:2px 4px 2px 0;">${d}</span>`).join('')}
+                </div>
+              ` : ''}
             </td>
           </tr>
 
-          ${photoRow(beforePhotos, 'Before Service')}
-          ${photoRow(afterPhotos, 'After Service')}
-
-          <!-- Cleaning Assessment -->
+          <!-- Section 2: What We Did -->
           <tr>
-            <td style="background: #ffffff; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
-              <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 15px; font-weight: 700;">🔵 Cleaning Assessment</h3>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td width="50%" style="padding: 6px 0;">
-                    <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Buildup Level</div>
-                    <div style="font-size: 15px; font-weight: 700; color: ${buildupColor}; margin-top: 2px;">${buildupLevel || 'N/A'}</div>
-                  </td>
-                  <td width="50%" style="padding: 6px 0;">
-                    <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Surface Damage</div>
-                    <div style="font-size: 15px; font-weight: 700; color: ${damageColor}; margin-top: 2px;">${damageIsNone ? 'None Found ✓' : surfaceDamage}</div>
-                  </td>
-                </tr>
-                ${debris && debris.length > 0 ? `
-                <tr>
-                  <td colspan="2" style="padding: 8px 0 0;">
-                    <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase;">Debris Type</div>
-                    <div style="margin-top: 4px;">${debris.map(d => `<span style="display: inline-block; background: #f1f5f9; color: #475569; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; margin: 2px 4px 2px 0;">${d}</span>`).join('')}</div>
-                  </td>
-                </tr>` : ''}
-              </table>
+            <td style="background:#ffffff;padding:8px 24px 20px;">
+              <div style="border-left:4px solid #22c55e;padding-left:16px;margin-bottom:16px;">
+                <h2 style="margin:0 0 4px;color:#1e293b;font-size:18px;font-weight:800;">What We Did</h2>
+                <p style="margin:0;color:#64748b;font-size:12px;">Results after professional cleaning</p>
+              </div>
+              <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
+                Your panels have been thoroughly cleaned using our professional deionized water system. All ${buildupLevel ? buildupLevel.toLowerCase() + ' ' : ''}buildup${debris && debris.length > 0 ? ', ' + debris.join(', ').toLowerCase() + ',' : ''} and debris has been carefully removed to restore optimal sunlight absorption and maximize your energy production.
+              </p>
+              ${afterPhotos.length > 0 ? `
+                <div style="margin-bottom:8px;">
+                  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">After Cleaning</div>
+                  ${photoGrid(afterPhotos)}
+                </div>
+              ` : ''}
             </td>
           </tr>
 
-          <!-- System Inspection -->
+          <!-- Section 3: System Health Check -->
           <tr>
-            <td style="background: #ffffff; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
-              <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 15px; font-weight: 700;">🔍 System Inspection</h3>
-              ${noIssues ? `
-                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; text-align: center;">
-                  <span style="color: #22c55e; font-size: 14px; font-weight: 700;">✓ No Issues Found</span>
-                  <div style="color: #64748b; font-size: 12px; margin-top: 4px;">Your system is in good condition.</div>
+            <td style="background:#ffffff;padding:8px 24px 20px;">
+              <div style="border-left:4px solid #6366f1;padding-left:16px;margin-bottom:16px;">
+                <h2 style="margin:0 0 4px;color:#1e293b;font-size:18px;font-weight:800;">System Health Check</h2>
+                <p style="margin:0;color:#64748b;font-size:12px;">Full inspection of your solar system</p>
+              </div>
+              ${noSystemIssues ? `
+                <div style="background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1px solid #bbf7d0;border-radius:12px;padding:20px;text-align:center;margin-bottom:12px;">
+                  <div style="font-size:28px;margin-bottom:6px;">✅</div>
+                  <div style="color:#16a34a;font-size:16px;font-weight:700;">All Systems Look Great</div>
+                  <p style="color:#4ade80;font-size:13px;margin:6px 0 0;">No issues were found during our comprehensive inspection of your racking, wiring, and panel surfaces.</p>
                 </div>
               ` : `
-                <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 12px 14px;">
-                  <div style="color: #dc2626; font-size: 12px; font-weight: 700; margin-bottom: 6px;">Items Noted:</div>
-                  ${systemIssues.map(c => `<div style="color: #991b1b; font-size: 13px; padding: 3px 0;">⚠ ${c}</div>`).join('')}
-                </div>
+                <p style="margin:0 0 12px;color:#475569;font-size:14px;line-height:1.6;">During our inspection, our technician noted the following items for your awareness:</p>
+                ${systemIssues.map(issue => `
+                  <div style="background:#fef2f2;border-left:3px solid #ef4444;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:8px;">
+                    <div style="color:#dc2626;font-size:13px;font-weight:600;">⚠️ ${issue}</div>
+                  </div>
+                `).join('')}
               `}
+              ${issuePhotosList.length > 0 ? `
+                <div style="margin-top:12px;">
+                  <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:8px;">Documented Issues</div>
+                  ${photoGrid(issuePhotosList)}
+                </div>
+              ` : ''}
               ${inspectionNotes ? `
-                <div style="margin-top: 10px; background: #f8fafc; border-radius: 8px; padding: 12px 14px; border-left: 3px solid #6366f1;">
-                  <div style="font-size: 11px; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px;">Technician Notes</div>
-                  <div style="color: #334155; font-size: 13px; line-height: 1.5;">${inspectionNotes}</div>
+                <div style="margin-top:14px;background:#f8fafc;border-radius:12px;padding:16px;border-left:3px solid #6366f1;">
+                  <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px;">Notes From Your Technician</div>
+                  <p style="color:#334155;font-size:14px;line-height:1.6;margin:0;">${inspectionNotes}</p>
                 </div>
               ` : ''}
             </td>
           </tr>
 
-          ${issuePhotosList.length > 0 ? photoRow(issuePhotosList, 'Issues Documented') : ''}
-
-          <!-- Maintenance Recommendation -->
+          <!-- Section 4: Our Recommendation -->
           <tr>
-            <td style="background: #ffffff; padding: 16px 20px; border-bottom: 1px solid #e2e8f0;">
-              <h3 style="margin: 0 0 12px 0; color: #1e293b; font-size: 15px; font-weight: 700;">📅 Maintenance Recommendation</h3>
-              <table width="100%" cellpadding="0" cellspacing="0">
-                <tr>
-                  <td style="background: #eef2ff; border-radius: 8px; padding: 12px 14px; text-align: center;">
-                    <div style="font-size: 11px; color: #6366f1; text-transform: uppercase; font-weight: 600;">Recommended Cleaning Frequency</div>
-                    <div style="font-size: 20px; font-weight: 800; color: #4f46e5; margin-top: 4px;">${recommendedFrequency || 'N/A'}</div>
-                  </td>
-                </tr>
-              </table>
-              ${recurringStatus && recurringStatus !== 'not_offered' ? `
-                <div style="margin-top: 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; text-align: center;">
-                  <span style="color: #059669; font-size: 14px; font-weight: 700;">${recurringLabels[recurringStatus] || recurringStatus}</span>
-                </div>
-              ` : ''}
+            <td style="background:#ffffff;padding:8px 24px 24px;">
+              <div style="border-left:4px solid #8b5cf6;padding-left:16px;margin-bottom:16px;">
+                <h2 style="margin:0 0 4px;color:#1e293b;font-size:18px;font-weight:800;">Our Recommendation</h2>
+                <p style="margin:0;color:#64748b;font-size:12px;">Keeping your solar investment performing</p>
+              </div>
+              <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
+                Based on the ${buildupLevel ? buildupLevel.toLowerCase() : ''} buildup we found${debris && debris.length > 0 ? ' (' + debris.join(', ').toLowerCase() + ')' : ''}${!noSystemIssues && systemIssues.length > 0 ? ' and the system items we noted' : ''}, we recommend <strong style="color:#4f46e5;">${recommendedFrequency || 'regular'} cleaning</strong> to keep your panels performing at maximum efficiency. Regular maintenance can improve your solar output by up to 25% and extend the lifespan of your system.
+              </p>
+              <div style="background:linear-gradient(135deg,#eef2ff,#e0e7ff);border:1px solid #c7d2fe;border-radius:12px;padding:20px;text-align:center;">
+                <div style="font-size:11px;color:#6366f1;text-transform:uppercase;letter-spacing:1px;font-weight:700;">Recommended Schedule</div>
+                <div style="font-size:28px;font-weight:800;color:#4f46e5;margin:6px 0;">${recommendedFrequency || 'Regular'}</div>
+                <div style="font-size:12px;color:#64748b;">Based on your property's conditions and panel setup</div>
+              </div>
             </td>
           </tr>
+
+          <!-- Section 5: Recurring Plan Cards -->
+          ${enrollmentCards}
 
           <!-- Footer -->
           <tr>
-            <td style="text-align: center; padding: 20px; border-radius: 0 0 16px 16px; background: #ffffff;">
-              <p style="color: #94a3b8; font-size: 12px; margin: 0;">Thank you for choosing Sunton Solutions!</p>
-              <p style="color: #94a3b8; font-size: 11px; margin: 6px 0 0;">Questions? Reply to this email or call us anytime.</p>
+            <td style="text-align:center;padding:28px 24px;border-radius:0 0 20px 20px;background:#ffffff;">
+              <p style="color:#1e293b;font-size:14px;font-weight:600;margin:0 0 6px;">Thank you for choosing Sunton Solutions!</p>
+              <p style="color:#94a3b8;font-size:12px;margin:0;line-height:1.5;">Have questions about your assessment or want to schedule your next cleaning?<br/>Simply reply to this email or give us a call — we're happy to help.</p>
+              <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0;">
+                <span style="color:#cbd5e1;font-size:11px;">© ${new Date().getFullYear()} Sunton Solutions • Solar Panel Cleaning & Maintenance</span>
+              </div>
             </td>
           </tr>
 
@@ -408,13 +518,24 @@ function buildAssessmentEmailHTML(data) {
 </html>`;
 }
 
+const crypto = require('crypto');
+
+function generateToken() {
+  return crypto.randomBytes(24).toString('hex');
+}
+
 router.post('/preview-assessment', (req, res) => {
   try {
     const { assessmentData } = req.body;
     if (!assessmentData) {
       return res.status(400).json({ error: 'Missing assessmentData' });
     }
-    const html = buildAssessmentEmailHTML(assessmentData);
+    const previewTokens = {
+      annual: '#preview-annual',
+      biannual: '#preview-biannual',
+      triannual: '#preview-triannual'
+    };
+    const html = buildAssessmentEmailHTML(assessmentData, previewTokens);
     res.json({ html });
   } catch (err) {
     console.error('Assessment preview error:', err);
@@ -436,8 +557,31 @@ router.post('/send-assessment', rateLimit, async (req, res) => {
       return res.status(500).json({ error: 'Email service not configured' });
     }
 
-    const html = buildAssessmentEmailHTML(assessmentData);
-    const subject = `Post-Service Assessment - ${assessmentData.customerName || 'Customer'} - ${assessmentData.serviceDate ? new Date(assessmentData.serviceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent Service'}`;
+    const customerId = assessmentData.customerId;
+    const servicePrice = parseFloat(assessmentData.servicePrice) || 0;
+    const pricePerPanel = parseFloat(assessmentData.pricePerPanel) || 9;
+    const panelCount = parseInt(assessmentData.panelCount) || 0;
+
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const baseUrl = `${protocol}://${host}`;
+
+    let enrollmentTokens = null;
+    if (customerId) {
+      const plans = ['annual', 'biannual', 'triannual'];
+      enrollmentTokens = {};
+      for (const plan of plans) {
+        const token = generateToken();
+        await pool.query(
+          `INSERT INTO enrollment_tokens (token, customer_id, plan_type, service_price, price_per_panel, panel_count) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [token, customerId, plan, servicePrice, pricePerPanel, panelCount]
+        );
+        enrollmentTokens[plan] = `${baseUrl}/enroll/${token}`;
+      }
+    }
+
+    const html = buildAssessmentEmailHTML(assessmentData, enrollmentTokens);
+    const subject = `Your Solar Panel Service Report - ${assessmentData.customerName || 'Customer'} - ${assessmentData.serviceDate ? new Date(assessmentData.serviceDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recent Service'}`;
 
     const { data, error } = await resend.emails.send({
       from: 'Sunton Solutions <onboarding@resend.dev>',
