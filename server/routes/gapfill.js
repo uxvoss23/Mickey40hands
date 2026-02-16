@@ -429,7 +429,6 @@ router.post('/sessions/:id/add-to-route', async (req, res) => {
       jobDetails.technician || route.rows[0]?.technician || '',
       jobDetails.employee || '',
       'Gap-fill replacement',
-      true,
       scheduledDate
     ]);
 
