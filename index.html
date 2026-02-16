@@ -2937,59 +2937,64 @@
 
         // Preferred day/time filters are now highlight-only, no filtering
 
-        // --- Active toggle filters ---
-        if (activeFilters.verifiedSolar) {
-          results = results.filter(c => c.solarVerified === 'yes');
-        }
-        if (activeFilters.existingJob) {
-          results = results.filter(c => c.existingJob === true);
-        }
-        if (activeFilters.recurring) {
-          results = results.filter(c => c.isRecurring === true || c.recurring === true || c.recurring === 'TRUE');
-        }
-        if (activeFilters.minPanels && !isNaN(parseInt(activeFilters.minPanels))) {
-          const minPanels = parseInt(activeFilters.minPanels);
-          results = results.filter(c => {
-            const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
-            return panelCount >= minPanels;
-          });
+        // When prospecting in Route Planner (radius/draw active), skip ALL intermediate
+        // filters so the user sees every customer within the spatial area
+        if (!isProspectingInRoutePlanner) {
+          // --- Active toggle filters ---
+          if (activeFilters.verifiedSolar) {
+            results = results.filter(c => c.solarVerified === 'yes');
+          }
+          if (activeFilters.existingJob) {
+            results = results.filter(c => c.existingJob === true);
+          }
+          if (activeFilters.recurring) {
+            results = results.filter(c => c.isRecurring === true || c.recurring === true || c.recurring === 'TRUE');
+          }
+          if (activeFilters.minPanels && !isNaN(parseInt(activeFilters.minPanels))) {
+            const minPanels = parseInt(activeFilters.minPanels);
+            results = results.filter(c => {
+              const panelCount = parseInt(c.panelCount || c.totalPanels) || 0;
+              return panelCount >= minPanels;
+            });
+          }
+
+          // Last Service filter (from activeFilters)
+          if (activeFilters.lastService) {
+            const now = new Date();
+            results = results.filter(c => {
+              if (!c.lastServiceDate) return false;
+              const lastService = new Date(c.lastServiceDate);
+              const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
+              switch (activeFilters.lastService) {
+                case '3months': return monthsDiff > 3;
+                case '6months': return monthsDiff > 6;
+                case '1year': return monthsDiff > 12;
+                case '18months': return monthsDiff > 18;
+                case '2years': return monthsDiff > 24;
+                default: return true;
+              }
+            });
+          }
+
+          // Recurring Auto-List filter
+          if (showRecurringList) {
+            results = results.filter(c => c.isRecurring === true || c.recurring === true);
+          }
+
+          // --- Location filters (city/state/zip dropdowns) ---
+          if (cityFilter) {
+            results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
+          }
+          if (stateFilter) {
+            results = results.filter(c => (c.state?.toLowerCase() || '') === stateFilter.toLowerCase());
+          }
+          if (zipFilter) {
+            results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
+          }
+
         }
 
-        // Last Service filter (from activeFilters)
-        if (activeFilters.lastService) {
-          const now = new Date();
-          results = results.filter(c => {
-            if (!c.lastServiceDate) return false;
-            const lastService = new Date(c.lastServiceDate);
-            const monthsDiff = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-            switch (activeFilters.lastService) {
-              case '3months': return monthsDiff > 3;
-              case '6months': return monthsDiff > 6;
-              case '1year': return monthsDiff > 12;
-              case '18months': return monthsDiff > 18;
-              case '2years': return monthsDiff > 24;
-              default: return true;
-            }
-          });
-        }
-
-        // Recurring Auto-List filter
-        if (showRecurringList) {
-          results = results.filter(c => c.isRecurring === true || c.recurring === true);
-        }
-
-        // --- Location filters (city/state/zip dropdowns) ---
-        if (cityFilter) {
-          results = results.filter(c => (c.city?.toLowerCase() || '') === cityFilter.toLowerCase());
-        }
-        if (stateFilter) {
-          results = results.filter(c => (c.state?.toLowerCase() || '') === stateFilter.toLowerCase());
-        }
-        if (zipFilter) {
-          results = results.filter(c => (c.zip?.toLowerCase() || '').startsWith(zipFilter.toLowerCase()));
-        }
-
-        // --- Radius panel: time-based service filter ---
+        // --- Radius panel: time-based service filter (always applies, even during prospecting) ---
         if (lastServiceFilter) {
           const now = new Date();
           const monthsMap = { '3months': 3, '6months': 6, '12months': 12 };
