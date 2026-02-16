@@ -1029,6 +1029,10 @@
             const completedStopCustomerIds = new Set(
               data.stops.filter(s => s.completed_at).map(s => s.customer_id)
             );
+            const stopCustomerEmails = {};
+            data.stops.forEach(s => {
+              if (s.email) stopCustomerEmails[s.customer_id] = s.email;
+            });
             const stopCompletionData = {};
             data.stops.forEach(s => {
               if (s.completed_at) {
@@ -1055,6 +1059,7 @@
               routeId: sr.id,
               completedStopIds: completedStopCustomerIds,
               stopCompletionData,
+              stopCustomerEmails,
               completedCount,
               totalCount,
               allComplete: completedCount === totalCount && totalCount > 0,
@@ -1066,6 +1071,7 @@
             if (!update) return r;
             const updatedCustomers = r.customers.map(c => ({
               ...c,
+              email: update.stopCustomerEmails[c.id] || c.email,
               _stopCompleted: update.completedStopIds.has(c.id),
               _completionData: update.stopCompletionData[c.id] || null
             }));
@@ -12328,37 +12334,43 @@ const createJob = async () => {
                                         </div>
                                       </div>
                                     )}
-                                    {customer.email && cd && (
-                                      <button
-                                        onClick={() => {
-                                          const normalizedPhotos = (cd.photos || []).map((p, pi) => typeof p === 'object' && p.data ? p : { label: `Photo ${pi+1}`, data: p });
-                                          setAssessmentPreview({
-                                            to: customer.email,
-                                            data: {
-                                              customerId: customer.id,
-                                              customerName: customer.name,
-                                              address: customer.address,
-                                              serviceDate: savedRoute.scheduledDate,
-                                              panelCount: customer.panelCount,
-                                              servicePrice: parseFloat(customer.amountPaid) || 0,
-                                              pricePerPanel: parseFloat(customer.pricePerPanel) || 9,
-                                              buildupLevel: cd.buildup_level || '',
-                                              debris: (cd.debris || []).map(d => typeof d === 'object' ? (d.type || d.label || '') : d),
-                                              surfaceDamage: Array.isArray(cd.surface_damage) ? cd.surface_damage.map(d => typeof d === 'object' ? (d.type || d.label || '') : d).join(', ') : (cd.surface_damage || ''),
-                                              systemChecks: (cd.system_checks || []).map(s => typeof s === 'object' ? (s.type || s.label || '') : s),
-                                              urgentChecks: (cd.urgent_checks || []).map(u => typeof u === 'object' ? (u.type || u.label || '') : u),
-                                              inspectionNotes: cd.inspectionNotes || cd.inspection_notes || '',
-                                              recommendedFrequency: cd.recommended_frequency || '',
-                                              recurringStatus: cd.recurringSelection || cd.recurring_selection || '',
-                                              photos: normalizedPhotos
-                                            },
-                                            previewHtml: null,
-                                            sending: false,
-                                            sent: false
-                                          });
-                                        }}
-                                        style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '6px', color: '#818cf8', cursor: 'pointer', fontWeight: 600, marginTop: '6px', width: '100%', fontFamily: 'Inter, sans-serif' }}
-                                      >Preview & Send Assessment</button>
+                                    {cd && (
+                                      customer.email ? (
+                                        <button
+                                          onClick={() => {
+                                            const normalizedPhotos = (cd.photos || []).map((p, pi) => typeof p === 'object' && p.data ? p : { label: `Photo ${pi+1}`, data: p });
+                                            setAssessmentPreview({
+                                              to: customer.email,
+                                              data: {
+                                                customerId: customer.id,
+                                                customerName: customer.name,
+                                                address: customer.address,
+                                                serviceDate: savedRoute.scheduledDate,
+                                                panelCount: customer.panelCount,
+                                                servicePrice: parseFloat(customer.amountPaid) || 0,
+                                                pricePerPanel: parseFloat(customer.pricePerPanel) || 9,
+                                                buildupLevel: cd.buildup_level || '',
+                                                debris: (cd.debris || []).map(d => typeof d === 'object' ? (d.type || d.label || '') : d),
+                                                surfaceDamage: Array.isArray(cd.surface_damage) ? cd.surface_damage.map(d => typeof d === 'object' ? (d.type || d.label || '') : d).join(', ') : (cd.surface_damage || ''),
+                                                systemChecks: (cd.system_checks || []).map(s => typeof s === 'object' ? (s.type || s.label || '') : s),
+                                                urgentChecks: (cd.urgent_checks || []).map(u => typeof u === 'object' ? (u.type || u.label || '') : u),
+                                                inspectionNotes: cd.inspectionNotes || cd.inspection_notes || '',
+                                                recommendedFrequency: cd.recommended_frequency || '',
+                                                recurringStatus: cd.recurringSelection || cd.recurring_selection || '',
+                                                photos: normalizedPhotos
+                                              },
+                                              previewHtml: null,
+                                              sending: false,
+                                              sent: false
+                                            });
+                                          }}
+                                          style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(99, 102, 241, 0.2)', border: '1px solid rgba(99, 102, 241, 0.4)', borderRadius: '6px', color: '#818cf8', cursor: 'pointer', fontWeight: 600, marginTop: '6px', width: '100%', fontFamily: 'Inter, sans-serif' }}
+                                        >Preview & Send Assessment</button>
+                                      ) : (
+                                        <div style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.3)', borderRadius: '6px', color: '#fbbf24', fontWeight: 600, marginTop: '6px', width: '100%', textAlign: 'center', fontFamily: 'Inter, sans-serif' }}>
+                                          No email on file — add email to send assessment
+                                        </div>
+                                      )
                                     )}
                                   </div>
                                 )}
