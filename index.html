@@ -619,9 +619,7 @@
       const [filterCity, setFilterCity] = useState('');
       const [filterState, setFilterState] = useState('');
       const [filterZip, setFilterZip] = useState('');
-      const [verificationFilter, setVerificationFilter] = useState('all'); // 'all', 'verified', 'no-solar', 'unverified'
       const [activeFilters, setActiveFilters] = useState({
-        verifiedSolar: false,
         existingJob: false,
         recurring: false,
         minPanels: '',
@@ -2859,6 +2857,9 @@
         // In Route Planner with active radius/drawn area: bypass scheduled filter
         // to show ALL customers in the area (prospecting mode)
         const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
+        if (statusFilter === 'scheduled') {
+          console.log('[V3 FILTER]', 'radiusMode:', radiusMode, 'refPt:', !!referencePoint, 'drawn:', !!drawnArea, 'prospecting:', isProspectingInRoutePlanner, 'count:', results.length);
+        }
 
         // Status filter (unscheduled, scheduled)
         if (isProspectingInRoutePlanner) {
@@ -2943,9 +2944,6 @@
         // filters so the user sees every customer within the spatial area
         if (!isProspectingInRoutePlanner) {
           // --- Active toggle filters ---
-          if (activeFilters.verifiedSolar) {
-            results = results.filter(c => c.solarVerified === 'yes');
-          }
           if (activeFilters.existingJob) {
             results = results.filter(c => c.existingJob === true);
           }
@@ -8755,7 +8753,7 @@ const createJob = async () => {
                         Filters
                         {(() => {
                           const cnt = [statusFilter !== 'all', stateFilter, cityFilter, zipFilter, lastServiceFilter,
-                            activeFilters.verifiedSolar, activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels].filter(Boolean).length;
+                            activeFilters.existingJob, activeFilters.recurring, activeFilters.minPanels].filter(Boolean).length;
                           return cnt > 0 ? <span style={{ background: 'rgba(139,92,246,0.4)', padding: '1px 7px', borderRadius: '8px', fontSize: '10px', color: '#fff' }}>{cnt}</span> : null;
                         })()}
                         <span style={{ fontSize: '10px' }}>▼</span>
@@ -8904,7 +8902,7 @@ const createJob = async () => {
                       {/* Clear all */}
                       {(() => {
                         const hasAny = stateFilter || cityFilter || zipFilter ||
-                          lastServiceFilter || activeFilters.verifiedSolar || activeFilters.existingJob ||
+                          lastServiceFilter || activeFilters.existingJob ||
                           activeFilters.recurring || activeFilters.minPanels;
                         return hasAny ? (
                           <button
@@ -8915,7 +8913,7 @@ const createJob = async () => {
                               setLastServiceFilter('');
                               setPreferredDateFilter([]);
                               setPreferredTimeFilter([]);
-                              setActiveFilters({ verifiedSolar: false, existingJob: false, recurring: false, minPanels: '', lastService: '' });
+                              setActiveFilters({ existingJob: false, recurring: false, minPanels: '', lastService: '' });
                               setFocusedDays([]);
                             }}
                             style={{

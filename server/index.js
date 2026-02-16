@@ -247,6 +247,8 @@ app.use((req, res, next) => {
     const fs = require('fs');
     const filePath = path.join(__dirname, '..', 'index.html');
     let html = fs.readFileSync(filePath, 'utf-8');
+    const buildId = Date.now().toString(36);
+    html = html.replace('</head>', `<meta name="build-id" content="${buildId}"></head>`);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
