@@ -353,6 +353,133 @@ router.post('/sessions/:id/confirm', async (req, res) => {
   }
 });
 
+router.post('/sessions/:id/add-to-route', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { candidate_id } = req.body;
+
+    const session = await client.query('SELECT * FROM gap_fill_sessions WHERE id = $1', [req.params.id]);
+    if (session.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Session not found' });
+    }
+    const s = session.rows[0];
+
+    if (s.status !== 'active') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Session is no longer active' });
+    }
+
+    const candidateResult = await client.query(
+      `SELECT gc.*, c.full_name, c.first_name, c.address, c.phone, c.panel_count,
+              c.lat, c.lng, c.customer_notes, c.customer_type
+       FROM gap_fill_candidates gc
+       JOIN customers c ON gc.customer_id = c.id
+       WHERE gc.id = $1`, [candidate_id]
+    );
+    if (candidateResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Candidate not found' });
+    }
+    const candidate = candidateResult.rows[0];
+
+    const alreadyScheduled = await client.query(
+      `SELECT rs.id FROM route_stops rs
+       JOIN routes r ON rs.route_id = r.id
+       WHERE rs.customer_id = $1 AND r.scheduled_date = (SELECT scheduled_date FROM routes WHERE id = $2)
+       AND rs.cancelled = false`,
+      [candidate.customer_id, s.route_id]
+    );
+    if (alreadyScheduled.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Customer is already on a route for this day' });
+    }
+
+    const cancelledStop = await client.query(
+      `SELECT * FROM route_stops WHERE id = $1`, [s.cancelled_stop_id]
+    );
+    const cancelledStopOrder = cancelledStop.rows.length > 0 ? cancelledStop.rows[0].stop_order : null;
+    const cancelledTime = cancelledStop.rows.length > 0 ? cancelledStop.rows[0].scheduled_time : null;
+
+    const prevJob = await client.query(
+      `SELECT * FROM jobs WHERE customer_id = $1 AND job_description = $2
+       ORDER BY COALESCE(completed_date, scheduled_date, created_at::text) DESC LIMIT 1`,
+      [candidate.customer_id, s.cancelled_job_description]
+    );
+    const jobDetails = prevJob.rows.length > 0 ? prevJob.rows[0] : {};
+
+    const route = await client.query('SELECT * FROM routes WHERE id = $1', [s.route_id]);
+    const scheduledDate = route.rows.length > 0 ? route.rows[0].scheduled_date : new Date().toISOString().split('T')[0];
+
+    const newJob = await client.query(`
+      INSERT INTO jobs (customer_id, job_description, status, panel_count, price, price_per_panel,
+                        preferred_days, preferred_time, technician, employee, notes, is_gap_fill,
+                        scheduled_date)
+      VALUES ($1, $2, 'scheduled', $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
+      RETURNING *
+    `, [
+      candidate.customer_id,
+      s.cancelled_job_description || jobDetails.job_description || 'Residential Panel Cleaning',
+      jobDetails.panel_count || candidate.panel_count || 0,
+      parseFloat(jobDetails.price) || 0,
+      parseFloat(jobDetails.price_per_panel) || 0,
+      jobDetails.preferred_days || '',
+      jobDetails.preferred_time || '',
+      jobDetails.technician || route.rows[0]?.technician || '',
+      jobDetails.employee || '',
+      'Gap-fill replacement',
+      true,
+      scheduledDate
+    ]);
+
+    const newStop = await client.query(`
+      INSERT INTO route_stops (route_id, customer_id, stop_order, scheduled_time, notes)
+      VALUES ($1, $2, $3, $4, 'Gap-fill replacement')
+      RETURNING *
+    `, [s.route_id, candidate.customer_id, cancelledStopOrder || 999, cancelledTime]);
+
+    await client.query(
+      `UPDATE customers SET status = 'scheduled' WHERE id = $1`,
+      [candidate.customer_id]
+    );
+
+    await client.query(
+      `UPDATE gap_fill_candidates SET outreach_status = 'confirmed', resolved_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [candidate_id]
+    );
+
+    await client.query(
+      `UPDATE gap_fill_sessions SET status = 'filled', resolved_at = NOW(), resolution = 'confirmed',
+       confirmed_customer_id = $1, confirmed_candidate_id = $2 WHERE id = $3`,
+      [candidate.customer_id, candidate_id, req.params.id]
+    );
+
+    await client.query(
+      `INSERT INTO gap_fill_outreach_log (customer_id, session_id, contacted_at, outcome, tier, service_type)
+       VALUES ($1, $2, NOW(), 'confirmed', $3, $4)`,
+      [candidate.customer_id, s.id, candidate.tier, s.cancelled_job_description]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      session: { ...s, status: 'filled' },
+      confirmedCandidate: candidate,
+      newJob: newJob.rows[0],
+      newStop: newStop.rows[0],
+      routeId: s.route_id
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error adding gap-fill to route:', err);
+    res.status(500).json({ error: 'Failed to add gap-fill to route' });
+  } finally {
+    client.release();
+  }
+});
+
 router.post('/sessions/:id/close', async (req, res) => {
   try {
     const result = await pool.query(
