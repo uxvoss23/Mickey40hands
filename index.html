@@ -2713,16 +2713,35 @@
             markersMapRef.current.set(customer.id, marker);
           });
 
-          // Draw route lines from savedRoutes - shows all routes for focused days
-          if (statusFilter === 'scheduled' && homeBase && focusedDays.length > 0) {
+          // Draw route lines from savedRoutes - shows focused day routes highlighted, plus other week routes dimmed
+          if (statusFilter === 'scheduled' && homeBase) {
             const DAY_LINE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
             const ROUTE_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#eab308'];
             const isHovering = hoveredRouteDay !== null;
+            const focusedDateStrs = new Set(focusedDays.map(fd => fd.toDateString()));
 
-            focusedDays.forEach(fd => {
-              const dateKey = fd.toDateString();
-              const isHoveredDay = isHovering && hoveredRouteDay.toDateString() === dateKey;
-              const baseOpacity = isHovering ? (isHoveredDay ? 0.9 : 0.15) : 0.7;
+            // Get all days in the current calendar week
+            const calWeekDays = [];
+            for (let i = 0; i < 7; i++) {
+              const d = new Date(weekStart);
+              d.setDate(d.getDate() + i);
+              d.setHours(0,0,0,0);
+              calWeekDays.push(d);
+            }
+
+            // Draw routes for all days in the week
+            const drawRouteLines = (dayDate, isFocused) => {
+              const dateKey = dayDate.toDateString();
+              const isHoveredDay = isHovering && hoveredRouteDay && hoveredRouteDay.toDateString() === dateKey;
+
+              let baseOpacity;
+              if (isHovering) {
+                baseOpacity = isHoveredDay ? 0.9 : 0.1;
+              } else if (isFocused) {
+                baseOpacity = 0.8;
+              } else {
+                baseOpacity = 0.35;
+              }
 
               const dayRoutes = savedRoutes.filter(r => {
                 const rDate = new Date(r.scheduledDate);
@@ -2737,9 +2756,9 @@
                 if (stops.length === 0) return;
 
                 const lineColor = route.sentToTech
-                  ? (ROUTE_COLORS[routeIdx % ROUTE_COLORS.length])
-                  : DAY_LINE_COLORS[fd.getDay()] || '#fbbf24';
-                const lineWeight = isHovering ? (isHoveredDay ? 4 : 2) : 3;
+                  ? '#22c55e'
+                  : (isFocused ? (DAY_LINE_COLORS[dayDate.getDay()] || '#fbbf24') : '#94a3b8');
+                const lineWeight = isFocused ? 3 : 2;
                 const dashArray = route.sentToTech ? null : '8, 6';
 
                 const line1 = L.polyline(
@@ -2759,18 +2778,31 @@
                 const lastStop = stops[stops.length - 1];
                 const returnLine = L.polyline(
                   [[lastStop.lat, lastStop.lng], [homeBase.lat, homeBase.lng]],
-                  { color: lineColor, weight: lineWeight, opacity: baseOpacity * 0.5, dashArray: '5, 10' }
+                  { color: lineColor, weight: lineWeight, opacity: baseOpacity * 0.4, dashArray: '5, 10' }
                 ).addTo(mapInstanceRef.current);
                 routeLinesRef.current.push(returnLine);
               });
+            };
 
-              // Also draw route lines for customers being actively edited (not yet saved)
-              if (routePlannerEditMode) {
+            // Draw non-focused week routes first (behind), then focused routes on top
+            calWeekDays.forEach(day => {
+              if (!focusedDateStrs.has(day.toDateString())) {
+                drawRouteLines(day, false);
+              }
+            });
+            focusedDays.forEach(fd => {
+              drawRouteLines(fd, true);
+            });
+
+            // Draw route lines for customers being actively edited (not yet saved)
+            if (routePlannerEditMode) {
+              focusedDays.forEach(fd => {
+                const editDateKey = fd.toDateString();
                 const editingStops = customers
                   .filter(c => {
                     if (!c.scheduledDate || !c.scheduledTime) return false;
                     const custDate = new Date(c.scheduledDate);
-                    return custDate.toDateString() === dateKey;
+                    return custDate.toDateString() === editDateKey;
                   })
                   .filter(c => !savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id)))
                   .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
@@ -2790,11 +2822,11 @@
                     routeLinesRef.current.push(line);
                   }
                 }
-              }
-            });
+              });
+            }
           }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode, weekStart]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: customer type, nav filters (status, date, time), search bar filters (city, state, zip),
