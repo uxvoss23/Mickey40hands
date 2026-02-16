@@ -244,7 +244,14 @@ function buildEnrollmentPage(title, message, type, details) {
 
 app.use((req, res, next) => {
   if (!req.path.startsWith('/api/')) {
-    res.sendFile(path.join(__dirname, '..', 'index.html'));
+    const fs = require('fs');
+    const filePath = path.join(__dirname, '..', 'index.html');
+    let html = fs.readFileSync(filePath, 'utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.type('html').send(html);
   } else {
     next();
   }

@@ -2861,7 +2861,9 @@
         const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
 
         // Status filter (unscheduled, scheduled)
-        if (statusFilter === 'scheduled' && !isProspectingInRoutePlanner) {
+        if (isProspectingInRoutePlanner) {
+          // Prospecting mode: skip ALL status filtering to show every customer in the area
+        } else if (statusFilter === 'scheduled') {
           let rangeStart, rangeEnd;
           if (focusedDays.length > 0) {
             const sortedDays = [...focusedDays].sort((a, b) => a - b);
