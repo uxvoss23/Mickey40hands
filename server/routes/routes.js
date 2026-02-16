@@ -159,6 +159,29 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.get('/:id', async (req, res) => {
+  try {
+    const routeResult = await pool.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
+    if (routeResult.rows.length === 0) return res.status(404).json({ error: 'Route not found' });
+    const route = routeResult.rows[0];
+
+    const stops = await pool.query(`
+      SELECT rs.*, c.full_name, c.address, c.phone, c.email, c.lat, c.lng,
+             c.panel_count, c.status as customer_status, c.city, c.state, c.zip,
+             c.customer_type, c.customer_notes
+      FROM route_stops rs
+      JOIN customers c ON rs.customer_id = c.id
+      WHERE rs.route_id = $1
+      ORDER BY rs.stop_order ASC
+    `, [route.id]);
+
+    res.json({ route, stops: stops.rows });
+  } catch (err) {
+    console.error('Error fetching single route:', err);
+    res.status(500).json({ error: 'Failed to fetch route' });
+  }
+});
+
 router.get('/:id/tech-view', async (req, res) => {
   try {
     const routeResult = await pool.query('SELECT * FROM routes WHERE id = $1', [req.params.id]);
