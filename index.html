@@ -2859,9 +2859,6 @@
         // In Route Planner with active radius/drawn area: bypass scheduled filter
         // to show ALL customers in the area (prospecting mode)
         const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
-        if (statusFilter === 'scheduled' && radiusMode) {
-          console.log('[RADIUS DEBUG] radiusMode:', radiusMode, 'referencePoint:', !!referencePoint, 'drawnArea:', !!drawnArea, 'prospecting:', isProspectingInRoutePlanner, 'results before filter:', results.length);
-        }
 
         // Status filter (unscheduled, scheduled)
         if (statusFilter === 'scheduled' && !isProspectingInRoutePlanner) {
@@ -3011,20 +3008,25 @@
         // --- Spatial filters (radius circle & drawn polygon) ---
         // Radius filter: only show customers within the radius circle
         if (referencePoint && radiusMiles) {
-          const beforeRadius = results.length;
           results = results.filter(c => {
             if (!c.lat || !c.lng) return false;
             return calculateDistance(c.lat, c.lng, referencePoint.lat, referencePoint.lng) <= radiusMiles;
           });
-          console.log('[RADIUS DEBUG] Radius filter: ' + beforeRadius + ' -> ' + results.length + ' (within ' + radiusMiles + ' miles of', referencePoint, ')');
         }
 
-        // Drawn area filter
-        if (drawnArea && drawnPolygon) {
+        // Drawn area filter (true point-in-polygon, not just bounding box)
+        if (drawnArea && drawnArea.length >= 3) {
           results = results.filter(c => {
             if (!c.lat || !c.lng) return false;
-            const point = L.latLng(c.lat, c.lng);
-            return drawnPolygon.getBounds().contains(point);
+            let inside = false;
+            const x = c.lng, y = c.lat;
+            for (let i = 0, j = drawnArea.length - 1; i < drawnArea.length; j = i++) {
+              const xi = drawnArea[i].lng, yi = drawnArea[i].lat;
+              const xj = drawnArea[j].lng, yj = drawnArea[j].lat;
+              const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+              if (intersect) inside = !inside;
+            }
+            return inside;
           });
         }
 
@@ -3077,7 +3079,7 @@
 
         setFilteredCustomers(results);
       }, [searchQuery, customers, typeFilteredCustomers, activeCustomerType, cityFilter, stateFilter, zipFilter, lastServiceFilter,
-          drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
+          drawnArea, activeFilters, statusFilter, preferredDateFilter,
           preferredTimeFilter, showRecurringList, referencePoint, radiusMiles, radiusMode,
           scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDays]);
 
