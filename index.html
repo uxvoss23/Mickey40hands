@@ -3707,6 +3707,9 @@
                 c.id === cancellingStop.id ? { ...c, cancelled: true, cancellationReason: cancelReason } : c
               )};
             }));
+            setCustomers(prev => prev.map(c => 
+              c.id === cancellingStop.id ? { ...c, status: 'unscheduled', activeJobCount: (c.activeJobCount || 1) } : c
+            ));
             setShowCancelModal(false);
             setCancellingStop(null);
             setCancelReason('');
@@ -7869,6 +7872,9 @@ const createJob = async () => {
                                                     if (r.id !== route.id) return r;
                                                     return { ...r, customers: r.customers.map(c => c.id === stop.id ? { ...c, cancelled: false, cancellationReason: null } : c) };
                                                   }));
+                                                  setCustomers(prev => prev.map(c => 
+                                                    c.id === stop.id ? { ...c, status: 'scheduled' } : c
+                                                  ));
                                                 }
                                               } catch (err) { console.error('Reactivate failed:', err); }
                                             }}
@@ -13802,6 +13808,9 @@ const createJob = async () => {
                                               if (r.id !== savedRoute.id) return r;
                                               return { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, cancelled: false, cancellationReason: null } : c) };
                                             }));
+                                            setCustomers(prev => prev.map(c => 
+                                              c.id === customer.id ? { ...c, status: 'scheduled' } : c
+                                            ));
                                           } else {
                                             alert(data.error || 'Failed to reactivate');
                                           }
