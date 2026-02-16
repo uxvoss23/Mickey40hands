@@ -368,7 +368,7 @@
         });
         render();
       } catch (err) {
-        app.innerHTML = '<div class="error-screen">Could not load route. Please check the link and try again.</div>';
+        app.innerHTML = '<div class="error-screen" style="padding:40px 20px;text-align:center;color:#ef4444;"><p style="font-size:18px;font-weight:700;margin-bottom:8px;">Could not load route</p><p style="color:#64748b;font-size:14px;">This route may have been cleared or deleted. Please ask dispatch to resend the route email.</p></div>';
       }
     }
 

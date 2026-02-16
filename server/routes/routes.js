@@ -117,11 +117,24 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/clear-all', async (req, res) => {
   try {
-    await pool.query(`UPDATE customers SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL, route_confirmed = false WHERE status IN ('scheduled', 'in progress')`);
-    await pool.query(`UPDATE jobs SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE status IN ('scheduled', 'in progress')`);
-    await pool.query('DELETE FROM route_stops');
-    await pool.query('DELETE FROM routes');
-    res.json({ success: true, message: 'All routes cleared. Completed jobs were not touched.' });
+    const sentRoutes = await pool.query('SELECT id FROM routes WHERE sent_to_tech = true');
+    const sentRouteIds = sentRoutes.rows.map(r => r.id);
+
+    const unsent = await pool.query('SELECT id FROM routes WHERE sent_to_tech = false OR sent_to_tech IS NULL');
+    const unsentIds = unsent.rows.map(r => r.id);
+
+    if (unsentIds.length > 0) {
+      const unsentStopCustomers = await pool.query('SELECT customer_id FROM route_stops WHERE route_id = ANY($1)', [unsentIds]);
+      for (const row of unsentStopCustomers.rows) {
+        await pool.query(`UPDATE customers SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL, route_confirmed = false WHERE id = $1 AND status IN ('scheduled', 'in progress')`, [row.customer_id]);
+        await pool.query(`UPDATE jobs SET status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE customer_id = $1 AND status IN ('scheduled', 'in progress')`, [row.customer_id]);
+      }
+      await pool.query('DELETE FROM route_stops WHERE route_id = ANY($1)', [unsentIds]);
+      await pool.query('DELETE FROM routes WHERE id = ANY($1)', [unsentIds]);
+    }
+
+    const preserved = sentRouteIds.length;
+    res.json({ success: true, message: `Cleared ${unsentIds.length} unsent routes.${preserved > 0 ? ` ${preserved} sent route(s) preserved for technician access.` : ''}` });
   } catch (err) {
     console.error('Error clearing all routes:', err);
     res.status(500).json({ error: 'Failed to clear routes: ' + err.message });

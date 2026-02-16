@@ -11672,7 +11672,7 @@ const createJob = async () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <button
                       onClick={async () => {
-                        if (window.confirm('Clear ALL saved routes and route history? Completed jobs will not be touched. This cannot be undone.')) {
+                        if (window.confirm('Clear all unsent routes? Routes already sent to technicians will be preserved so checklist links keep working. This cannot be undone.')) {
                           try {
                             await apiFetch('/routes/clear-all', { method: 'DELETE' });
                           } catch (err) {
