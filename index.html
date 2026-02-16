@@ -934,11 +934,7 @@
               const unsentRoutes = parsedRoutes.filter(r => !r.sentToTech && !r.dbRouteId);
               const deduped = new Map();
               for (const r of unsentRoutes) {
-                const dk = r.scheduledDate ? new Date(r.scheduledDate).toDateString() : r.id;
-                const existing = deduped.get(dk);
-                if (!existing || (r.customers || []).length > (existing.customers || []).length) {
-                  deduped.set(dk, r);
-                }
+                deduped.set(r.id, r);
               }
               const cleanRoutes = Array.from(deduped.values());
               allRoutes = [...allRoutes, ...cleanRoutes];
@@ -1006,11 +1002,7 @@
         const unsentRoutes = savedRoutes.filter(r => !r.sentToTech);
         const dedupMap = new Map();
         for (const r of unsentRoutes) {
-          const dk = r.scheduledDate ? new Date(r.scheduledDate).toDateString() : r.id;
-          const existing = dedupMap.get(dk);
-          if (!existing || (r.customers || []).length > (existing.customers || []).length) {
-            dedupMap.set(dk, r);
-          }
+          dedupMap.set(r.id, r);
         }
         const dedupedUnsent = Array.from(dedupMap.values());
         localStorage.setItem('savedRoutes', JSON.stringify(dedupedUnsent));
@@ -3416,10 +3408,6 @@
           const routeIds = new Set(routeCustomers.map(c => c.id));
 
           let effectiveEditingId = editingSavedRouteId || editingRouteIdByDay[dateKey];
-          if (!effectiveEditingId) {
-            const existingUnsent = savedRoutes.find(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dateKey);
-            if (existingUnsent) effectiveEditingId = existingUnsent.id;
-          }
           if (effectiveEditingId) {
             setSavedRoutes(prev => prev.map(r => {
               if (r.id === effectiveEditingId) {
@@ -3440,12 +3428,7 @@
               sentToTech: false,
               sentDate: null
             };
-            setSavedRoutes(prev => {
-              const withoutDupes = prev.filter(r => !(
-                !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dateKey
-              ));
-              return [...withoutDupes, newRoute];
-            });
+            setSavedRoutes(prev => [...prev, newRoute]);
           }
 
           setCustomers(prev => prev.map(c => routeIds.has(c.id) ? { ...c, ...scheduleUpdates } : c));
@@ -3565,9 +3548,6 @@
           let existingSavedRoute = editingIdForDay 
             ? savedRoutes.find(r => r.id === editingIdForDay)
             : null;
-          if (!existingSavedRoute) {
-            existingSavedRoute = savedRoutes.find(r => new Date(r.scheduledDate).toDateString() === dayKey && !r.sentToTech);
-          }
 
           if (existingSavedRoute) {
             setSavedRoutes(prev => prev.map(r => {
@@ -7156,14 +7136,14 @@ const createJob = async () => {
                   {/* Route Planner: show selected day stats + week stats when not in edit mode */}
                   {statusFilter === 'scheduled' && !routePlannerEditMode && (
                     <div>
-                      {/* Selected Day's Route Stats */}
+                      {/* Selected Day's Route Stats - Each route shown individually */}
                       {(() => {
                         const displayDate = focusedDays.length > 0 ? focusedDays[0] : (() => { const t = new Date(); t.setHours(0,0,0,0); return t; })();
                         const displayStr = displayDate.toDateString();
                         const isToday = displayStr === new Date().toDateString();
                         const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === displayStr);
-                        const dayStops = dayRoutes.flatMap(r => r.customers || []);
-                        const dayRevenue = dayStops.reduce((sum, c) => {
+                        const allDayStops = dayRoutes.flatMap(r => r.customers || []);
+                        const totalDayRevenue = allDayStops.reduce((sum, c) => {
                           const custMatch = customers.find(cu => cu.id === c.id);
                           return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
                         }, 0);
@@ -7178,110 +7158,141 @@ const createJob = async () => {
                           dist += calculateDistance(stops[stops.length - 1].lat, stops[stops.length - 1].lng, homeBase.lat, homeBase.lng);
                           return dist;
                         };
-                        const dayMiles = dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
+                        const totalDayMiles = dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
                         return (
                           <div style={{ padding: '12px', borderBottom: '1px solid rgba(234, 179, 8, 0.2)' }}>
                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                               <h3 style={{ fontSize: '13px', fontWeight: 700, margin: 0, color: '#fbbf24' }}>
-                                {isToday ? "Today's Route" : displayDate.toLocaleDateString('en-US', { weekday: 'long' }) + "'s Route"}
-                                {dayRoutes.some(r => r.sentToTech) && <span style={{ color: '#22c55e', fontSize: '11px', marginLeft: '6px' }}>✓ Sent</span>}
+                                {isToday ? "Today's Routes" : displayDate.toLocaleDateString('en-US', { weekday: 'long' }) + "'s Routes"}
+                                {dayRoutes.length > 0 && <span style={{ color: '#94a3b8', fontSize: '11px', marginLeft: '6px' }}>({dayRoutes.length})</span>}
                               </h3>
                               <span style={{ fontSize: '10px', color: '#94a3b8' }}>{displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                             </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '10px' }}>
                               <div style={{ padding: '10px', background: 'rgba(234, 179, 8, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(234, 179, 8, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#fbbf24' }}>{dayStops.length}</div>
-                                <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Stops</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#fbbf24' }}>{allDayStops.length}</div>
+                                <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Total Stops</div>
                               </div>
                               <div style={{ padding: '10px', background: 'rgba(34, 197, 94, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#22c55e' }}>{dayMiles.toFixed(1)}</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#22c55e' }}>{totalDayMiles.toFixed(1)}</div>
                                 <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Miles</div>
                               </div>
                               <div style={{ padding: '10px', background: 'rgba(139, 92, 246, 0.08)', borderRadius: '10px', textAlign: 'center', border: '1px solid rgba(139, 92, 246, 0.15)' }}>
-                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#a78bfa' }}>${dayRevenue.toFixed(0)}</div>
+                                <div style={{ fontSize: '20px', fontWeight: 800, color: '#a78bfa' }}>${totalDayRevenue.toFixed(0)}</div>
                                 <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Revenue</div>
                               </div>
                             </div>
-                            {dayStops.length > 0 && (
-                              <div style={{ marginTop: '8px' }}>
-                                {dayStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => (
-                                  <div key={stop.id || idx} style={{
-                                    display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 8px',
-                                    borderRadius: '6px', marginBottom: '2px',
-                                    background: 'rgba(234, 179, 8, 0.04)', cursor: 'pointer'
-                                  }}
-                                    onClick={() => { setProfileCustomer(customers.find(c => c.id === stop.id) || stop); setShowCustomerProfile(true); }}
-                                  >
-                                    <div style={{
-                                      width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0,
-                                      background: 'linear-gradient(135deg, #eab308, #ca8a04)',
-                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                      fontSize: '9px', fontWeight: 700, color: '#000'
-                                    }}>{idx + 1}</div>
-                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                      <div style={{ fontSize: '11px', fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</div>
-                                    </div>
-                                    {stop.jobPrice > 0 && (
-                                      <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 700, flexShrink: 0 }}>
-                                        ${stop.jobPrice}
-                                      </span>
-                                    )}
-                                    {stop.scheduledTime && (
-                                      <span style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 600, flexShrink: 0 }}>
-                                        {new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                      </span>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {dayRoutes.length > 0 && (() => {
-                              const editableRoutes = dayRoutes.filter(r => !r.sentToTech);
-                              const hasSentRoutes = dayRoutes.some(r => r.sentToTech);
+
+                            {dayRoutes.map((route, routeIdx) => {
+                              const routeStops = route.customers || [];
+                              const routeRevenue = routeStops.reduce((sum, c) => {
+                                const custMatch = customers.find(cu => cu.id === c.id);
+                                return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
+                              }, 0);
+                              const routeMiles = calcRouteDistance(route);
                               return (
-                                <div>
-                                  {hasSentRoutes && (
-                                    <div style={{
-                                      marginTop: '8px', padding: '6px 10px', fontSize: '10px', color: '#86efac',
-                                      background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)',
-                                      borderRadius: '6px', textAlign: 'center'
-                                    }}>✓ Sent to technician</div>
-                                  )}
-                                  {editableRoutes.length > 0 && (
+                                <div key={route.id} style={{
+                                  marginBottom: '10px',
+                                  padding: '10px',
+                                  background: route.sentToTech ? 'rgba(34, 197, 94, 0.05)' : 'rgba(234, 179, 8, 0.05)',
+                                  border: `1px solid ${route.sentToTech ? 'rgba(34, 197, 94, 0.2)' : 'rgba(234, 179, 8, 0.2)'}`,
+                                  borderRadius: '8px'
+                                }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                    <div style={{ fontSize: '11px', fontWeight: 700, color: route.sentToTech ? '#86efac' : '#fbbf24' }}>
+                                      {route.name || `Route ${routeIdx + 1}`}
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      {route.sentToTech && (
+                                        <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 600 }}>✓ Sent</span>
+                                      )}
+                                      <span style={{ fontSize: '9px', color: '#94a3b8' }}>
+                                        {routeStops.length} stops · {routeMiles.toFixed(1)} mi · ${routeRevenue.toFixed(0)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {routeStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => (
+                                    <div key={stop.id || idx} style={{
+                                      display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px',
+                                      borderRadius: '5px', marginBottom: '1px',
+                                      background: 'rgba(15, 23, 42, 0.3)', cursor: 'pointer'
+                                    }}
+                                      onClick={() => { setProfileCustomer(customers.find(c => c.id === stop.id) || stop); setShowCustomerProfile(true); }}
+                                    >
+                                      <div style={{
+                                        width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
+                                        background: route.sentToTech ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #eab308, #ca8a04)',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: '8px', fontWeight: 700, color: route.sentToTech ? '#fff' : '#000'
+                                      }}>{idx + 1}</div>
+                                      <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontSize: '10px', fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</div>
+                                      </div>
+                                      {(stop.jobPrice > 0 || stop.amountPaid > 0) && (
+                                        <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 700, flexShrink: 0 }}>
+                                          ${parseFloat(stop.jobPrice || stop.amountPaid || 0)}
+                                        </span>
+                                      )}
+                                      {stop.scheduledTime && (
+                                        <span style={{ fontSize: '9px', color: route.sentToTech ? '#86efac' : '#fbbf24', fontWeight: 600, flexShrink: 0 }}>
+                                          {new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  ))}
+                                  {!route.sentToTech && (
                                     <button
                                       onClick={() => {
                                         setFocusedDays([displayDate]);
                                         setSelectedDate(displayDate);
                                         setRoutePlannerEditMode(true);
-                                        const dayRoute = editableRoutes[0];
-                                        if (dayRoute) {
-                                          const dateKey = displayDate.toDateString();
-                                          setEditingSavedRouteId(dayRoute.id, dateKey);
-                                          setRoutesByDay(prev => ({ ...prev, [dateKey]: dayRoute.customers }));
-                                          setCustomers(prev => {
-                                            const routeCustomerMap = new Map();
-                                            dayRoute.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
-                                            return prev.map(c => {
-                                              const rc = routeCustomerMap.get(c.id);
-                                              if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: dayRoute.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
-                                              return c;
-                                            });
+                                        const dateKey = displayDate.toDateString();
+                                        setEditingSavedRouteId(route.id, dateKey);
+                                        setRoutesByDay(prev => ({ ...prev, [dateKey]: route.customers }));
+                                        setCustomers(prev => {
+                                          const routeCustomerMap = new Map();
+                                          route.customers.forEach(rc => routeCustomerMap.set(rc.id, rc));
+                                          return prev.map(c => {
+                                            const rc = routeCustomerMap.get(c.id);
+                                            if (rc) return { ...c, scheduledTime: rc.scheduledTime || c.scheduledTime, scheduledDate: route.scheduledDate || c.scheduledDate, status: 'scheduled', routeConfirmed: true };
+                                            return c;
                                           });
-                                          setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
-                                        }
+                                        });
+                                        setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
                                       }}
                                       style={{
-                                        width: '100%', marginTop: '8px', padding: '7px', fontSize: '11px', fontWeight: 600,
+                                        width: '100%', marginTop: '6px', padding: '6px', fontSize: '10px', fontWeight: 600,
                                         background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)',
-                                        borderRadius: '8px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
+                                        borderRadius: '6px', color: '#fbbf24', cursor: 'pointer', textAlign: 'center'
                                       }}
                                     >
-                                      ✏️ Edit {isToday ? "Today's" : displayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} Route
+                                      ✏️ Edit Route
                                     </button>
                                   )}
                                 </div>
                               );
-                            })()}
+                            })}
+
+                            <button
+                              onClick={() => {
+                                const dateKey = displayDate.toDateString();
+                                setFocusedDays([displayDate]);
+                                setSelectedDate(displayDate);
+                                setRoutesByDay(prev => ({ ...prev, [dateKey]: [] }));
+                                setEditingSavedRouteId(null);
+                                setEditingRouteIdByDay(prev => { const next = { ...prev }; delete next[dateKey]; return next; });
+                                setSuggestedCustomers([]);
+                                setRoutePlannerEditMode(true);
+                                setSavedViewDays(prev => ({ ...prev, [dateKey]: false }));
+                              }}
+                              className="button-primary"
+                              style={{
+                                width: '100%', padding: '8px', fontSize: '11px', fontWeight: 700,
+                                justifyContent: 'center', marginTop: '4px'
+                              }}
+                            >
+                              + New Route for This Day
+                            </button>
                           </div>
                         );
                       })()}
@@ -7473,10 +7484,8 @@ const createJob = async () => {
                         {(() => {
                           const dk = selectedDate.toDateString();
                           const dayRouteStops = routesByDay[dk] || [];
-                          const savedRoutesOnDay = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === dk);
-                          const savedStopCount = savedRoutesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
-                          const count = dayRouteStops.length > 0 ? dayRouteStops.length : savedStopCount;
-                          return `${count} job${count !== 1 ? 's' : ''}`;
+                          const count = dayRouteStops.length;
+                          return `${count} job${count !== 1 ? 's' : ''} in this route`;
                         })()}
                       </div>
                     </div>
