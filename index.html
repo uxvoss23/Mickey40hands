@@ -6909,7 +6909,12 @@ const createJob = async () => {
                         return (
                           <div
                             key={index}
-                            onClick={() => setSelectedDate(date)}
+                            onClick={() => {
+                              const d = new Date(date); d.setHours(0,0,0,0);
+                              setSelectedDate(d);
+                              setFocusedDays([d]);
+                              setSavedViewDays(prev => ({ ...prev, [d.toDateString()]: true }));
+                            }}
                             style={{
                               padding: '4px 2px',
                               borderRadius: '6px',
@@ -6935,14 +6940,13 @@ const createJob = async () => {
                                 e.currentTarget.style.background = isToday ? 'rgba(59, 130, 246, 0.1)' : 'rgba(30, 41, 59, 0.3)';
                               }
                             }}
-                            title="Click to view day schedule"
+                            title={hasRoutes ? `${routesForDay.length} route(s), ${routesForDay.reduce((s, r) => s + (r.customers || []).length, 0)} stops - Click to view` : 'Click to view day'}
                           >
                             <div style={{ fontSize: '8px', fontWeight: 600, color: '#64748b', textAlign: 'center', marginBottom: '1px', textTransform: 'uppercase' }}>
                               {date.toLocaleDateString('en-US', { weekday: 'short' })}
                             </div>
                             <div style={{ fontSize: '13px', fontWeight: 700, color: isSelected ? '#a78bfa' : isToday ? '#60a5fa' : '#f1f5f9', textAlign: 'center', position: 'relative' }}>
                               {date.getDate()}
-                              {/* Unsaved route indicator (orange dot) */}
                               {unsavedRouteDays[date.toDateString()] && (
                                 <span style={{
                                   position: 'absolute',
@@ -6955,13 +6959,16 @@ const createJob = async () => {
                                   boxShadow: '0 0 6px rgba(245, 158, 11, 0.6)'
                                 }} title="Unsaved route" />
                               )}
-                              {/* Green checkmark for saved routes */}
                               {(() => {
-                                const hasSavedRoute = savedRoutes.some(r => {
+                                const hasSentRoute = savedRoutes.some(r => {
                                   const routeDate = new Date(r.scheduledDate);
-                                  return routeDate.toDateString() === date.toDateString() && r.confirmed;
+                                  return routeDate.toDateString() === date.toDateString() && r.sentToTech;
                                 });
-                                return hasSavedRoute ? (
+                                const hasUnsent = savedRoutes.some(r => {
+                                  const routeDate = new Date(r.scheduledDate);
+                                  return routeDate.toDateString() === date.toDateString() && !r.sentToTech && r.confirmed;
+                                });
+                                return hasSentRoute ? (
                                   <span style={{
                                     position: 'absolute',
                                     top: '-6px',
@@ -6970,26 +6977,32 @@ const createJob = async () => {
                                     color: '#22c55e',
                                     filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))'
                                   }}>✓</span>
+                                ) : hasUnsent ? (
+                                  <span style={{
+                                    position: 'absolute',
+                                    top: '-6px',
+                                    right: '-6px',
+                                    fontSize: '14px',
+                                    color: '#fbbf24',
+                                    filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))'
+                                  }}>✓</span>
                                 ) : null;
                               })()}
                             </div>
                             {hasRoutes && (
                               <div style={{
-                                position: 'absolute',
-                                bottom: '4px',
-                                left: '50%',
-                                transform: 'translateX(-50%)',
-                                display: 'flex',
-                                gap: '2px'
+                                textAlign: 'center',
+                                marginTop: '2px'
                               }}>
-                                {routesForDay.slice(0, 3).map((_, idx) => (
-                                  <div key={idx} style={{
-                                    width: '4px',
-                                    height: '4px',
-                                    borderRadius: '50%',
-                                    background: isSelected ? '#a78bfa' : '#22c55e'
-                                  }} />
-                                ))}
+                                <span style={{
+                                  fontSize: '9px',
+                                  fontWeight: 700,
+                                  color: routesForDay.some(r => r.sentToTech) ? '#22c55e' : '#fbbf24',
+                                  lineHeight: 1
+                                }}>
+                                  {routesForDay.reduce((s, r) => s + (r.customers || []).length, 0)}
+                                </span>
+                                <span style={{ fontSize: '7px', color: '#64748b', marginLeft: '1px' }}>stops</span>
                               </div>
                             )}
                           </div>
@@ -7011,17 +7024,17 @@ const createJob = async () => {
                             <div
                               key={index}
                               onClick={() => {
-                                // Set the selected date
-                                setSelectedDate(date);
+                                const d = new Date(date); d.setHours(0,0,0,0);
+                                setSelectedDate(d);
+                                setFocusedDays([d]);
+                                setSavedViewDays(prev => ({ ...prev, [d.toDateString()]: true }));
                                 
-                                // Navigate to the week containing this date
                                 const clickedDate = new Date(date);
                                 const day = clickedDate.getDay();
                                 const diff = clickedDate.getDate() - day;
                                 const monday = new Date(clickedDate.setDate(diff));
                                 setWeekStart(monday);
                                 
-                                // Switch to week view
                                 setCalendarViewMode('week');
                               }}
                               style={{
@@ -7299,11 +7312,11 @@ const createJob = async () => {
 
                       {/* Current Week Stats */}
                       {(() => {
-                        const weekDays = getWeekDays(scheduledViewWeekStart);
+                        const weekDays = getWeekDays(weekStart);
                         const weekLabel = (() => {
                           const now = new Date(); now.setHours(0,0,0,0);
                           const thisWeekStart = new Date(now); thisWeekStart.setDate(thisWeekStart.getDate() - thisWeekStart.getDay());
-                          return scheduledViewWeekStart.toDateString() === thisWeekStart.toDateString() ? 'This Week' :
+                          return weekStart.toDateString() === thisWeekStart.toDateString() ? 'This Week' :
                             weekDays[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' - ' + weekDays[6].toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                         })();
                         const calcRouteDistance = (routeObj) => {
@@ -7354,6 +7367,61 @@ const createJob = async () => {
                               <div style={{ padding: '8px', background: 'rgba(30, 41, 59, 0.5)', borderRadius: '8px' }}>
                                 <div style={{ fontSize: '16px', fontWeight: 700, color: '#a78bfa' }}>${weekRevenue.toFixed(0)}</div>
                                 <div style={{ fontSize: '9px', color: '#64748b', fontWeight: 600 }}>Revenue</div>
+                              </div>
+                            </div>
+                            <div style={{ marginTop: '10px' }}>
+                              <div style={{ fontSize: '9px', fontWeight: 600, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase' }}>Daily Breakdown</div>
+                              <div style={{ display: 'flex', gap: '3px' }}>
+                                {weekDays.map((day, di) => {
+                                  const dayR = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === day.toDateString());
+                                  const dayStopCount = dayR.reduce((s, r) => s + (r.customers || []).length, 0);
+                                  const hasSent = dayR.some(r => r.sentToTech);
+                                  const hasUnsent = dayR.some(r => !r.sentToTech);
+                                  const isFocused = focusedDays.length > 0 && focusedDays[0].toDateString() === day.toDateString();
+                                  const dayRevenue = dayR.flatMap(r => r.customers || []).reduce((s, c) => {
+                                    const cm = customers.find(cu => cu.id === c.id);
+                                    return s + (parseFloat(c.jobPrice) || parseFloat(cm?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(cm?.amountPaid) || 0);
+                                  }, 0);
+                                  return (
+                                    <div
+                                      key={di}
+                                      onClick={() => {
+                                        const d = new Date(day); d.setHours(0,0,0,0);
+                                        setSelectedDate(d);
+                                        setFocusedDays([d]);
+                                        setSavedViewDays(prev => ({ ...prev, [d.toDateString()]: true }));
+                                      }}
+                                      style={{
+                                        flex: 1,
+                                        padding: '6px 2px',
+                                        background: isFocused ? 'rgba(139, 92, 246, 0.2)' : dayStopCount > 0 ? 'rgba(30, 41, 59, 0.6)' : 'rgba(30, 41, 59, 0.3)',
+                                        border: isFocused ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid transparent',
+                                        borderRadius: '6px',
+                                        textAlign: 'center',
+                                        cursor: 'pointer',
+                                        transition: 'all 0.15s'
+                                      }}
+                                    >
+                                      <div style={{ fontSize: '8px', color: '#64748b', fontWeight: 600 }}>
+                                        {day.toLocaleDateString('en-US', { weekday: 'narrow' })}
+                                      </div>
+                                      <div style={{
+                                        fontSize: '14px',
+                                        fontWeight: 700,
+                                        color: dayStopCount > 0 ? (hasSent ? '#22c55e' : '#fbbf24') : '#334155'
+                                      }}>
+                                        {dayStopCount}
+                                      </div>
+                                      {dayStopCount > 0 && (
+                                        <div style={{ fontSize: '8px', color: hasSent ? '#22c55e' : '#fbbf24', fontWeight: 600 }}>
+                                          ${dayRevenue.toFixed(0)}
+                                        </div>
+                                      )}
+                                      {hasSent && <div style={{ fontSize: '7px', color: '#22c55e', marginTop: '1px' }}>sent</div>}
+                                      {hasUnsent && !hasSent && <div style={{ fontSize: '7px', color: '#fbbf24', marginTop: '1px' }}>saved</div>}
+                                    </div>
+                                  );
+                                })}
                               </div>
                             </div>
                           </div>
