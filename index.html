@@ -919,6 +919,7 @@
                 totalDistance: r.total_distance || 0,
                 customers: (r.stops || []).map(s => ({
                   id: s.customer_id,
+                  routeStopId: s.id,
                   name: s.full_name || '',
                   address: s.address || '',
                   phone: s.phone || '',
@@ -930,6 +931,8 @@
                   scheduledTime: s.scheduled_time || '',
                   routeConfirmed: s.route_confirmed || false,
                   stopStatus: s.status || 'pending',
+                  cancelled: s.cancelled || false,
+                  cancellationReason: s.cancellation_reason || null,
                   city: s.city || '',
                   state: s.state || '',
                   zip: s.zip || ''
@@ -3422,17 +3425,22 @@
 
       const handleCancelConfirm = async () => {
         if (!cancellingStop) return;
-        const routeId = cancellingStop.routeId || (() => {
+        let apiRouteId, frontendRouteId;
+        if (cancellingStop.routeId) {
+          apiRouteId = cancellingStop.routeId;
+          frontendRouteId = savedRoutes.find(r => r.dbRouteId == cancellingStop.routeId || r.id == cancellingStop.routeId)?.id || cancellingStop.routeId;
+        } else {
           const dateKey = selectedDate.toDateString();
           const savedRoutesForDay = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === dateKey);
           const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
           const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
-          return savedRouteForDay?.id;
-        })();
-        if (!routeId) return;
+          apiRouteId = savedRouteForDay?.dbRouteId || savedRouteForDay?.id;
+          frontendRouteId = savedRouteForDay?.id;
+        }
+        if (!apiRouteId) return;
         
         try {
-          const res = await fetch(`/api/routes/${routeId}/stops/${cancellingStop.stopId}/cancel`, {
+          const res = await fetch(`/api/routes/${apiRouteId}/stops/${cancellingStop.stopId}/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -3444,7 +3452,7 @@
           const data = await res.json();
           if (data.success) {
             setSavedRoutes(prev => prev.map(r => {
-              if (r.id !== routeId) return r;
+              if (r.id !== frontendRouteId) return r;
               return { ...r, customers: r.customers.map(c => 
                 c.id === cancellingStop.id ? { ...c, cancelled: true, cancellationReason: cancelReason } : c
               )};
@@ -3500,7 +3508,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              route_id: savedRoute.id,
+              route_id: savedRoute.dbRouteId || savedRoute.id,
               cancelled_stop_id: cancelledStop.routeStopId || cancelledStop.id,
               cancelled_customer_id: cancelledStop.id,
               cancelled_job_id: cancelledStop.jobId || null,
@@ -7588,7 +7596,7 @@ const createJob = async () => {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            setCancellingStop({ ...stop, stopId: stop.routeStopId || stop.id, routeId: route.id });
+                                            setCancellingStop({ ...stop, stopId: stop.routeStopId || stop.id, routeId: route.dbRouteId || route.id });
                                             setShowCancelModal(true);
                                           }}
                                           style={{
@@ -7604,7 +7612,7 @@ const createJob = async () => {
                                             onClick={async (e) => {
                                               e.stopPropagation();
                                               try {
-                                                const res = await fetch(`/api/routes/${route.id}/stops/${stop.routeStopId || stop.id}/reactivate`, { method: 'POST' });
+                                                const res = await fetch(`/api/routes/${route.dbRouteId || route.id}/stops/${stop.routeStopId || stop.id}/reactivate`, { method: 'POST' });
                                                 const data = await res.json();
                                                 if (data.success) {
                                                   setSavedRoutes(prev => prev.map(r => {
@@ -8676,7 +8684,7 @@ const createJob = async () => {
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          setCancellingStop({ ...job, stopId: job.routeStopId || job.id });
+                                          setCancellingStop({ ...job, stopId: job.routeStopId || job.id, routeId: savedRouteForDay?.dbRouteId || savedRouteForDay?.id });
                                           setShowCancelModal(true);
                                         }}
                                         style={{
