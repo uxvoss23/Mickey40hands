@@ -58,6 +58,7 @@ The application is a full-stack web application comprising an Express.js backend
 - **Route Locking**: Route locked during active gap-fill session to prevent conflicts
 
 ## Recent Changes
+- **2026-02-16**: Added cancel/reactivate buttons to Route History view. Cancelled stops now persist in database (route_stops.cancelled column), sync across Route Planner and Route History views. Reactivate fully restores job to scheduled state, decrements cancellation count, and removes duplicate unscheduled jobs. Fixed gap-fill time gate to use CST timezone. Fixed route ID format issues (db-N vs numeric) for cancel/reactivate API calls.
 - **2026-02-16**: Built complete gap-fill system including database schema, backend API, admin cancellation flow, tech-side cancellation, gap-fill panel UI, customer profile gap-fill settings, and success rate tracking.
 
 ## External Dependencies

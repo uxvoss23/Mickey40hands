@@ -329,6 +329,8 @@ const applySchemaUpdates = async () => {
     await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gap_fill_attempted BOOLEAN DEFAULT false`);
     await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gap_fill_session_id INTEGER`);
     await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_gap_fill BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS cancelled BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS cancellation_reason VARCHAR(255)`);
     await pool.query(`CREATE TABLE IF NOT EXISTS gap_fill_sessions (
       id SERIAL PRIMARY KEY,
       route_id INTEGER REFERENCES routes(id),
