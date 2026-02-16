@@ -10,6 +10,14 @@ const MAX_CONTACTS_PER_MONTH = 3;
 const COOLDOWN_MONTHS = 6;
 const MILES_PER_DEGREE_LAT = 69.0;
 const AVG_SPEED_MPH = 25;
+const TIMEZONE = 'America/Chicago';
+
+function getCSTNow() {
+  const now = new Date();
+  const cstStr = now.toLocaleString('en-US', { timeZone: TIMEZONE });
+  const cstDate = new Date(cstStr);
+  return cstDate;
+}
 
 function haversineDistance(lat1, lng1, lat2, lng2) {
   const R = 3959;
@@ -525,7 +533,8 @@ async function generateCandidates(session, layer) {
   ]);
 
   const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
+  const cstNow = getCSTNow();
+  const todayStr = cstNow.toISOString().split('T')[0];
 
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
@@ -589,7 +598,7 @@ async function generateCandidates(session, layer) {
     if (config.enforceTimeGate && session.next_stop_time) {
       const driveMinutes = estimateDriveMinutes(distance);
       const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
       const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
 
       if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
@@ -601,7 +610,7 @@ async function generateCandidates(session, layer) {
       }
     } else {
       const driveMinutes = estimateDriveMinutes(distance);
-      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
       const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
       if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
     }
