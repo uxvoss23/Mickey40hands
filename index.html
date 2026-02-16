@@ -2392,31 +2392,39 @@
             // Skip markers based on zoom/count for performance
             if (renderEveryNth > 1 && index % renderEveryNth !== 0) return;
 
-            // Check if customer is scheduled for the ACTIVE day (hovered day or selected day)
-            const activeDateStr = (hoveredRouteDay || selectedDate).toDateString();
-            const isScheduledToday = (() => {
-              if (!customer.scheduledDate || !customer.scheduledTime) return false;
-              const custDate = parseLocalDate(customer.scheduledDate);
-              return custDate.toDateString() === activeDateStr;
-            })();
-            
-            // Find job number for active day only
+            // Find route number from savedRoutes based on focused/hovered days
             let routeNumber = null;
-            if (isScheduledToday) {
-              const jobsForDay = customers
-                .filter(c => {
-                  if (!c.scheduledDate || !c.scheduledTime) return false;
-                  const custDate = parseLocalDate(c.scheduledDate);
-                  return custDate.toDateString() === activeDateStr;
-                })
-                .sort((a, b) => {
-                  const [aH, aM] = a.scheduledTime.split(':').map(Number);
-                  const [bH, bM] = b.scheduledTime.split(':').map(Number);
-                  return (aH * 60 + aM) - (bH * 60 + bM);
-                });
-              
-              const jobIndex = jobsForDay.findIndex(j => j.id === customer.id);
-              routeNumber = jobIndex >= 0 ? jobIndex + 1 : null;
+            let isScheduledToday = false;
+            const activeDateStrs = new Set();
+            if (hoveredRouteDay) {
+              activeDateStrs.add(hoveredRouteDay.toDateString());
+            } else if (focusedDays.length > 0) {
+              focusedDays.forEach(fd => activeDateStrs.add(fd.toDateString()));
+            } else {
+              activeDateStrs.add(selectedDate.toDateString());
+            }
+
+            // Build a cumulative stop counter across all routes for the active day(s)
+            // so that multi-route days get continuous numbering
+            let cumulativeOffset = 0;
+            for (const sr of savedRoutes) {
+              const rDateStr = parseLocalDate(sr.scheduledDate).toDateString();
+              if (!activeDateStrs.has(rDateStr)) continue;
+              const stops = (sr.customers || [])
+                .filter(c => c.lat && c.lng)
+                .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
+              const stopIdx = stops.findIndex(s => s.id === customer.id);
+              if (stopIdx >= 0) {
+                isScheduledToday = true;
+                routeNumber = cumulativeOffset + stopIdx + 1;
+                break;
+              }
+              cumulativeOffset += stops.length;
+            }
+
+            if (!isScheduledToday && customer.scheduledDate && customer.scheduledTime) {
+              const custDateStr = parseLocalDate(customer.scheduledDate).toDateString();
+              isScheduledToday = activeDateStrs.has(custDateStr);
             }
             
             const isSuggested = suggestedIds.has(customer.id);
@@ -2431,7 +2439,7 @@
 
             let isOtherDayRoute = false;
             if (statusFilter === 'scheduled' && customer._dayOfWeek !== undefined) {
-              const custRouteDate = customer._routeDate ? new Date(customer._routeDate).toDateString() : null;
+              const custRouteDate = customer._routeDate ? (customer._routeDate instanceof Date ? customer._routeDate.toDateString() : parseLocalDate(customer._routeDate).toDateString()) : null;
               isOtherDayRoute = focusedDays.length > 0 && custRouteDate && !focusedDays.some(fd => fd.toDateString() === custRouteDate);
               const isHoveredDayPin = hoveredRouteDay && custRouteDate === hoveredRouteDay.toDateString();
               const isDimmedByHover = hoveredRouteDay && custRouteDate && custRouteDate !== hoveredRouteDay.toDateString();
@@ -2583,7 +2591,7 @@
                       (customer.panelCount ? '<div style="font-size: 9px; color: #fbbf24;">☀️ ' + customer.panelCount + ' panels</div>' : '') +
                       (jp > 0 ? '<div style="font-size: 9px; color: #22c55e;">💵 $' + jp.toFixed(2) + '</div>' : '');
                   })()}
-                  ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${new Date(customer._routeDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + formatTime12h(customer.scheduledTime) : ''}</div>` : ''}
+                  ${customer._dayOfWeek !== undefined && customer._routeDate ? `<div style="font-size: 9px; color: #22c55e; margin-top: 2px;">✓ Routed: ${(customer._routeDate instanceof Date ? customer._routeDate : parseLocalDate(customer._routeDate)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${customer.scheduledTime ? ' @ ' + formatTime12h(customer.scheduledTime) : ''}</div>` : ''}
                 </div>
                 
                 
@@ -2724,34 +2732,24 @@
             markersMapRef.current.set(customer.id, marker);
           });
 
-          // Draw route lines from savedRoutes - shows focused day routes highlighted, plus other week routes dimmed
+          // Draw route lines from savedRoutes
           if (statusFilter === 'scheduled' && homeBase) {
             const DAY_LINE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
-            const ROUTE_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#eab308'];
             const isHovering = hoveredRouteDay !== null;
             const focusedDateStrs = new Set(focusedDays.map(fd => fd.toDateString()));
+            const isMultiSelect = focusedDays.length > 1;
 
-            // Get all days in the current calendar week
-            const calWeekDays = [];
-            for (let i = 0; i < 7; i++) {
-              const d = new Date(weekStart);
-              d.setDate(d.getDate() + i);
-              d.setHours(0,0,0,0);
-              calWeekDays.push(d);
-            }
-
-            // Draw routes for all days in the week
             const drawRouteLines = (dayDate, isFocused) => {
               const dateKey = dayDate.toDateString();
               const isHoveredDay = isHovering && hoveredRouteDay && hoveredRouteDay.toDateString() === dateKey;
 
               let baseOpacity;
-              if (isHovering) {
+              if (isMultiSelect && isHovering) {
                 baseOpacity = isHoveredDay ? 0.9 : 0.1;
               } else if (isFocused) {
                 baseOpacity = 0.8;
               } else {
-                baseOpacity = 0.35;
+                baseOpacity = 0.3;
               }
 
               const dayRoutes = savedRoutes.filter(r => {
@@ -2759,7 +2757,7 @@
                 return rDate.toDateString() === dateKey && (r.customers || []).length > 0;
               });
 
-              dayRoutes.forEach((route, routeIdx) => {
+              dayRoutes.forEach((route) => {
                 const stops = (route.customers || [])
                   .filter(c => c.lat && c.lng)
                   .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
@@ -2795,15 +2793,29 @@
               });
             };
 
-            // Draw non-focused week routes first (behind), then focused routes on top
-            calWeekDays.forEach(day => {
-              if (!focusedDateStrs.has(day.toDateString())) {
-                drawRouteLines(day, false);
+            if (focusedDays.length === 0) {
+              // No focus: show all week routes equally
+              for (let i = 0; i < 7; i++) {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() + i);
+                d.setHours(0,0,0,0);
+                drawRouteLines(d, true);
               }
-            });
-            focusedDays.forEach(fd => {
-              drawRouteLines(fd, true);
-            });
+            } else if (isMultiSelect) {
+              // Multi-select: show non-focused dimmed behind, then focused on top
+              for (let i = 0; i < 7; i++) {
+                const d = new Date(weekStart);
+                d.setDate(d.getDate() + i);
+                d.setHours(0,0,0,0);
+                if (!focusedDateStrs.has(d.toDateString())) {
+                  drawRouteLines(d, false);
+                }
+              }
+              focusedDays.forEach(fd => drawRouteLines(fd, true));
+            } else {
+              // Single day focused: only show that day's routes
+              focusedDays.forEach(fd => drawRouteLines(fd, true));
+            }
 
             // Draw route lines for customers being actively edited (not yet saved)
             if (routePlannerEditMode) {
@@ -2914,7 +2926,7 @@
             const focusedDateStrs = new Set(focusedDays.map(fd => fd.toDateString()));
             results = results.filter(c => {
               if (c._needsScheduling) return false;
-              const rd = c._routeDate ? new Date(c._routeDate).toDateString() : null;
+              const rd = c._routeDate ? (c._routeDate instanceof Date ? c._routeDate.toDateString() : parseLocalDate(c._routeDate).toDateString()) : null;
               return rd && focusedDateStrs.has(rd);
             });
           }
