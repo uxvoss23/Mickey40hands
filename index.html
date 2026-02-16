@@ -1141,21 +1141,17 @@
       // Get customers from saved routes for a date range
       // Includes sentToTech routes for past dates (history/reporting)
       const getScheduledCustomersForRange = (startDate, endDate) => {
-        const result = new Map(); // customerId -> { customer, routeDate, routeName, dayOfWeek }
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const result = new Map();
         savedRoutes.forEach(sr => {
           const routeDate = new Date(sr.scheduledDate);
-          // For future dates, skip sentToTech (those customers are unscheduled now)
-          // For past dates, include sentToTech (historical record for reporting)
-          if (sr.sentToTech && routeDate >= today) return;
           if (routeDate >= startDate && routeDate <= endDate) {
-            sr.customers.forEach(c => {
+            (sr.customers || []).forEach(c => {
               if (c.lat && c.lng) {
                 result.set(c.id, {
                   ...c,
                   _routeDate: routeDate,
                   _routeName: sr.name,
+                  _routeSent: !!sr.sentToTech,
                   _dayOfWeek: routeDate.getDay(),
                   _dayLabel: routeDate.toLocaleDateString('en-US', { weekday: 'short' })
                 });
@@ -2717,46 +2713,88 @@
             markersMapRef.current.set(customer.id, marker);
           });
 
-          // Draw route lines - ONLY when a specific day is focused
+          // Draw route lines from savedRoutes - shows all routes for focused days
           if (statusFilter === 'scheduled' && homeBase && focusedDays.length > 0) {
             const DAY_LINE_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6', '#8b5cf6', '#ec4899'];
+            const ROUTE_COLORS = ['#22c55e', '#3b82f6', '#f97316', '#ec4899', '#8b5cf6', '#06b6d4', '#eab308'];
             const isHovering = hoveredRouteDay !== null;
+
             focusedDays.forEach(fd => {
               const dateKey = fd.toDateString();
-              const lineColor = DAY_LINE_COLORS[fd.getDay()] || '#22c55e';
               const isHoveredDay = isHovering && hoveredRouteDay.toDateString() === dateKey;
-              const lineOpacity = isHovering ? (isHoveredDay ? 0.9 : 0.15) : 0.7;
-              const lineWeight = isHovering ? (isHoveredDay ? 4 : 2) : 3;
-              const dayJobs = customers
-                .filter(c => {
-                  if (!c.scheduledDate || !c.scheduledTime) return false;
-                  const custDate = new Date(c.scheduledDate);
-                  return custDate.toDateString() === dateKey;
-                })
-                .sort((a, b) => {
-                  const [aH, aM] = a.scheduledTime.split(':').map(Number);
-                  const [bH, bM] = b.scheduledTime.split(':').map(Number);
-                  return (aH * 60 + aM) - (bH * 60 + bM);
-                });
+              const baseOpacity = isHovering ? (isHoveredDay ? 0.9 : 0.15) : 0.7;
 
-              if (dayJobs.length > 0) {
+              const dayRoutes = savedRoutes.filter(r => {
+                const rDate = new Date(r.scheduledDate);
+                return rDate.toDateString() === dateKey && (r.customers || []).length > 0;
+              });
+
+              dayRoutes.forEach((route, routeIdx) => {
+                const stops = (route.customers || [])
+                  .filter(c => c.lat && c.lng)
+                  .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
+
+                if (stops.length === 0) return;
+
+                const lineColor = route.sentToTech
+                  ? (ROUTE_COLORS[routeIdx % ROUTE_COLORS.length])
+                  : DAY_LINE_COLORS[fd.getDay()] || '#fbbf24';
+                const lineWeight = isHovering ? (isHoveredDay ? 4 : 2) : 3;
+                const dashArray = route.sentToTech ? null : '8, 6';
+
                 const line1 = L.polyline(
-                  [[homeBase.lat, homeBase.lng], [dayJobs[0].lat, dayJobs[0].lng]],
-                  { color: lineColor, weight: lineWeight, opacity: lineOpacity, dashArray: '5, 10' }
+                  [[homeBase.lat, homeBase.lng], [stops[0].lat, stops[0].lng]],
+                  { color: lineColor, weight: lineWeight, opacity: baseOpacity, dashArray: '5, 10' }
                 ).addTo(mapInstanceRef.current);
                 routeLinesRef.current.push(line1);
-                for (let i = 0; i < dayJobs.length - 1; i++) {
+
+                for (let i = 0; i < stops.length - 1; i++) {
                   const line = L.polyline(
-                    [[dayJobs[i].lat, dayJobs[i].lng], [dayJobs[i + 1].lat, dayJobs[i + 1].lng]],
-                    { color: lineColor, weight: lineWeight, opacity: Math.min(lineOpacity + 0.1, 1) }
+                    [[stops[i].lat, stops[i].lng], [stops[i + 1].lat, stops[i + 1].lng]],
+                    { color: lineColor, weight: lineWeight, opacity: Math.min(baseOpacity + 0.1, 1), dashArray }
                   ).addTo(mapInstanceRef.current);
                   routeLinesRef.current.push(line);
+                }
+
+                const lastStop = stops[stops.length - 1];
+                const returnLine = L.polyline(
+                  [[lastStop.lat, lastStop.lng], [homeBase.lat, homeBase.lng]],
+                  { color: lineColor, weight: lineWeight, opacity: baseOpacity * 0.5, dashArray: '5, 10' }
+                ).addTo(mapInstanceRef.current);
+                routeLinesRef.current.push(returnLine);
+              });
+
+              // Also draw route lines for customers being actively edited (not yet saved)
+              if (routePlannerEditMode) {
+                const editingStops = customers
+                  .filter(c => {
+                    if (!c.scheduledDate || !c.scheduledTime) return false;
+                    const custDate = new Date(c.scheduledDate);
+                    return custDate.toDateString() === dateKey;
+                  })
+                  .filter(c => !savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id)))
+                  .sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || ''));
+                
+                if (editingStops.length > 0) {
+                  const editColor = '#fbbf24';
+                  const line1 = L.polyline(
+                    [[homeBase.lat, homeBase.lng], [editingStops[0].lat, editingStops[0].lng]],
+                    { color: editColor, weight: 3, opacity: 0.7, dashArray: '5, 10' }
+                  ).addTo(mapInstanceRef.current);
+                  routeLinesRef.current.push(line1);
+                  for (let i = 0; i < editingStops.length - 1; i++) {
+                    const line = L.polyline(
+                      [[editingStops[i].lat, editingStops[i].lng], [editingStops[i + 1].lat, editingStops[i + 1].lng]],
+                      { color: editColor, weight: 3, opacity: 0.8, dashArray: '8, 6' }
+                    ).addTo(mapInstanceRef.current);
+                    routeLinesRef.current.push(line);
+                  }
                 }
               }
             });
           }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: customer type, nav filters (status, date, time), search bar filters (city, state, zip),
