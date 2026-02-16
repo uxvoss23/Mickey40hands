@@ -2859,6 +2859,9 @@
         // In Route Planner with active radius/drawn area: bypass scheduled filter
         // to show ALL customers in the area (prospecting mode)
         const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
+        if (statusFilter === 'scheduled' && radiusMode) {
+          console.log('[RADIUS DEBUG] radiusMode:', radiusMode, 'referencePoint:', !!referencePoint, 'drawnArea:', !!drawnArea, 'prospecting:', isProspectingInRoutePlanner, 'results before filter:', results.length);
+        }
 
         // Status filter (unscheduled, scheduled)
         if (statusFilter === 'scheduled' && !isProspectingInRoutePlanner) {
@@ -3008,11 +3011,12 @@
         // --- Spatial filters (radius circle & drawn polygon) ---
         // Radius filter: only show customers within the radius circle
         if (referencePoint && radiusMiles) {
+          const beforeRadius = results.length;
           results = results.filter(c => {
             if (!c.lat || !c.lng) return false;
-            // calculateDistance returns miles
             return calculateDistance(c.lat, c.lng, referencePoint.lat, referencePoint.lng) <= radiusMiles;
           });
+          console.log('[RADIUS DEBUG] Radius filter: ' + beforeRadius + ' -> ' + results.length + ' (within ' + radiusMiles + ' miles of', referencePoint, ')');
         }
 
         // Drawn area filter
