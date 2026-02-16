@@ -112,6 +112,10 @@
       0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
       50% { box-shadow: 0 0 0 14px rgba(34, 197, 94, 0); }
     }
+    @keyframes gapFillPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+    }
     
     .leaflet-tooltip {
       background: rgba(10, 14, 39, 0.98) !important;
@@ -855,6 +859,7 @@
       const routeLinesRef = useRef([]);
       const fileInputRef = useRef(null);
       const markersMapRef = useRef(new Map());
+      const gapFillLayerRef = useRef(null);
       const techMarkerLayersRef = useRef({});
       const [activeTechnicians, setActiveTechnicians] = useState({});
 
@@ -2391,8 +2396,28 @@
           
           console.log(`📊 Rendering ${Math.floor(customerCount / renderEveryNth)} of ${customerCount} markers (zoom: ${currentZoom})`);
 
+          // When gap-fill panel is active, only show routed customers for the focused day(s)
+          const gapFillRoutedIds = new Set();
+          if (showGapFillPanel) {
+            const activeDateStrs = new Set();
+            if (focusedDays.length > 0) {
+              focusedDays.forEach(fd => activeDateStrs.add(fd.toDateString()));
+            } else {
+              activeDateStrs.add(selectedDate.toDateString());
+            }
+            savedRoutes.forEach(sr => {
+              const rDate = parseLocalDate(sr.scheduledDate);
+              if (activeDateStrs.has(rDate.toDateString())) {
+                (sr.customers || []).forEach(c => gapFillRoutedIds.add(c.id));
+              }
+            });
+          }
+
           filteredCustomers.forEach((customer, index) => {
             if (!customer.lat || !customer.lng) return;
+            
+            // When gap-fill is active, only show routed customers for the focused day
+            if (showGapFillPanel && gapFillRoutedIds.size > 0 && !gapFillRoutedIds.has(customer.id)) return;
             
             // Skip markers based on zoom/count for performance
             if (renderEveryNth > 1 && index % renderEveryNth !== 0) return;
@@ -2854,7 +2879,144 @@
             }
           }
         }
-      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode, weekStart]);
+      }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode, weekStart, showGapFillPanel, gapFillCandidates]);
+
+      // Gap-fill candidate markers on map
+      useEffect(() => {
+        if (!mapInstanceRef.current || !window.L) return;
+
+        if (gapFillLayerRef.current) {
+          mapInstanceRef.current.removeLayer(gapFillLayerRef.current);
+          gapFillLayerRef.current = null;
+        }
+
+        if (!showGapFillPanel || !gapFillCandidates || gapFillCandidates.length === 0) return;
+
+        const L = window.L;
+        const layerGroup = L.layerGroup().addTo(mapInstanceRef.current);
+        gapFillLayerRef.current = layerGroup;
+
+        const TIER_COLORS = {
+          1: '#22c55e',
+          2: '#3b82f6',
+          3: '#f59e0b',
+          4: '#f97316',
+          5: '#ef4444'
+        };
+        const TIER_LABELS = {
+          1: 'Anytime Access',
+          2: 'Recurring Due',
+          3: 'Flexible',
+          4: 'Pull Forward',
+          5: 'Past Customer'
+        };
+
+        gapFillCandidates.forEach((candidate, idx) => {
+          if (!candidate.lat || !candidate.lng) return;
+          if (candidate.outreach_status === 'confirmed') return;
+
+          const tierColor = TIER_COLORS[candidate.tier] || '#f59e0b';
+          const tierLabel = TIER_LABELS[candidate.tier] || `Tier ${candidate.tier}`;
+          const rankNum = idx + 1;
+
+          const icon = L.divIcon({
+            className: 'gap-fill-marker',
+            html: `<div style="
+              width: 28px; height: 28px; border-radius: 50%;
+              background: ${tierColor}; border: 3px solid white;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px ${tierColor}44;
+              display: flex; align-items: center; justify-content: center;
+              color: white; font-weight: 800; font-size: 11px;
+              font-family: 'Inter', sans-serif;
+              animation: gapFillPulse 2s ease-in-out infinite;
+            ">${rankNum}</div>`,
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+            popupAnchor: [0, -16]
+          });
+
+          const marker = L.marker([candidate.lat, candidate.lng], { icon });
+
+          const distText = candidate.distance_miles ? `${candidate.distance_miles} mi` : '';
+          const popupContent = `
+            <div style="font-family: 'Inter', sans-serif; width: 180px;">
+              <div style="background: ${tierColor}22; border-left: 3px solid ${tierColor}; padding: 6px 8px; border-radius: 0 4px 4px 0; margin-bottom: 6px;">
+                <div style="font-size: 9px; font-weight: 700; color: ${tierColor}; text-transform: uppercase;">
+                  Gap Fill #${rankNum} — ${tierLabel}
+                </div>
+              </div>
+              <div style="font-size: 11px; font-weight: 700; color: #f1f5f9; margin-bottom: 3px;">
+                ${candidate.full_name || candidate.first_name || 'Unknown'}
+              </div>
+              <div style="font-size: 9px; color: #94a3b8; margin-bottom: 3px;">📍 ${candidate.address || ''}</div>
+              ${candidate.phone ? `<div style="font-size: 9px; color: #94a3b8;">📞 ${candidate.phone}</div>` : ''}
+              ${distText ? `<div style="font-size: 9px; color: #60a5fa; margin-top: 2px;">📏 ${distText} away</div>` : ''}
+              ${candidate.tier_reason ? `<div style="font-size: 9px; color: ${tierColor}; margin-top: 2px;">ℹ️ ${candidate.tier_reason}</div>` : ''}
+              <div style="display: flex; gap: 4px; margin-top: 6px;">
+                <button onclick="window.dispatchEvent(new CustomEvent('viewCustomerProfile', {detail: '${candidate.customer_id}'}))"
+                  style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; padding: 5px; border-radius: 4px; font-weight: 600; font-size: 9px; cursor: pointer; font-family: 'Inter', sans-serif;">
+                  👤 Profile
+                </button>
+              </div>
+            </div>
+          `;
+
+          marker.bindPopup(popupContent, {
+            maxWidth: 180, minWidth: 180, className: 'custom-popup',
+            closeButton: true, autoClose: false, closeOnClick: false,
+            autoPan: false, offset: [0, -10]
+          });
+
+          let showTimeout, hideTimeout;
+          marker.on('mouseover', () => {
+            clearTimeout(hideTimeout);
+            showTimeout = setTimeout(() => marker.openPopup(), 100);
+          });
+          marker.on('mouseout', () => {
+            clearTimeout(showTimeout);
+            hideTimeout = setTimeout(() => {
+              const popup = marker.getPopup();
+              if (popup && popup.isOpen()) {
+                const el = popup.getElement();
+                if (el && !el.matches(':hover')) marker.closePopup();
+              }
+            }, 150);
+          });
+          marker.on('popupopen', () => {
+            const popup = marker.getPopup();
+            const el = popup.getElement();
+            if (el) {
+              el.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+              el.addEventListener('mouseleave', () => marker.closePopup());
+            }
+          });
+
+          layerGroup.addLayer(marker);
+        });
+
+        // Also add reference point marker if session has one
+        const session = gapFillSession?.session || gapFillSession;
+        if (session?.reference_lat && session?.reference_lng) {
+          const refIcon = L.divIcon({
+            className: 'gap-fill-ref-marker',
+            html: `<div style="
+              width: 20px; height: 20px; border-radius: 50%;
+              background: #ef4444; border: 3px solid white;
+              box-shadow: 0 2px 8px rgba(239,68,68,0.6), 0 0 0 2px #ef444444;
+              display: flex; align-items: center; justify-content: center;
+              font-size: 12px;
+            ">✕</div>`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10],
+            popupAnchor: [0, -12]
+          });
+          const refMarker = L.marker([session.reference_lat, session.reference_lng], { icon: refIcon });
+          refMarker.bindPopup(`<div style="font-family: 'Inter', sans-serif; font-size: 11px;"><strong style="color: #ef4444;">Cancelled Stop</strong><br/><span style="color: #94a3b8;">${session.reference_address || ''}</span></div>`, {
+            className: 'custom-popup', closeButton: true
+          });
+          layerGroup.addLayer(refMarker);
+        }
+      }, [showGapFillPanel, gapFillCandidates, gapFillSession]);
 
       // UNIFIED FILTER - Single useEffect that applies ALL filters together
       // This includes: customer type, nav filters (status, date, time), search bar filters (city, state, zip),
