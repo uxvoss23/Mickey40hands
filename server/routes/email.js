@@ -922,8 +922,10 @@ router.post('/send-assessment', rateLimit, async (req, res) => {
 router.post('/send-route', rateLimit, async (req, res) => {
   try {
     const { to, routeData } = req.body;
+    console.log('[EMAIL] Send route request received. To:', to, 'Route:', routeData?.routeName, 'Stops:', routeData?.stops?.length);
 
     if (!to || !routeData) {
+      console.log('[EMAIL] Missing fields - to:', !!to, 'routeData:', !!routeData);
       return res.status(400).json({ error: 'Missing required fields: to, routeData' });
     }
 
@@ -947,6 +949,7 @@ router.post('/send-route', rateLimit, async (req, res) => {
     const html = buildRouteEmailHTML(routeData, baseUrl);
     const subject = `Route: ${routeData.routeName} - ${new Date(routeData.scheduledDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} (${routeData.stops.length} stops)`;
 
+    console.log('[EMAIL] Sending via Resend to:', recipients, 'Subject:', subject);
     const { data, error } = await resend.emails.send({
       from: 'Sunton Solutions <onboarding@resend.dev>',
       to: recipients,
@@ -955,7 +958,7 @@ router.post('/send-route', rateLimit, async (req, res) => {
     });
 
     if (error) {
-      console.error('Resend error:', error);
+      console.error('[EMAIL] Resend error:', JSON.stringify(error));
       const msg = error.message || 'Failed to send email';
       if (msg.includes('testing emails') || msg.includes('only send')) {
         return res.status(403).json({ error: 'Free tier: Can only send to the account owner email (solarcleaning@suntonsolutions.com). To send to other addresses, verify a domain at resend.com/domains.' });
@@ -963,6 +966,7 @@ router.post('/send-route', rateLimit, async (req, res) => {
       return res.status(500).json({ error: msg });
     }
 
+    console.log('[EMAIL] Successfully sent! Resend ID:', data?.id);
     res.json({ success: true, id: data.id });
   } catch (err) {
     console.error('Email send error:', err);
