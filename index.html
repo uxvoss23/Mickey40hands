@@ -3685,7 +3685,8 @@
       };
 
       const handleCancelConfirm = async () => {
-        if (!cancellingStop) return;
+        console.log('[CANCEL] handleCancelConfirm called', cancellingStop);
+        if (!cancellingStop) { console.log('[CANCEL] No cancellingStop, returning'); return; }
         let apiRouteId, frontendRouteId;
         if (cancellingStop.routeId) {
           apiRouteId = cancellingStop.routeId;
@@ -3700,8 +3701,12 @@
         }
         if (!apiRouteId) return;
         
+        console.log('[CANCEL] apiRouteId:', apiRouteId, 'stopId:', cancellingStop.stopId);
+        if (!apiRouteId) { console.log('[CANCEL] No apiRouteId, returning'); return; }
         try {
-          const res = await fetch(`/api/routes/${apiRouteId}/stops/${cancellingStop.stopId}/cancel`, {
+          const url = `/api/routes/${apiRouteId}/stops/${cancellingStop.stopId}/cancel`;
+          console.log('[CANCEL] Calling:', url);
+          const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -3711,6 +3716,7 @@
             })
           });
           const data = await res.json();
+          console.log('[CANCEL] Response:', data);
           if (data.success) {
             setSavedRoutes(prev => prev.map(r => {
               if (r.id !== frontendRouteId) return r;
