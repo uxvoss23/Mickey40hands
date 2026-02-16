@@ -1,0 +1,263 @@
+Perfect. Below is your Unified Gap-Fill Decision Model — clean, structured, and developer-ready.
+This combines:
+
+Time feasibility engine
+
+Tier prioritization
+
+Communication logic
+
+Sequential outreach
+
+Auto messages to all parties
+
+Stop conditions
+
+🚀 UNIFIED GAP-FILL DECISION MODEL
+1️⃣ TRIGGER EVENT
+
+Gap Fill Mode activates when:
+
+A scheduled job is canceled
+
+Tech presses: “Request Nearby Job”
+
+System captures:
+
+Current time
+
+Current GPS
+
+Next scheduled job window
+
+Lateness tolerance (ex: +40 min)
+
+Standard job duration (75 min)
+
+Buffer (10 min)
+
+Drive times
+
+2️⃣ HARD TIME FEASIBILITY GATE (Non-Negotiable)
+
+A candidate is eligible ONLY if:
+
+(Current Time
+ + Drive to Candidate
+ + 75 minutes
+ + Drive to Next Job
+ + 10 min buffer)
+<= (Next Job Window Start + Lateness Tolerance)
+
+
+If false → skip candidate.
+
+3️⃣ MASTER TIER PRIORITY ORDER
+
+System evaluates in this order:
+
+🥇 TIER 1 – Anytime Access
+
+Required:
+
+Quote accepted
+
+Unscheduled
+
+access_permission_type = ANYTIME_ACCESS
+
+Time feasible
+
+Sort:
+
+Longest since last two-way interaction
+
+Closest distance
+
+Directional toward next job
+
+Message:
+
+“We’re working in your area and will be stopping by shortly to complete your cleaning unless we hear otherwise.”
+
+No confirmation required unless policy demands.
+
+🥈 TIER 2 – Recurring Due / Overdue
+
+Required:
+
+Recurring (annual or bi-annual)
+
+Within 7 days of due OR overdue
+
+Not scheduled
+
+Time feasible
+
+Sort:
+
+Most overdue
+
+Longest since last interaction
+
+Closest distance
+
+Message:
+
+“You’re coming up on your scheduled maintenance window and we’re already nearby. We can complete your service today if convenient.”
+
+Sequential confirmation required.
+
+🥉 TIER 3 – Unscheduled + Flexible
+
+Required:
+
+Quote accepted
+
+Unscheduled
+
+Flexible = true OR today preferred
+
+Time feasible
+
+Not declined same-day in 6 months
+
+Sort:
+
+Longest since last interaction
+
+Closest distance
+
+Directional
+
+Message:
+
+“We had a cancellation nearby and can fit you in today if that works.”
+
+Sequential confirmation required.
+
+🟡 TIER 4 – Scheduled (Pull Forward)
+
+Required:
+
+Scheduled within next 14 days
+
+Time feasible
+
+Sort:
+
+Closest distance
+
+Soonest scheduled date
+
+Message:
+
+“We have an unexpected opening in your area today. If you’d like to move your appointment forward, we can complete it this afternoon. Otherwise your current appointment remains unchanged.”
+
+🟠 TIER 5 – Past Non-Recurring (Overdue)
+
+Required:
+
+≥1 completed job
+
+Recurring = NONE
+
+Last service > 6 months
+
+Not scheduled
+
+Time feasible
+
+Sort:
+
+Most recently contacted first (responsive bias)
+
+Largest service gap
+
+Closest distance
+
+Message:
+
+“We’re working in your area and noticed it’s been a while since your last cleaning. If you’re due, we have an opening this afternoon.”
+
+4️⃣ SEQUENTIAL OUTREACH ENGINE
+
+Within active tier:
+
+Select next eligible customer.
+
+Send message.
+
+Wait 60 seconds.
+
+If no confirmation → move to next.
+
+Continue until:
+
+Confirmation
+
+20 total outreach attempts
+
+Time feasibility fails
+
+Tech cancels
+
+5️⃣ CONFIRMATION FLOW
+
+When customer replies YES and tech presses “Confirm”:
+
+System immediately:
+
+Stops all outreach
+
+Locks slot
+
+Calculates ETA
+
+Schedules 75-minute block
+
+Updates CRM status
+
+6️⃣ AUTOMATED MESSAGES
+📩 To Confirmed Customer
+
+“Thank you for being flexible — we’re on the way now. Estimated arrival: [ETA].”
+
+📩 To Previously Contacted Customers
+
+“This opening has been filled. Your current appointment remains unchanged.”
+
+If Tier 4 pull-forward:
+Insert original scheduled date automatically.
+
+📩 Internal Notification to Tech
+
+“Slot confirmed. Updated route sent.”
+
+7️⃣ STOP CONDITIONS
+
+System auto-stops if:
+
+20 outreach attempts reached
+
+Remaining time < 75 min + drive + buffer
+
+Next job arrival cutoff at risk
+
+Tech manually cancels
+
+8️⃣ DESIGN PHILOSOPHY
+
+This engine prioritizes:
+
+Protect next scheduled job
+
+Lowest friction customers first
+
+Route density optimization
+
+Controlled escalation
+
+No mass blasting
+
+Automatic shutdown on confirmation
