@@ -1088,6 +1088,23 @@
         }
       }, [currentView]);
 
+      const sentRouteKey = useMemo(() => {
+        return savedRoutes
+          .filter(r => r.sentToTech && (r.dbRouteId || r.id))
+          .map(r => `${r.dbRouteId || r.id}:${r._completedStopCount || 0}/${r._totalStopCount || 0}`)
+          .join(',');
+      }, [savedRoutes]);
+
+      useEffect(() => {
+        if (!sentRouteKey) return;
+        const hasIncomplete = savedRoutes.some(r => r.sentToTech && (r.dbRouteId || r.id) && r._completedStopCount !== r._totalStopCount);
+        if (!hasIncomplete) return;
+        const interval = setInterval(() => {
+          refreshRouteStopStatus();
+        }, 30000);
+        return () => clearInterval(interval);
+      }, [sentRouteKey]);
+
       // Update calculated price when panel count or tier changes
       useEffect(() => {
         if (!jobForm.useCustomPrice && jobForm.panelCount) {
@@ -12311,7 +12328,7 @@ const createJob = async () => {
                                         </div>
                                       </div>
                                     )}
-                                    {customer.email && cd.photos && cd.photos.length > 0 && (
+                                    {customer.email && cd && (
                                       <button
                                         onClick={() => {
                                           const normalizedPhotos = (cd.photos || []).map((p, pi) => typeof p === 'object' && p.data ? p : { label: `Photo ${pi+1}`, data: p });
