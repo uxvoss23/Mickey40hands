@@ -1679,10 +1679,8 @@
         }
         setReferencePoint(null);
         setReferenceAddress('');
-        // Filtering handled by unified filter useEffect
       };
 
-      // Clear drawn area
       const clearDrawnArea = () => {
         if (drawnPolygon && mapInstanceRef.current) {
           mapInstanceRef.current.removeLayer(drawnPolygon);
@@ -1690,10 +1688,6 @@
         setDrawnPolygon(null);
         setDrawnArea(null);
         setDrawMode(false);
-        // Reset filtered customers if no other filters active
-        if (!referencePoint) {
-          setFilteredCustomers(typeFilteredCustomers);
-        }
       };
 
       const exitRadiusMode = () => {
@@ -1702,7 +1696,6 @@
         setRadiusMode(false);
         setAwaitingMapClick(false);
         setLastServiceFilter('');
-        setFilteredCustomers(typeFilteredCustomers);
       };
 
       // Drawing state for freehand polygon
@@ -2863,8 +2856,12 @@
         let results = typeFilteredCustomers;
 
         // --- Navigation bar filters ---
+        // In Route Planner with active radius/drawn area: bypass scheduled filter
+        // to show ALL customers in the area (prospecting mode)
+        const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
+
         // Status filter (unscheduled, scheduled)
-        if (statusFilter === 'scheduled') {
+        if (statusFilter === 'scheduled' && !isProspectingInRoutePlanner) {
           let rangeStart, rangeEnd;
           if (focusedDays.length > 0) {
             const sortedDays = [...focusedDays].sort((a, b) => a - b);
@@ -3077,7 +3074,7 @@
         setFilteredCustomers(results);
       }, [searchQuery, customers, typeFilteredCustomers, activeCustomerType, cityFilter, stateFilter, zipFilter, lastServiceFilter,
           drawnArea, drawnPolygon, activeFilters, statusFilter, preferredDateFilter,
-          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles,
+          preferredTimeFilter, showRecurringList, referencePoint, radiusMiles, radiusMode,
           scheduledMapView, scheduledViewWeekStart, showNeedScheduling, savedRoutes, focusedDays]);
 
       // Handle customer click - DAY SPECIFIC ROUTING
