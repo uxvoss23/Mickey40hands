@@ -575,6 +575,17 @@
       const lastRoutePlannerState = React.useRef({ focusedDays: null, multiSelectDays: false, savedViewDays: null });
       const [showMonthCalendar, setShowMonthCalendar] = useState(false);
       const [suggestedCustomers, setSuggestedCustomers] = useState([]);
+      const [gapFillSession, setGapFillSession] = useState(null);
+      const [gapFillCandidates, setGapFillCandidates] = useState([]);
+      const [gapFillLoading, setGapFillLoading] = useState(false);
+      const [showGapFillPanel, setShowGapFillPanel] = useState(false);
+      const [cancellingStopId, setCancellingStopId] = useState(null);
+      const [cancelReason, setCancelReason] = useState('');
+      const [cancelNote, setCancelNote] = useState('');
+      const [showCancelModal, setShowCancelModal] = useState(false);
+      const [cancellingStop, setCancellingStop] = useState(null);
+      const [copiedMessageId, setCopiedMessageId] = useState(null);
+      const [gapFillExpansionLayer, setGapFillExpansionLayer] = useState(1);
       const [savedRoutes, setSavedRoutes] = useState([]);
       const [failedCustomers, setFailedCustomers] = useState([]);
       const [showFailedCustomersModal, setShowFailedCustomersModal] = useState(false);
@@ -3407,6 +3418,210 @@
         setDraggedIndex(null);
         setUnsavedRouteChanges(true);
         setUnsavedRouteDays(prev => ({ ...prev, [dateKey]: true }));
+      };
+
+      const handleCancelConfirm = async () => {
+        if (!cancellingStop) return;
+        const dateKey = selectedDate.toDateString();
+        const savedRoutesForDay = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === dateKey);
+        const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+        const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+        if (!savedRouteForDay) return;
+        
+        try {
+          const res = await fetch(`/api/routes/${savedRouteForDay.id}/stops/${cancellingStop.stopId}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              reason: cancelReason || 'Other', 
+              note: cancelNote,
+              reschedule_date: cancelReason === 'Rescheduled' ? document.getElementById('reschedule-date')?.value : null
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            setSavedRoutes(prev => prev.map(r => {
+              if (r.id !== savedRouteForDay.id) return r;
+              return { ...r, customers: r.customers.map(c => 
+                c.id === cancellingStop.id ? { ...c, cancelled: true, cancellationReason: cancelReason } : c
+              )};
+            }));
+            setShowCancelModal(false);
+            setCancellingStop(null);
+            setCancelReason('');
+            setCancelNote('');
+            if (data.frequentCanceller) {
+              alert(`Note: ${cancellingStop.name} has cancelled ${data.cancellationCount} times and is flagged as a frequent canceller.`);
+            }
+          }
+        } catch (err) {
+          console.error('Cancel failed:', err);
+          alert('Failed to cancel stop');
+        }
+      };
+
+      const copyGapFillMessage = async (candidate, messageId) => {
+        const firstName = (candidate.full_name || candidate.customer_name || '').split(' ')[0];
+        const svcType = candidate.service_type || gapFillSession?.session?.cancelled_job_description || 'solar panel cleaning';
+        const tierNum = candidate.tier || 1;
+        const tierMessages = {
+          1: `Hey ${firstName}, we had a cancellation and are pulling your project forward. We'll be stopping by shortly. Let us know if this is an issue. Remember, you don't have to be home -- we just need roof access. We'll send your full assessment with before and after photos when we're done.`,
+          2: `Hey ${firstName}, you're coming up on your scheduled maintenance and we're already nearby. We can complete your service today if that works for you.`,
+          3: `Hey ${firstName}, we had a cancellation nearby and can fit you in today if that works.`,
+          4: `Hey ${firstName}, we have an unexpected opening in your area today. If you'd like to move your appointment forward, we can complete it this afternoon. Otherwise your current appointment stays as is.`,
+          5: `Hey ${firstName}, we're working in your area and noticed it's been a while since your last cleaning. We have an opening this afternoon if you're interested.`
+        };
+        const message = tierMessages[tierNum] || tierMessages[3];
+        try {
+          await navigator.clipboard.writeText(message);
+          setCopiedMessageId(messageId);
+          setTimeout(() => setCopiedMessageId(null), 2000);
+        } catch (err) {
+          const ta = document.createElement('textarea');
+          ta.value = message;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          setCopiedMessageId(messageId);
+          setTimeout(() => setCopiedMessageId(null), 2000);
+        }
+      };
+
+      const startGapFillSession = async (cancelledStop, savedRoute) => {
+        setGapFillLoading(true);
+        try {
+          const stopIdx = savedRoute.customers ? savedRoute.customers.findIndex(c => c.id === cancelledStop.id) : 0;
+          const nextStop = savedRoute.customers ? savedRoute.customers.find((c, i) => i > stopIdx && !c.cancelled) : null;
+          const res = await fetch('/api/gapfill/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              route_id: savedRoute.id,
+              cancelled_stop_id: cancelledStop.routeStopId || cancelledStop.id,
+              cancelled_customer_id: cancelledStop.id,
+              cancelled_job_id: cancelledStop.jobId || null,
+              cancelled_job_description: cancelledStop.jobDescription || 'Residential Panel Cleaning',
+              reference_lat: cancelledStop.lat,
+              reference_lng: cancelledStop.lng,
+              reference_address: cancelledStop.address,
+              next_stop_id: nextStop?.id || null,
+              next_stop_lat: nextStop?.lat || null,
+              next_stop_lng: nextStop?.lng || null,
+              next_stop_time: nextStop?.scheduledTime || null
+            })
+          });
+          const data = await res.json();
+          if (res.status === 409 && data.activeSessionId) {
+            const activeRes = await fetch('/api/gapfill/sessions/active');
+            const activeData = await activeRes.json();
+            setGapFillSession(activeData);
+            setGapFillCandidates(activeData.candidates || []);
+          } else {
+            setGapFillSession(data);
+            setGapFillCandidates(data.candidates || []);
+          }
+          setShowGapFillPanel(true);
+        } catch (err) {
+          console.error('Failed to start gap fill:', err);
+          alert('Failed to start gap fill session');
+        } finally {
+          setGapFillLoading(false);
+        }
+      };
+
+      const expandGapFillSearch = async () => {
+        const sessionId = gapFillSession?.session?.id || gapFillSession?.id;
+        if (!sessionId || gapFillExpansionLayer >= 4) return;
+        setGapFillLoading(true);
+        try {
+          const res = await fetch(`/api/gapfill/sessions/${sessionId}/expand`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          const data = await res.json();
+          if (data.candidates) {
+            setGapFillCandidates(data.candidates);
+          }
+          setGapFillExpansionLayer(data.session?.search_layer || gapFillExpansionLayer + 1);
+        } catch (err) {
+          console.error('Failed to expand search:', err);
+        } finally {
+          setGapFillLoading(false);
+        }
+      };
+
+      const updateGapFillCandidate = async (candidateId, updates) => {
+        try {
+          const res = await fetch(`/api/gapfill/candidates/${candidateId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+          });
+          const updated = await res.json();
+          setGapFillCandidates(prev => prev.map(c => c.id === candidateId ? { ...c, ...updated } : c));
+        } catch (err) {
+          console.error('Failed to update candidate:', err);
+        }
+      };
+
+      const confirmGapFill = async (candidateId) => {
+        const sessionId = gapFillSession?.session?.id || gapFillSession?.id;
+        if (!sessionId) return;
+        try {
+          const res = await fetch(`/api/gapfill/sessions/${sessionId}/confirm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidate_id: candidateId })
+          });
+          const data = await res.json();
+          if (data.confirmedCandidate || data.session) {
+            alert('Gap fill confirmed! A new job has been created.');
+            setShowGapFillPanel(false);
+            setGapFillSession(null);
+            setGapFillCandidates([]);
+            setGapFillExpansionLayer(1);
+          } else if (data.error) {
+            alert(data.error);
+          }
+        } catch (err) {
+          console.error('Failed to confirm gap fill:', err);
+          alert('Failed to confirm gap fill');
+        }
+      };
+
+      const toggleAnytimeAccess = async (customerId, currentValue) => {
+        try {
+          const res = await fetch(`/api/gapfill/customers/${customerId}/anytime-access`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ anytime_access: !currentValue })
+          });
+          const data = await res.json();
+          setGapFillCandidates(prev => prev.map(c =>
+            c.customer_id === customerId ? { ...c, anytime_access: data.anytime_access } : c
+          ));
+        } catch (err) {
+          console.error('Failed to toggle anytime access:', err);
+        }
+      };
+
+      const closeGapFillSession = async (resolution) => {
+        const sessionId = gapFillSession?.session?.id || gapFillSession?.id;
+        if (!sessionId) return;
+        try {
+          await fetch(`/api/gapfill/sessions/${sessionId}/close`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resolution })
+          });
+          setShowGapFillPanel(false);
+          setGapFillSession(null);
+          setGapFillCandidates([]);
+          setGapFillExpansionLayer(1);
+        } catch (err) {
+          console.error('Failed to close session:', err);
+        }
       };
 
       const handleSaveRoute = async () => {
@@ -7411,6 +7626,390 @@ const createJob = async () => {
                         );
                       })()}
 
+                      {showGapFillPanel && gapFillSession && (
+                        <div style={{
+                          padding: '16px',
+                          background: 'rgba(15, 23, 42, 0.95)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '12px',
+                          marginBottom: '16px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '16px' }}>🔄</span>
+                              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9', margin: 0 }}>Gap Fill</h3>
+                              <span style={{
+                                fontSize: '10px',
+                                background: 'rgba(34, 197, 94, 0.2)',
+                                color: '#86efac',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                fontWeight: 600
+                              }}>Active</span>
+                            </div>
+                            <button
+                              onClick={() => setShowGapFillPanel(false)}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                padding: '4px 8px',
+                                color: '#ef4444',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >✕</button>
+                          </div>
+
+                          <div style={{
+                            padding: '10px',
+                            background: 'rgba(30, 41, 59, 0.6)',
+                            borderRadius: '8px',
+                            marginBottom: '12px',
+                            fontSize: '11px',
+                            color: '#94a3b8'
+                          }}>
+                            <div style={{ marginBottom: '4px' }}>
+                              <span style={{ color: '#64748b' }}>Cancelled: </span>
+                              <span style={{ color: '#f1f5f9', fontWeight: 600 }}>
+                                {gapFillSession?.session?.reference_address || 'Unknown'}
+                              </span>
+                            </div>
+                            <div>
+                              <span style={{ color: '#64748b' }}>Service: </span>
+                              <span style={{ color: '#c4b5fd', fontWeight: 600 }}>
+                                {gapFillSession?.session?.cancelled_job_description || 'Panel Cleaning'}
+                              </span>
+                            </div>
+                            <div style={{ marginTop: '4px' }}>
+                              <span style={{ color: '#64748b' }}>Search Layer: </span>
+                              <span style={{ color: '#fbbf24', fontWeight: 600 }}>
+                                {gapFillSession?.session?.search_layer || gapFillExpansionLayer} of 4
+                              </span>
+                            </div>
+                          </div>
+
+                          {gapFillLoading && (
+                            <div style={{
+                              textAlign: 'center',
+                              padding: '20px',
+                              color: '#94a3b8',
+                              fontSize: '12px'
+                            }}>
+                              <div style={{
+                                width: '24px', height: '24px',
+                                border: '3px solid rgba(139, 92, 246, 0.3)',
+                                borderTop: '3px solid #8b5cf6',
+                                borderRadius: '50%',
+                                animation: 'spin 1s linear infinite',
+                                margin: '0 auto 8px'
+                              }}></div>
+                              Searching for candidates...
+                            </div>
+                          )}
+
+                          {!gapFillLoading && gapFillCandidates.length === 0 && (
+                            <div style={{
+                              textAlign: 'center',
+                              padding: '20px',
+                              color: '#64748b',
+                              fontSize: '12px'
+                            }}>
+                              No candidates found at this layer.
+                              {gapFillExpansionLayer < 4 && ' Try expanding the search.'}
+                            </div>
+                          )}
+
+                          {!gapFillLoading && gapFillCandidates.length > 0 && (() => {
+                            const tierConfig = {
+                              1: { label: 'Anytime Access', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.15)', border: 'rgba(34, 197, 94, 0.3)' },
+                              2: { label: 'Recurring Due/Overdue', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)', border: 'rgba(59, 130, 246, 0.3)' },
+                              3: { label: 'Flexible Unscheduled', color: '#8b5cf6', bg: 'rgba(139, 92, 246, 0.15)', border: 'rgba(139, 92, 246, 0.3)' },
+                              4: { label: 'Pull Forward', color: '#eab308', bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.3)' },
+                              5: { label: 'Past Non-Recurring', color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', border: 'rgba(100, 116, 139, 0.3)' }
+                            };
+                            const grouped = {};
+                            gapFillCandidates.forEach(c => {
+                              const t = c.tier || 5;
+                              if (!grouped[t]) grouped[t] = [];
+                              grouped[t].push(c);
+                            });
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }} className="scrollbar-custom">
+                                {Object.entries(grouped).sort((a, b) => Number(a[0]) - Number(b[0])).map(([tier, candidates]) => {
+                                  const tc = tierConfig[tier] || tierConfig[5];
+                                  return (
+                                    <div key={tier}>
+                                      <div style={{
+                                        display: 'flex', alignItems: 'center', gap: '6px',
+                                        marginBottom: '6px', padding: '4px 0'
+                                      }}>
+                                        <span style={{
+                                          fontSize: '9px',
+                                          fontWeight: 700,
+                                          color: tc.color,
+                                          background: tc.bg,
+                                          border: `1px solid ${tc.border}`,
+                                          borderRadius: '6px',
+                                          padding: '2px 8px',
+                                          textTransform: 'uppercase',
+                                          letterSpacing: '0.5px'
+                                        }}>
+                                          Tier {tier}: {tc.label}
+                                        </span>
+                                        <span style={{ fontSize: '10px', color: '#64748b' }}>({candidates.length})</span>
+                                      </div>
+                                      {candidates.map((candidate) => (
+                                        <div key={candidate.id} style={{
+                                          padding: '10px',
+                                          background: 'rgba(15, 23, 42, 0.6)',
+                                          borderRadius: '8px',
+                                          borderLeft: `3px solid ${tc.color}`,
+                                          marginBottom: '6px',
+                                          border: `1px solid ${tc.border}`,
+                                          borderLeftWidth: '3px',
+                                          borderLeftColor: tc.color
+                                        }}>
+                                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>
+                                            <div>
+                                              <div style={{ fontSize: '12px', fontWeight: 700, color: '#f1f5f9' }}>
+                                                {candidate.full_name || candidate.customer_name}
+                                              </div>
+                                              <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>
+                                                {candidate.address}
+                                              </div>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                              <span style={{
+                                                fontSize: '10px',
+                                                fontWeight: 600,
+                                                color: '#c4b5fd',
+                                                background: 'rgba(139, 92, 246, 0.2)',
+                                                padding: '2px 6px',
+                                                borderRadius: '4px'
+                                              }}>
+                                                {candidate.distance_miles} mi
+                                              </span>
+                                            </div>
+                                          </div>
+
+                                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '6px', fontSize: '10px' }}>
+                                            {candidate.phone && (
+                                              <span style={{ color: '#94a3b8' }}>📞 {candidate.phone}</span>
+                                            )}
+                                            {candidate.panel_count > 0 && (
+                                              <span style={{ color: '#94a3b8' }}>◻ {candidate.panel_count} panels</span>
+                                            )}
+                                            {candidate.last_service_date && (
+                                              <span style={{ color: '#94a3b8' }}>
+                                                Last: {new Date(candidate.last_service_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                                              </span>
+                                            )}
+                                            {candidate.preferred_contact_method && (
+                                              <span style={{
+                                                background: candidate.preferred_contact_method === 'call' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                                                color: candidate.preferred_contact_method === 'call' ? '#93c5fd' : '#86efac',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                fontWeight: 600,
+                                                textTransform: 'capitalize'
+                                              }}>
+                                                {candidate.preferred_contact_method}
+                                              </span>
+                                            )}
+                                            {candidate.anytime_access && (
+                                              <span style={{
+                                                background: 'rgba(34, 197, 94, 0.2)',
+                                                color: '#86efac',
+                                                padding: '1px 6px',
+                                                borderRadius: '4px',
+                                                fontWeight: 600
+                                              }}>🔑 Anytime</span>
+                                            )}
+                                          </div>
+
+                                          {candidate.outreach_status && candidate.outreach_status !== 'pending' && (
+                                            <div style={{
+                                              fontSize: '10px',
+                                              padding: '4px 8px',
+                                              background: candidate.outreach_status === 'confirmed' ? 'rgba(34, 197, 94, 0.15)' :
+                                                candidate.outreach_status === 'declined' ? 'rgba(239, 68, 68, 0.15)' :
+                                                'rgba(234, 179, 8, 0.15)',
+                                              color: candidate.outreach_status === 'confirmed' ? '#86efac' :
+                                                candidate.outreach_status === 'declined' ? '#fca5a5' :
+                                                '#fde68a',
+                                              borderRadius: '4px',
+                                              marginBottom: '6px',
+                                              fontWeight: 600,
+                                              textTransform: 'uppercase'
+                                            }}>
+                                              {candidate.outreach_status === 'contacted' ? '📤 Contacted' :
+                                               candidate.outreach_status === 'no_answer' ? '📵 No Answer' :
+                                               candidate.outreach_status === 'declined' ? '✗ Declined' :
+                                               candidate.outreach_status === 'confirmed' ? '✓ Confirmed' :
+                                               candidate.outreach_status}
+                                            </div>
+                                          )}
+
+                                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                            <button
+                                              onClick={() => copyGapFillMessage(candidate, candidate.id)}
+                                              style={{
+                                                background: copiedMessageId === candidate.id ? 'rgba(34, 197, 94, 0.2)' : 'rgba(139, 92, 246, 0.15)',
+                                                border: `1px solid ${copiedMessageId === candidate.id ? 'rgba(34, 197, 94, 0.4)' : 'rgba(139, 92, 246, 0.3)'}`,
+                                                borderRadius: '4px',
+                                                padding: '3px 8px',
+                                                color: copiedMessageId === candidate.id ? '#86efac' : '#c4b5fd',
+                                                fontSize: '10px',
+                                                fontWeight: 600,
+                                                cursor: 'pointer'
+                                              }}
+                                            >
+                                              {copiedMessageId === candidate.id ? '✓ Copied!' : '📋 Copy Msg'}
+                                            </button>
+                                            {(!candidate.outreach_status || candidate.outreach_status === 'pending') && (
+                                              <React.Fragment>
+                                                <button
+                                                  onClick={() => updateGapFillCandidate(candidate.id, { outreach_status: 'contacted', contact_method_used: 'text' })}
+                                                  style={{
+                                                    background: 'rgba(59, 130, 246, 0.15)',
+                                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                                    borderRadius: '4px',
+                                                    padding: '3px 8px',
+                                                    color: '#93c5fd',
+                                                    fontSize: '10px',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >💬 Texted</button>
+                                                <button
+                                                  onClick={() => updateGapFillCandidate(candidate.id, { outreach_status: 'contacted', contact_method_used: 'call' })}
+                                                  style={{
+                                                    background: 'rgba(59, 130, 246, 0.15)',
+                                                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                                                    borderRadius: '4px',
+                                                    padding: '3px 8px',
+                                                    color: '#93c5fd',
+                                                    fontSize: '10px',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >📞 Called</button>
+                                                <button
+                                                  onClick={() => updateGapFillCandidate(candidate.id, { outreach_status: 'no_answer' })}
+                                                  style={{
+                                                    background: 'rgba(234, 179, 8, 0.1)',
+                                                    border: '1px solid rgba(234, 179, 8, 0.3)',
+                                                    borderRadius: '4px',
+                                                    padding: '3px 8px',
+                                                    color: '#fde68a',
+                                                    fontSize: '10px',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >📵 No Answer</button>
+                                              </React.Fragment>
+                                            )}
+                                            {candidate.outreach_status === 'contacted' && (
+                                              <React.Fragment>
+                                                <button
+                                                  onClick={() => confirmGapFill(candidate.id)}
+                                                  style={{
+                                                    background: 'rgba(34, 197, 94, 0.2)',
+                                                    border: '1px solid rgba(34, 197, 94, 0.4)',
+                                                    borderRadius: '4px',
+                                                    padding: '3px 10px',
+                                                    color: '#86efac',
+                                                    fontSize: '10px',
+                                                    fontWeight: 700,
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >✓ Confirm</button>
+                                                <button
+                                                  onClick={() => updateGapFillCandidate(candidate.id, { outreach_status: 'declined' })}
+                                                  style={{
+                                                    background: 'rgba(239, 68, 68, 0.1)',
+                                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                                    borderRadius: '4px',
+                                                    padding: '3px 8px',
+                                                    color: '#fca5a5',
+                                                    fontSize: '10px',
+                                                    fontWeight: 600,
+                                                    cursor: 'pointer'
+                                                  }}
+                                                >✗ Declined</button>
+                                              </React.Fragment>
+                                            )}
+                                            {candidate.tier === 1 ? null : (
+                                              <button
+                                                onClick={() => toggleAnytimeAccess(candidate.customer_id, candidate.anytime_access)}
+                                                title={candidate.anytime_access ? 'Remove anytime access' : 'Mark as anytime access'}
+                                                style={{
+                                                  background: candidate.anytime_access ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 116, 139, 0.15)',
+                                                  border: `1px solid ${candidate.anytime_access ? 'rgba(34, 197, 94, 0.4)' : 'rgba(100, 116, 139, 0.3)'}`,
+                                                  borderRadius: '4px',
+                                                  padding: '3px 8px',
+                                                  color: candidate.anytime_access ? '#86efac' : '#94a3b8',
+                                                  fontSize: '10px',
+                                                  fontWeight: 600,
+                                                  cursor: 'pointer'
+                                                }}
+                                              >🔑</button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+
+                          <div style={{
+                            display: 'flex', gap: '6px', marginTop: '12px', flexWrap: 'wrap'
+                          }}>
+                            {gapFillExpansionLayer < 4 && (
+                              <button
+                                onClick={expandGapFillSearch}
+                                disabled={gapFillLoading}
+                                style={{
+                                  flex: 1,
+                                  background: 'rgba(139, 92, 246, 0.15)',
+                                  border: '1px solid rgba(139, 92, 246, 0.3)',
+                                  borderRadius: '6px',
+                                  padding: '8px 12px',
+                                  color: '#c4b5fd',
+                                  fontSize: '11px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  opacity: gapFillLoading ? 0.5 : 1
+                                }}
+                              >
+                                🔍 Expand Search (Layer {gapFillExpansionLayer + 1})
+                              </button>
+                            )}
+                            <button
+                              onClick={() => closeGapFillSession('unfilled')}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                padding: '8px 12px',
+                                color: '#fca5a5',
+                                fontSize: '11px',
+                                fontWeight: 600,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Close Session
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Current Week Stats */}
                       {(() => {
                         const weekDays = getWeekDays(weekStart);
@@ -7598,6 +8197,78 @@ const createJob = async () => {
                       </div>
                     );
                   })()}
+
+                  {showCancelModal && cancellingStop && (
+                    <div style={{
+                      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                      background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      zIndex: 10000, animation: 'fadeIn 0.3s'
+                    }} onClick={() => { setShowCancelModal(false); setCancellingStop(null); setCancelReason(''); setCancelNote(''); }}>
+                      <div style={{
+                        background: '#1e293b',
+                        border: '1px solid rgba(139,92,246,0.3)',
+                        borderRadius: '16px', padding: '24px', width: '400px', maxWidth: '90vw',
+                        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+                        animation: 'slideUp 0.3s'
+                      }} onClick={e => e.stopPropagation()}>
+                        <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#f1f5f9', marginBottom: '16px' }}>
+                          ❌ Cancel Stop: {cancellingStop.name}
+                        </h3>
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '8px', display: 'block' }}>Reason</label>
+                          {['Customer Requested', 'No Answer', 'Weather', 'Rescheduled', 'Other'].map(reason => (
+                            <label key={reason} style={{
+                              display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0',
+                              cursor: 'pointer', fontSize: '13px', color: cancelReason === reason ? '#f1f5f9' : '#94a3b8'
+                            }}>
+                              <input type="radio" name="cancelReason" value={reason}
+                                checked={cancelReason === reason}
+                                onChange={() => setCancelReason(reason)}
+                                style={{ accentColor: '#8b5cf6' }}
+                              />
+                              {reason}
+                            </label>
+                          ))}
+                        </div>
+                        {cancelReason === 'Rescheduled' && (
+                          <div style={{ marginBottom: '16px' }}>
+                            <label style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '6px', display: 'block' }}>Reschedule Date</label>
+                            <input type="date" id="reschedule-date" style={{
+                              background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(148,163,184,0.2)',
+                              borderRadius: '8px', padding: '8px 12px', color: '#f1f5f9', fontSize: '13px', width: '100%'
+                            }} />
+                          </div>
+                        )}
+                        <div style={{ marginBottom: '16px' }}>
+                          <label style={{ fontSize: '12px', fontWeight: 600, color: '#94a3b8', marginBottom: '6px', display: 'block' }}>Notes (optional)</label>
+                          <textarea value={cancelNote} onChange={e => setCancelNote(e.target.value)}
+                            placeholder="Add any notes..."
+                            style={{
+                              background: 'rgba(15,23,42,0.8)', border: '1px solid rgba(148,163,184,0.2)',
+                              borderRadius: '8px', padding: '10px 12px', color: '#f1f5f9', fontSize: '13px',
+                              width: '100%', minHeight: '60px', resize: 'vertical', fontFamily: 'Inter, sans-serif'
+                            }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                          <button onClick={() => { setShowCancelModal(false); setCancellingStop(null); setCancelReason(''); setCancelNote(''); }}
+                            style={{
+                              background: 'rgba(15,23,42,0.6)', border: '1px solid rgba(148,163,184,0.2)',
+                              borderRadius: '8px', padding: '8px 16px', color: '#94a3b8', fontSize: '13px',
+                              fontWeight: 600, cursor: 'pointer'
+                            }}>Cancel</button>
+                          <button onClick={handleCancelConfirm}
+                            style={{
+                              background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none',
+                              borderRadius: '8px', padding: '8px 16px', color: 'white', fontSize: '13px',
+                              fontWeight: 600, cursor: 'pointer',
+                              boxShadow: '0 2px 8px rgba(239,68,68,0.3)'
+                            }}>Confirm Cancel</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Day Schedule View - only show in edit mode for Route Planner */}
                   {statusFilter === 'scheduled' && routePlannerEditMode && (
@@ -7856,14 +8527,16 @@ const createJob = async () => {
                                       alignItems: 'center',
                                       gap: '10px',
                                       padding: '8px',
-                                      background: 'rgba(15, 23, 42, 0.6)',
+                                      background: job.cancelled ? 'rgba(15, 23, 42, 0.3)' : 'rgba(15, 23, 42, 0.6)',
                                       borderRadius: '6px',
-                                      border: '1px solid rgba(139, 92, 246, 0.2)',
+                                      border: job.cancelled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(139, 92, 246, 0.2)',
                                       cursor: 'pointer',
-                                      transition: 'all 0.15s'
+                                      transition: 'all 0.15s',
+                                      opacity: job.cancelled ? 0.5 : 1,
+                                      position: 'relative'
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)'}
+                                    onMouseEnter={(e) => { if (!job.cancelled) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = job.cancelled ? 'rgba(15, 23, 42, 0.3)' : 'rgba(15, 23, 42, 0.6)'; }}
                                   >
                                     <div style={{
                                       fontSize: '11px',
@@ -7890,12 +8563,21 @@ const createJob = async () => {
                                       <div style={{
                                         fontSize: '12px',
                                         fontWeight: 600,
-                                        color: '#f1f5f9',
+                                        color: job.cancelled ? '#94a3b8' : '#f1f5f9',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap'
+                                        whiteSpace: 'nowrap',
+                                        textDecoration: job.cancelled ? 'line-through' : 'none'
                                       }}>
                                         {job.name}
+                                        {job.cancellationCount >= 3 && (
+                                          <span style={{
+                                            marginLeft: '6px',
+                                            fontSize: '10px',
+                                            color: '#f59e0b',
+                                            fontWeight: 700
+                                          }} title={`${job.cancellationCount} cancellations`}>⚠️</span>
+                                        )}
                                       </div>
                                       <div style={{
                                         fontSize: '10px',
@@ -7907,6 +8589,92 @@ const createJob = async () => {
                                         {job.address}
                                       </div>
                                     </div>
+                                    {job.cancelled && (
+                                      <span style={{
+                                        fontSize: '9px',
+                                        fontWeight: 700,
+                                        color: '#ef4444',
+                                        background: 'rgba(239,68,68,0.15)',
+                                        border: '1px solid rgba(239,68,68,0.3)',
+                                        borderRadius: '4px',
+                                        padding: '2px 6px',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.5px',
+                                        whiteSpace: 'nowrap'
+                                      }}>CANCELLED</span>
+                                    )}
+                                    {savedRouteForDay && savedRouteForDay.sentToTech && !job.cancelled && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setCancellingStop({ ...job, stopId: job.routeStopId || job.id });
+                                          setShowCancelModal(true);
+                                        }}
+                                        style={{
+                                          background: 'rgba(239,68,68,0.1)',
+                                          border: '1px solid rgba(239,68,68,0.3)',
+                                          borderRadius: '4px',
+                                          padding: '2px 6px',
+                                          color: '#ef4444',
+                                          fontSize: '10px',
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          opacity: 0,
+                                          transition: 'opacity 0.15s',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                        ref={el => {
+                                          if (el) {
+                                            const parent = el.closest('div[style]');
+                                            if (parent) {
+                                              parent.addEventListener('mouseenter', () => el.style.opacity = '1');
+                                              parent.addEventListener('mouseleave', () => el.style.opacity = '0');
+                                            }
+                                          }
+                                        }}
+                                      >✕ Cancel</button>
+                                    )}
+                                    {savedRouteForDay && savedRouteForDay.sentToTech && job.cancelled && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          alert('Reactivate functionality coming soon');
+                                        }}
+                                        style={{
+                                          background: 'rgba(34,197,94,0.1)',
+                                          border: '1px solid rgba(34,197,94,0.3)',
+                                          borderRadius: '4px',
+                                          padding: '2px 6px',
+                                          color: '#22c55e',
+                                          fontSize: '10px',
+                                          fontWeight: 600,
+                                          cursor: 'pointer',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >↩ Reactivate</button>
+                                    )}
+                                    {savedRouteForDay && savedRouteForDay.sentToTech && job.cancelled && !showGapFillPanel && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          startGapFillSession(job, savedRouteForDay);
+                                        }}
+                                        disabled={gapFillLoading}
+                                        style={{
+                                          background: 'rgba(139, 92, 246, 0.15)',
+                                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                                          borderRadius: '4px',
+                                          padding: '2px 6px',
+                                          color: '#c4b5fd',
+                                          fontSize: '10px',
+                                          fontWeight: 600,
+                                          cursor: gapFillLoading ? 'wait' : 'pointer',
+                                          whiteSpace: 'nowrap',
+                                          opacity: gapFillLoading ? 0.5 : 1
+                                        }}
+                                      >{gapFillLoading ? '...' : '🔄 Gap Fill'}</button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -11090,6 +11858,69 @@ const createJob = async () => {
                             <option key={t.key} value={t.key}>{t.label}</option>
                           ))}
                         </select>
+                      </div>
+                      <div style={{ padding: '16px', background: 'rgba(34, 211, 238, 0.1)', borderRadius: '12px', border: '1px solid rgba(34, 211, 238, 0.2)' }}>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase' }}>
+                          Gap Fill Settings
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!profileCustomer.anytime_access}
+                              onChange={async (e) => {
+                                const val = e.target.checked;
+                                const saved = await propagateCustomerUpdate(profileCustomer.id, { anytime_access: val });
+                                if (!saved) return;
+                                setProfileCustomer(prev => ({ ...prev, anytime_access: val }));
+                              }}
+                              style={{ accentColor: '#22d3ee', width: '16px', height: '16px' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#22d3ee', fontWeight: 600 }}>Anytime Access</span>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>(Tier 1 for gap fill)</span>
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!profileCustomer.flexible}
+                              onChange={async (e) => {
+                                const val = e.target.checked;
+                                const saved = await propagateCustomerUpdate(profileCustomer.id, { flexible: val });
+                                if (!saved) return;
+                                setProfileCustomer(prev => ({ ...prev, flexible: val }));
+                              }}
+                              style={{ accentColor: '#22d3ee', width: '16px', height: '16px' }}
+                            />
+                            <span style={{ fontSize: '13px', color: '#22d3ee', fontWeight: 600 }}>Flexible Schedule</span>
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>(open to changes)</span>
+                          </label>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                            <span style={{ fontSize: '12px', color: '#94a3b8' }}>Contact:</span>
+                            <select
+                              value={profileCustomer.preferred_contact_method || 'text'}
+                              onChange={async (e) => {
+                                const val = e.target.value;
+                                const saved = await propagateCustomerUpdate(profileCustomer.id, { preferred_contact_method: val });
+                                if (!saved) return;
+                                setProfileCustomer(prev => ({ ...prev, preferred_contact_method: val }));
+                              }}
+                              style={{
+                                padding: '4px 8px', background: 'rgba(34, 211, 238, 0.2)',
+                                border: '1px solid rgba(34, 211, 238, 0.3)', borderRadius: '6px',
+                                color: '#22d3ee', fontSize: '12px', cursor: 'pointer'
+                              }}
+                            >
+                              <option value="text">Text</option>
+                              <option value="call">Call</option>
+                              <option value="either">Either</option>
+                            </select>
+                          </div>
+                          {profileCustomer.cancellation_count >= 3 && (
+                            <div style={{ fontSize: '11px', color: '#f59e0b', fontWeight: 600, marginTop: '4px' }}>
+                              ⚠️ Frequent Canceller ({profileCustomer.cancellation_count} cancellations)
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <div style={{ padding: '16px', background: 'rgba(251, 191, 36, 0.1)', borderRadius: '12px', border: '1px solid rgba(251, 191, 36, 0.2)' }}>
                         <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '4px', textTransform: 'uppercase', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

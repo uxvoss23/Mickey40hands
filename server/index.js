@@ -8,6 +8,7 @@ const routesRouter = require('./routes/routes');
 const listsRouter = require('./routes/lists');
 const exportRouter = require('./routes/export');
 const emailRouter = require('./routes/email');
+const gapfillRouter = require('./routes/gapfill');
 
 const app = express();
 const PORT = 5000;
@@ -55,6 +56,7 @@ app.use('/api/routes', routesRouter);
 app.use('/api/lists', listsRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/email', emailRouter);
+app.use('/api/gapfill', gapfillRouter);
 
 app.use(express.static(path.join(__dirname, '..'), {
   setHeaders: (res, filePath) => {
@@ -317,6 +319,67 @@ const applySchemaUpdates = async () => {
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS inspection_notes TEXT DEFAULT ''`);
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS recurring_selection VARCHAR(50) DEFAULT ''`);
     await pool.query(`ALTER TABLE route_stops ADD COLUMN IF NOT EXISTS completion_data TEXT DEFAULT '{}'`);
+    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS anytime_access BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS flexible BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS preferred_contact_method VARCHAR(20) DEFAULT 'call'`);
+    await pool.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS cancellation_count INTEGER DEFAULT 0`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancellation_reason VARCHAR(50)`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancellation_note TEXT`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMP`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gap_fill_attempted BOOLEAN DEFAULT false`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS gap_fill_session_id INTEGER`);
+    await pool.query(`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS is_gap_fill BOOLEAN DEFAULT false`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS gap_fill_sessions (
+      id SERIAL PRIMARY KEY,
+      route_id INTEGER REFERENCES routes(id),
+      cancelled_stop_id INTEGER,
+      cancelled_job_id INTEGER,
+      cancelled_customer_id INTEGER,
+      reference_lat DOUBLE PRECISION,
+      reference_lng DOUBLE PRECISION,
+      reference_address TEXT,
+      next_stop_id INTEGER,
+      next_stop_lat DOUBLE PRECISION,
+      next_stop_lng DOUBLE PRECISION,
+      next_stop_time VARCHAR(20),
+      cancelled_job_description VARCHAR(255),
+      search_layer INTEGER DEFAULT 1,
+      status VARCHAR(20) DEFAULT 'active',
+      tech_notified BOOLEAN DEFAULT false,
+      tech_moved_on BOOLEAN DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW(),
+      resolved_at TIMESTAMP,
+      resolution VARCHAR(50),
+      confirmed_customer_id INTEGER,
+      confirmed_candidate_id INTEGER
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS gap_fill_candidates (
+      id SERIAL PRIMARY KEY,
+      session_id INTEGER REFERENCES gap_fill_sessions(id) ON DELETE CASCADE,
+      customer_id INTEGER,
+      tier INTEGER NOT NULL,
+      tier_reason TEXT,
+      distance_miles DOUBLE PRECISION,
+      direction_score DOUBLE PRECISION DEFAULT 0,
+      outreach_status VARCHAR(30) DEFAULT 'pending',
+      outreach_note TEXT,
+      contact_method_used VARCHAR(20),
+      sort_rank INTEGER,
+      search_layer INTEGER DEFAULT 1,
+      contacted_at TIMESTAMP,
+      resolved_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    )`);
+    await pool.query(`CREATE TABLE IF NOT EXISTS gap_fill_outreach_log (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER,
+      session_id INTEGER,
+      contacted_at TIMESTAMP DEFAULT NOW(),
+      outcome VARCHAR(30),
+      tier INTEGER,
+      service_type VARCHAR(255)
+    )`);
   } catch (err) {
     console.error('Schema update warning:', err.message);
   }

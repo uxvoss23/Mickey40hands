@@ -238,7 +238,9 @@ router.patch('/:id', async (req, res) => {
     const fields = ['job_description', 'status', 'scheduled_date', 'scheduled_time',
                     'completed_date', 'amount', 'tip', 'notes', 'is_recurring', 'employee', 'panel_count',
                     'price', 'price_per_panel', 'preferred_days', 'preferred_time', 'technician',
-                    'recurrence_interval', 'next_service_date'];
+                    'recurrence_interval', 'next_service_date',
+                    'cancellation_reason', 'cancellation_note', 'cancelled_at',
+                    'gap_fill_attempted', 'gap_fill_session_id', 'is_gap_fill'];
 
     if ((updates.status || '').toLowerCase() === 'completed' && !updates.completed_date) {
       updates.completed_date = new Date().toISOString().split('T')[0];

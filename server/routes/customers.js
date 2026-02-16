@@ -428,7 +428,11 @@ router.patch('/:id', async (req, res) => {
       verificationData: 'verification_data', verification_data: 'verification_data',
       notesHistory: 'notes_history', notes_history: 'notes_history',
       source: 'source',
-      customerType: 'customer_type', customer_type: 'customer_type'
+      customerType: 'customer_type', customer_type: 'customer_type',
+      anytime_access: 'anytime_access', anytimeAccess: 'anytime_access',
+      flexible: 'flexible',
+      preferred_contact_method: 'preferred_contact_method', preferredContactMethod: 'preferred_contact_method',
+      cancellation_count: 'cancellation_count'
     };
 
     if (updates.status === 'unscheduled' || updates.status === 'scheduled') {

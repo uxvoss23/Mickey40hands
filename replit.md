@@ -26,19 +26,39 @@ The application is a full-stack web application comprising an Express.js backend
     - **Data Export**: CSV and JSON export functionalities for customer data.
     - **Public Intake Form**: A standalone page `/intake` for public customer submissions, integrating Google Places Autocomplete.
     - **Technician Tracking**: A mobile-friendly `/track` page for real-time GPS location sharing, displaying technician markers on the main map.
+    - **Gap Fill System**: Mid-day cancellation handling with 5-tier candidate ranking, pre-written messages, progressive search expansion, and integrated cancel/reactivate flow in Route Planner sidebar.
 
 ### Backend
 - **Technology**: Express.js for the REST API server.
 - **Database**: PostgreSQL, with Neon-backed hosting via Replit.
 - **Schema**:
-    - `customers`: Core customer data including `customer_type`, `status`, `city`, `state`, `zip`, `panels`, `last_service_date`.
-    - `jobs`: Job records linked to customers, storing details like `job_description`, `status`, `notes`, `price`, `price_per_panel`, `preferred_days`, `preferred_time`, `technician`.
+    - `customers`: Core customer data including `customer_type`, `status`, `city`, `state`, `zip`, `panels`, `last_service_date`, `anytime_access`, `flexible`, `preferred_contact_method`, `cancellation_count`.
+    - `jobs`: Job records linked to customers, storing details like `job_description`, `status`, `notes`, `price`, `price_per_panel`, `preferred_days`, `preferred_time`, `technician`, `cancellation_reason`, `cancellation_note`, `cancelled_at`, `gap_fill_attempted`, `gap_fill_session_id`, `is_gap_fill`.
     - `routes`: Saved route configurations.
     - `route_stops`: Individual stops within routes.
     - `saved_lists`: User-defined customer list configurations.
-- **API Endpoints**: Comprehensive RESTful API for CRUD operations on customers, jobs, routes, and lists. Includes specialized endpoints for customer statistics, bulk import, and data export.
+    - `gap_fill_sessions`: Tracks active gap fill sessions with cancelled stop info, time window, and resolution status.
+    - `gap_fill_candidates`: Ranked replacement candidates per session with tier, distance, score, and outreach status.
+    - `gap_fill_outreach_log`: Contact attempt history with timestamps and methods for frequency limiting.
+- **API Endpoints**: Comprehensive RESTful API for CRUD operations on customers, jobs, routes, and lists. Includes specialized endpoints for customer statistics, bulk import, data export, and gap-fill session management.
+    - **Gap Fill API** (`/api/gapfill/`): Session creation, candidate ranking with 5-tier system, progressive 4-layer expansion (8mi→15mi→20mi→30mi), outreach logging, confirmation, and session closure.
+    - **Route Cancellation** (`/api/routes/:id/stops/:stopId/cancel`): Cancel route stops with reason tracking, auto-create duplicate unscheduled job, increment cancellation count.
+    - **Route Reactivation** (`/api/routes/:id/stops/:stopId/reactivate`): Reverse cancellation and restore job status.
 - **Data Flow**: PostgreSQL acts as the single source of truth. Frontend loads data from the API on startup. Customer and job updates propagate to the database via non-blocking PATCH requests. CSV import includes deduplication logic based on address and merges job history.
 - **Deployment**: The application is designed for `autoscale` deployment, with `node server/index.js` as the run command. Database migrations are automatically run on server startup.
+
+### Gap Fill System Architecture
+- **5-Tier Prioritization**: Anytime Access → Recurring Due/Overdue → Flexible Unscheduled → Pull Forward Scheduled → Past Non-Recurring
+- **Time Feasibility**: 75-min standard job duration, 6 PM CST hard cutoff, travel time estimation via straight-line distance
+- **Directional Bias**: Candidates scored toward next stop for routing efficiency
+- **Contact Frequency Limits**: Max 1 outreach per week, 3 per month per customer
+- **Progressive Expansion**: 4 search layers (8mi → 15mi → 20mi → 30mi)
+- **6-Month Cooldown**: After completed gap-fill job, customer excluded for 6 months
+- **Manual-First Approach**: Pre-written personalized messages for copy/paste workflow (Phase 1)
+- **Route Locking**: Route locked during active gap-fill session to prevent conflicts
+
+## Recent Changes
+- **2026-02-16**: Built complete gap-fill system including database schema, backend API, admin cancellation flow, tech-side cancellation, gap-fill panel UI, customer profile gap-fill settings, and success rate tracking.
 
 ## External Dependencies
 - **Backend (npm)**:

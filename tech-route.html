@@ -321,6 +321,113 @@
     .validation-item.done { background: #f0fdf4; color: #22c55e; }
     .validation-item.pending { background: #fef2f2; color: #ef4444; }
     .issue-select { width: 100%; padding: 6px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px; font-size: 11px; font-family: 'Inter', sans-serif; color: #475569; margin-top: 4px; }
+    .stop-card.cancelled {
+      opacity: 0.5;
+      border-color: #fca5a5;
+    }
+    .stop-card.cancelled .stop-number { background: #ef4444; }
+    .cancel-btn {
+      display: block;
+      width: calc(100% - 24px);
+      margin: 0 12px 8px;
+      padding: 10px;
+      border: 2px solid #fca5a5;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      background: #fef2f2;
+      color: #dc2626;
+      transition: all 0.2s;
+    }
+    .cancel-btn:active {
+      background: #fee2e2;
+      transform: scale(0.97);
+    }
+    .gap-fill-banner {
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      border: 2px solid #f59e0b;
+      border-radius: 12px;
+      margin: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .gap-fill-banner h3 {
+      color: #92400e;
+      font-size: 16px;
+      margin-bottom: 4px;
+    }
+    .gap-fill-banner p {
+      color: #a16207;
+      font-size: 13px;
+    }
+    .gap-fill-confirmed {
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      border: 2px solid #22c55e;
+      border-radius: 12px;
+      margin: 12px;
+      padding: 16px;
+    }
+    .gap-fill-confirmed h3 {
+      color: #166534;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .gap-fill-confirmed .detail-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+      color: #15803d;
+    }
+    .cancel-modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .cancel-modal-content {
+      background: white;
+      width: 100%;
+      max-width: 500px;
+      border-radius: 20px 20px 0 0;
+      animation: slideUp 0.3s ease;
+      padding: 20px;
+      padding-bottom: env(safe-area-inset-bottom, 20px);
+    }
+    .cancel-modal-content h2 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-bottom: 16px;
+    }
+    .cancel-reason-btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 6px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      background: white;
+      font-size: 14px;
+      font-weight: 500;
+      color: #475569;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    .cancel-reason-btn.selected {
+      border-color: #ef4444;
+      background: #fef2f2;
+      color: #dc2626;
+      font-weight: 600;
+    }
+    .cancel-reason-btn:active { transform: scale(0.98); }
   </style>
 </head>
 <body>
@@ -331,6 +438,10 @@
     let routeData = null;
     let completedStops = new Set();
     let activeModal = null;
+    let cancellingStopId = null;
+    let gapFillActive = false;
+    let gapFillConfirmed = null;
+    let cancelledStops = new Set();
     const PHOTO_SLOTS = [
       { key: 'full_before', label: 'Full System \u2013 Before', icon: '\ud83c\udfe0' },
       { key: 'closeup_before', label: 'Close-Up Buildup \u2013 Before', icon: '\ud83d\udd0d' },
@@ -385,6 +496,103 @@
     function closeModal() {
       activeModal = null;
       document.getElementById('modal-root').innerHTML = '';
+    }
+
+    function openCancelModal(stopId) {
+      cancellingStopId = stopId;
+      const stop = routeData.stops.find(s => s.id === stopId);
+      const modalRoot = document.getElementById('modal-root');
+      const reasons = ['Customer Requested', 'No Answer', 'Weather', 'Rescheduled', 'Other'];
+      let selectedReason = '';
+      let note = '';
+      
+      function renderCancelModal() {
+        modalRoot.innerHTML = `
+          <div class="cancel-modal-overlay" onclick="if(event.target===this){closeCancelModal()}">
+            <div class="cancel-modal-content">
+              <h2>Cancel: ${stop ? stop.customer_name : 'Stop'}</h2>
+              <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Select a reason for cancellation:</p>
+              ${reasons.map(r => `
+                <button class="cancel-reason-btn ${selectedReason === r ? 'selected' : ''}" 
+                  onclick="document.querySelectorAll('.cancel-reason-btn').forEach(b=>b.classList.remove('selected'));this.classList.add('selected');window._cancelReason='${r}';">
+                  ${r}
+                </button>
+              `).join('')}
+              <textarea placeholder="Notes (optional)..." 
+                oninput="window._cancelNote=this.value"
+                style="width:100%;min-height:60px;border:1.5px solid #e2e8f0;border-radius:10px;padding:10px;font-size:13px;font-family:'Inter',sans-serif;margin-top:12px;resize:vertical;"></textarea>
+              <div style="display:flex;gap:8px;margin-top:16px;">
+                <button onclick="closeCancelModal()" style="flex:1;padding:14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;background:white;color:#64748b;">
+                  Back
+                </button>
+                <button onclick="confirmCancel(${stopId})" style="flex:1;padding:14px;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;background:#ef4444;color:white;">
+                  Confirm Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      renderCancelModal();
+    }
+
+    function closeCancelModal() {
+      cancellingStopId = null;
+      window._cancelReason = '';
+      window._cancelNote = '';
+      document.getElementById('modal-root').innerHTML = '';
+    }
+
+    async function confirmCancel(stopId) {
+      const reason = window._cancelReason || 'Other';
+      const note = window._cancelNote || '';
+      
+      try {
+        const res = await fetch(`/api/routes/${routeId}/stops/${stopId}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason, note })
+        });
+        const data = await res.json();
+        if (data.success) {
+          cancelledStops.add(stopId);
+          closeCancelModal();
+          gapFillActive = true;
+          startGapFillPolling();
+          render();
+        } else {
+          alert('Failed to cancel: ' + (data.error || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error('Cancel error:', err);
+        alert('Failed to cancel stop. Please try again.');
+      }
+    }
+
+    let gapFillPollInterval = null;
+    function startGapFillPolling() {
+      if (gapFillPollInterval) return;
+      gapFillPollInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/gapfill/route/${routeId}/status`);
+          const data = await res.json();
+          if (data.confirmed && !gapFillConfirmed) {
+            gapFillConfirmed = {
+              customer_name: data.confirmed_customer_name,
+              address: data.confirmed_address
+            };
+            gapFillActive = false;
+            render();
+          } else if (!data.active && !data.confirmed && gapFillActive) {
+            gapFillActive = false;
+            gapFillConfirmed = null;
+            render();
+          }
+        } catch (err) {
+          console.error('Gap fill poll error:', err);
+        }
+      }, 15000);
     }
 
     function fileToBase64(file) {
@@ -883,6 +1091,7 @@
 
       const stopsHTML = stops.map((s, i) => {
         const isDone = completedStops.has(s.id);
+        const isCancelled = cancelledStops.has(s.id);
         const time = s.scheduled_time
           ? new Date(`2000-01-01T${s.scheduled_time}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
           : '';
@@ -892,10 +1101,20 @@
         const amount = s.amount_paid ? `$${parseFloat(s.amount_paid).toFixed(2)}` : '';
         const serviceIcon = (s.customer_type || 'residential') === 'commercial' ? '🏢' : '🏠';
 
+        let btnHTML = '';
+        if (isCancelled) {
+          btnHTML = `<button class="complete-btn done" id="btn-${s.id}" style="background:#fef2f2;color:#ef4444;pointer-events:none;">✕ Cancelled</button>`;
+        } else if (isDone) {
+          btnHTML = `<button class="complete-btn done" id="btn-${s.id}">✓ Completed</button>`;
+        } else {
+          btnHTML = `<button class="cancel-btn" onclick="openCancelModal(${s.id})">Cancel Stop</button>` +
+                    `<button class="complete-btn active" id="btn-${s.id}" onclick="openCompletionModal(${s.id})">Mark Complete</button>`;
+        }
+
         return `
-          <div class="stop-card ${isDone ? 'completed' : ''}">
+          <div class="stop-card ${isDone ? 'completed' : ''}${isCancelled ? ' cancelled' : ''}">
             <div class="stop-top">
-              <div class="stop-number">${isDone ? '✓' : i + 1}</div>
+              <div class="stop-number">${isCancelled ? '✕' : isDone ? '✓' : i + 1}</div>
               <div class="stop-details">
                 <div>
                   <span class="stop-name">${s.full_name || 'Customer'}</span>
@@ -912,10 +1131,7 @@
                 ${s.job_notes ? `<div class="stop-notes job">📝 ${s.job_notes}</div>` : ''}
               </div>
             </div>
-            ${isDone
-              ? `<button class="complete-btn done" id="btn-${s.id}">✓ Completed</button>`
-              : `<button class="complete-btn active" id="btn-${s.id}" onclick="openCompletionModal(${s.id})">Mark Complete</button>`
-            }
+            ${btnHTML}
           </div>`;
       }).join('');
 
@@ -935,6 +1151,8 @@
         <div class="stops-list">
           ${stopsHTML}
         </div>
+        ${gapFillActive && !gapFillConfirmed ? '<div class="gap-fill-banner"><h3>⏳ Gap Fill In Progress</h3><p>Stand by for dispatch instructions</p></div>' : ''}
+        ${gapFillConfirmed ? `<div class="gap-fill-confirmed"><h3>✅ Gap Fill Confirmed</h3><div class="detail-row"><span>Customer</span><span>${gapFillConfirmed.customer_name || ''}</span></div><div class="detail-row"><span>Address</span><span>${gapFillConfirmed.address || ''}</span></div><div class="detail-row"><span>Time</span><span>${gapFillConfirmed.time || ''}</span></div></div>` : ''}
         ${completed === total && total > 0 ? '<div class="all-done">🎉 All stops completed!</div>' : ''}
       `;
     }

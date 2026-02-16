@@ -282,4 +282,154 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
   }
 });
 
+router.post('/:id/stops/:stopId/cancel', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { reason, note, reschedule_date } = req.body;
+
+    const stopResult = await client.query(
+      `SELECT rs.*, c.id as cust_id, c.full_name, c.cancellation_count
+       FROM route_stops rs
+       JOIN customers c ON rs.customer_id = c.id
+       WHERE rs.id = $1 AND rs.route_id = $2`,
+      [req.params.stopId, req.params.id]
+    );
+    if (stopResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Stop not found' });
+    }
+    const stop = stopResult.rows[0];
+
+    if (stop.completed_at) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cannot cancel a completed stop' });
+    }
+
+    const activeJob = await client.query(
+      `SELECT * FROM jobs WHERE customer_id = $1 AND status NOT IN ('completed', 'cancelled')
+       ORDER BY created_at DESC LIMIT 1`,
+      [stop.customer_id]
+    );
+
+    let cancelledJob = null;
+    let duplicateJob = null;
+
+    if (activeJob.rows.length > 0) {
+      const job = activeJob.rows[0];
+      await client.query(
+        `UPDATE jobs SET status = 'cancelled', cancellation_reason = $1, cancellation_note = $2, cancelled_at = NOW()
+         WHERE id = $3`,
+        [reason || 'Other', note || '', job.id]
+      );
+      cancelledJob = job;
+
+      if (reason === 'Rescheduled' && reschedule_date) {
+        const dupResult = await client.query(`
+          INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
+                            panel_count, price, price_per_panel, preferred_days, preferred_time,
+                            technician, employee, notes, is_recurring, recurrence_interval)
+          VALUES ($1, $2, 'scheduled', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+          RETURNING *
+        `, [
+          job.customer_id, job.job_description, reschedule_date,
+          job.scheduled_time, job.panel_count, job.price, job.price_per_panel,
+          job.preferred_days, job.preferred_time, job.technician, job.employee,
+          `Rescheduled from cancelled job. ${note || ''}`.trim(),
+          job.is_recurring, job.recurrence_interval
+        ]);
+        duplicateJob = dupResult.rows[0];
+      } else {
+        const dupResult = await client.query(`
+          INSERT INTO jobs (customer_id, job_description, status, panel_count, price, price_per_panel,
+                            preferred_days, preferred_time, technician, employee, notes,
+                            is_recurring, recurrence_interval)
+          VALUES ($1, $2, 'unscheduled', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          RETURNING *
+        `, [
+          job.customer_id, job.job_description, job.panel_count, job.price, job.price_per_panel,
+          job.preferred_days, job.preferred_time, job.technician, job.employee,
+          `Re-created from cancelled job. Reason: ${reason || 'Other'}. ${note || ''}`.trim(),
+          job.is_recurring, job.recurrence_interval
+        ]);
+        duplicateJob = dupResult.rows[0];
+      }
+    }
+
+    const newCancelCount = (stop.cancellation_count || 0) + 1;
+    await client.query(
+      `UPDATE customers SET cancellation_count = $1, status = 'unscheduled' WHERE id = $2`,
+      [newCancelCount, stop.customer_id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      cancelledJob,
+      duplicateJob,
+      cancellationCount: newCancelCount,
+      frequentCanceller: newCancelCount >= 3
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error cancelling stop:', err);
+    res.status(500).json({ error: 'Failed to cancel stop' });
+  } finally {
+    client.release();
+  }
+});
+
+router.post('/:id/stops/:stopId/reactivate', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const stopResult = await client.query(
+      'SELECT * FROM route_stops WHERE id = $1 AND route_id = $2',
+      [req.params.stopId, req.params.id]
+    );
+    if (stopResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Stop not found' });
+    }
+
+    const lastCancelled = await client.query(
+      `SELECT * FROM jobs WHERE customer_id = $1 AND status = 'cancelled'
+       ORDER BY cancelled_at DESC LIMIT 1`,
+      [stopResult.rows[0].customer_id]
+    );
+
+    if (lastCancelled.rows.length > 0) {
+      const cancelledJob = lastCancelled.rows[0];
+      await client.query(
+        `UPDATE jobs SET status = 'scheduled', cancellation_reason = NULL, cancellation_note = NULL, cancelled_at = NULL
+         WHERE id = $1`,
+        [cancelledJob.id]
+      );
+
+      await client.query(
+        `DELETE FROM jobs WHERE customer_id = $1 AND status = 'unscheduled' 
+         AND notes LIKE '%Re-created from cancelled job%'
+         ORDER BY created_at DESC LIMIT 1`,
+        [stopResult.rows[0].customer_id]
+      );
+    }
+
+    await client.query(
+      `UPDATE customers SET status = 'scheduled' WHERE id = $1`,
+      [stopResult.rows[0].customer_id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error reactivating stop:', err);
+    res.status(500).json({ error: 'Failed to reactivate stop' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;
