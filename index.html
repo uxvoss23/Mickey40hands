@@ -3394,6 +3394,17 @@
           }
         }
 
+        const cancelledOnSentRoute = savedRoutes.some(r => {
+          if (!r.sentToTech) return false;
+          const rDate = parseLocalDate(r.scheduledDate);
+          if (rDate.toDateString() !== dateKey) return false;
+          return (r.customers || []).some(c => c.id === customer.id && c.cancelled);
+        });
+        if (cancelledOnSentRoute) {
+          alert('This customer was cancelled from a route on this day. Please select a different day to reschedule them.');
+          return;
+        }
+
         const isInRoutesByDay = currentDayRoute.some(r => r.id === customer.id);
         const isScheduledForDay = customers.some(c => {
           if (c.id !== customer.id) return false;
