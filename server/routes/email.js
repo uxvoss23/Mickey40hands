@@ -31,7 +31,8 @@ function buildRouteEmailHTML(routeData, baseUrl) {
   const { routeName, scheduledDate, stops, totalRevenue, totalMiles, avgDistance, driveToFirst, driveFromLast, routeId } = routeData;
   const techRouteUrl = routeId && baseUrl ? `${baseUrl}/tech-route/${routeId}` : '';
 
-  const formattedDate = new Date(scheduledDate).toLocaleDateString('en-US', {
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) ? (() => { const [y,m,d] = scheduledDate.split('-').map(Number); return new Date(y, m-1, d); })() : new Date(scheduledDate);
+  const formattedDate = parsedDate.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'long',
     day: 'numeric',
@@ -947,7 +948,8 @@ router.post('/send-route', rateLimit, async (req, res) => {
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const baseUrl = `${protocol}://${host}`;
     const html = buildRouteEmailHTML(routeData, baseUrl);
-    const subject = `Route: ${routeData.routeName} - ${new Date(routeData.scheduledDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} (${routeData.stops.length} stops)`;
+    const emailDate = /^\d{4}-\d{2}-\d{2}$/.test(routeData.scheduledDate) ? (() => { const [y,m,d] = routeData.scheduledDate.split('-').map(Number); return new Date(y, m-1, d); })() : new Date(routeData.scheduledDate);
+    const subject = `Route: ${routeData.routeName} - ${emailDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} (${routeData.stops.length} stops)`;
 
     console.log('[EMAIL] Sending via Resend to:', recipients, 'Subject:', subject);
     const { data, error } = await resend.emails.send({

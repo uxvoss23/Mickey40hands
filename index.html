@@ -464,6 +464,17 @@
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
 
+    function parseLocalDate(dateStr) {
+      if (!dateStr) return new Date(NaN);
+      if (dateStr instanceof Date) return dateStr;
+      const str = String(dateStr);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        const [y, m, d] = str.split('-').map(Number);
+        return new Date(y, m - 1, d);
+      }
+      return new Date(str);
+    }
+
     const HOME_BASE_ADDRESS = "1444 Mountain Air Trail, Fort Worth, TX 76131";
 
     const API_BASE = '';  // Same origin
@@ -627,7 +638,7 @@
         } else if (routeId) {
           const route = savedRoutes.find(r => r.id === routeId);
           if (route) {
-            const dateKey = new Date(route.scheduledDate).toDateString();
+            const dateKey = parseLocalDate(route.scheduledDate).toDateString();
             setEditingRouteIdByDay(prev => ({ ...prev, [dateKey]: routeId }));
           }
         }
@@ -948,7 +959,7 @@
           const savedDays = {};
           allRoutes.forEach(r => {
             if (r.scheduledDate) {
-              savedDays[new Date(r.scheduledDate).toDateString()] = true;
+              savedDays[parseLocalDate(r.scheduledDate).toDateString()] = true;
             }
           });
           setSavedViewDays(savedDays);
@@ -1143,7 +1154,7 @@
       const getScheduledCustomersForRange = (startDate, endDate) => {
         const result = new Map();
         savedRoutes.forEach(sr => {
-          const routeDate = new Date(sr.scheduledDate);
+          const routeDate = parseLocalDate(sr.scheduledDate);
           if (routeDate >= startDate && routeDate <= endDate) {
             (sr.customers || []).forEach(c => {
               if (c.lat && c.lng) {
@@ -1488,7 +1499,7 @@
           // Check if the previous day has unsaved route edits (not in saved view and has stops)
           const prevDayRoute = routesByDay[prevDateKey] || [];
           const hasSavedRoute = savedRoutes.some(r => {
-            const rDate = new Date(r.scheduledDate);
+            const rDate = parseLocalDate(r.scheduledDate);
             return rDate.toDateString() === prevDateKey;
           });
 
@@ -2385,7 +2396,7 @@
             const activeDateStr = (hoveredRouteDay || selectedDate).toDateString();
             const isScheduledToday = (() => {
               if (!customer.scheduledDate || !customer.scheduledTime) return false;
-              const custDate = new Date(customer.scheduledDate);
+              const custDate = parseLocalDate(customer.scheduledDate);
               return custDate.toDateString() === activeDateStr;
             })();
             
@@ -2395,7 +2406,7 @@
               const jobsForDay = customers
                 .filter(c => {
                   if (!c.scheduledDate || !c.scheduledTime) return false;
-                  const custDate = new Date(c.scheduledDate);
+                  const custDate = parseLocalDate(c.scheduledDate);
                   return custDate.toDateString() === activeDateStr;
                 })
                 .sort((a, b) => {
@@ -2466,7 +2477,7 @@
             
             // Add "scheduled on other day" badge - calendar icon
             if (isScheduledOtherDay && customer.routeConfirmed) {
-              const schedDate = new Date(customer.scheduledDate);
+              const schedDate = parseLocalDate(customer.scheduledDate);
               const dayName = schedDate.toLocaleDateString('en-US', { weekday: 'short' });
               scheduledOtherDayBadge = `<span style="position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); font-size: 10px; background: rgba(34, 197, 94, 0.9); color: white; padding: 2px 4px; border-radius: 4px; font-weight: 700; white-space: nowrap; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.8));">📅${dayName}</span>`;
             }
@@ -2744,7 +2755,7 @@
               }
 
               const dayRoutes = savedRoutes.filter(r => {
-                const rDate = new Date(r.scheduledDate);
+                const rDate = parseLocalDate(r.scheduledDate);
                 return rDate.toDateString() === dateKey && (r.customers || []).length > 0;
               });
 
@@ -2801,7 +2812,7 @@
                 const editingStops = customers
                   .filter(c => {
                     if (!c.scheduledDate || !c.scheduledTime) return false;
-                    const custDate = new Date(c.scheduledDate);
+                    const custDate = parseLocalDate(c.scheduledDate);
                     return custDate.toDateString() === editDateKey;
                   })
                   .filter(c => !savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id)))
@@ -2872,7 +2883,7 @@
           // Also include customers actively scheduled via edit mode (not yet saved to route)
           results.forEach(c => {
             if (c.scheduledDate && c.scheduledTime && c.status === 'scheduled') {
-              const custDate = new Date(c.scheduledDate);
+              const custDate = parseLocalDate(c.scheduledDate);
               if (custDate >= rangeStart && custDate <= rangeEnd && !scheduledIds.has(c.id)) {
                 scheduledIds.add(c.id);
                 scheduledInRange.push({
@@ -3090,7 +3101,7 @@
             return stops.some(s => s.id === customer.id);
           });
           const isInSavedRouteOtherDay = savedRoutes.some(r => {
-            const rDate = new Date(r.scheduledDate);
+            const rDate = parseLocalDate(r.scheduledDate);
             if (rDate.toDateString() === dateKey) return false;
             return (r.customers || []).some(c => c.id === customer.id);
           });
@@ -3103,7 +3114,7 @@
         const isScheduledForDay = customers.some(c => {
           if (c.id !== customer.id) return false;
           if (!c.scheduledDate) return false;
-          return new Date(c.scheduledDate).toDateString() === dateKey;
+          return parseLocalDate(c.scheduledDate).toDateString() === dateKey;
         });
         const isInRoute = isInRoutesByDay || isScheduledForDay;
 
@@ -3113,7 +3124,7 @@
           if (isInRoute) {
             const sentRouteWithCustomer = savedRoutes.find(r => {
               if (!r.sentToTech) return false;
-              const rDate = new Date(r.scheduledDate);
+              const rDate = parseLocalDate(r.scheduledDate);
               if (rDate.toDateString() !== dateKey) return false;
               return (r.customers || []).some(c => c.id === customer.id);
             });
@@ -3139,7 +3150,7 @@
             ));
 
             const savedRoutesForDay = savedRoutes.filter(r => {
-              const rDate = new Date(r.scheduledDate);
+              const rDate = parseLocalDate(r.scheduledDate);
               return rDate.toDateString() === dateKey;
             });
             const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
@@ -3181,7 +3192,7 @@
             })();
           } else {
             const savedRoutesForDay = savedRoutes.filter(r => {
-              const rDate = new Date(r.scheduledDate);
+              const rDate = parseLocalDate(r.scheduledDate);
               return rDate.toDateString() === dateKey;
             });
             const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
@@ -3191,7 +3202,7 @@
             const jobsForDay = customers
               .filter(c => {
                 if (!c.scheduledDate || !c.scheduledTime) return false;
-                const custDate = new Date(c.scheduledDate);
+                const custDate = parseLocalDate(c.scheduledDate);
                 return custDate.toDateString() === dateKey2;
               })
               .sort((a, b) => {
@@ -3771,7 +3782,7 @@
         // Get all customers scheduled for this day
         const scheduledCustomers = customers.filter(c => {
           if (!c.scheduledDate || !c.scheduledTime) return false;
-          const custDate = new Date(c.scheduledDate);
+          const custDate = parseLocalDate(c.scheduledDate);
           return custDate.toDateString() === dateStr && c.scheduledTime === timeSlot;
         });
         
@@ -3781,7 +3792,7 @@
       const scheduleCustomerToTimeSlot = async (customer, date, timeSlot) => {
         const dateKey = date.toDateString();
         const routesForDay = savedRoutes.filter(r => {
-          const rDate = new Date(r.scheduledDate);
+          const rDate = parseLocalDate(r.scheduledDate);
           return rDate.toDateString() === dateKey;
         });
 
@@ -6080,7 +6091,7 @@ const createJob = async () => {
 
           setCustomers(prev => prev.map(c => {
             if (!c.scheduledDate) return c;
-            const custDateKey = new Date(c.scheduledDate).toDateString();
+            const custDateKey = parseLocalDate(c.scheduledDate).toDateString();
             if (unsavedRouteDays[custDateKey]) {
               const inSavedRoute = savedRoutes.some(r => (r.customers || []).some(rc => rc.id === c.id));
               if (!inSavedRoute) {
@@ -7031,11 +7042,11 @@ const createJob = async () => {
                               )}
                               {(() => {
                                 const hasSentRoute = savedRoutes.some(r => {
-                                  const routeDate = new Date(r.scheduledDate);
+                                  const routeDate = parseLocalDate(r.scheduledDate);
                                   return routeDate.toDateString() === date.toDateString() && r.sentToTech;
                                 });
                                 const hasUnsent = savedRoutes.some(r => {
-                                  const routeDate = new Date(r.scheduledDate);
+                                  const routeDate = parseLocalDate(r.scheduledDate);
                                   return routeDate.toDateString() === date.toDateString() && !r.sentToTech && r.confirmed;
                                 });
                                 return hasSentRoute ? (
@@ -7086,7 +7097,7 @@ const createJob = async () => {
                           const isSelected = date.toDateString() === selectedDate.toDateString();
                           const routesForDay = getRoutesForDate(date);
                           const hasSavedRoute = savedRoutes.some(r => {
-                            const routeDate = new Date(r.scheduledDate);
+                            const routeDate = parseLocalDate(r.scheduledDate);
                             return routeDate.toDateString() === date.toDateString() && r.confirmed;
                           });
                           
@@ -7224,7 +7235,7 @@ const createJob = async () => {
                         const displayDate = focusedDays.length > 0 ? focusedDays[0] : (() => { const t = new Date(); t.setHours(0,0,0,0); return t; })();
                         const displayStr = displayDate.toDateString();
                         const isToday = displayStr === new Date().toDateString();
-                        const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === displayStr);
+                        const dayRoutes = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === displayStr);
                         const allDayStops = dayRoutes.flatMap(r => r.customers || []);
                         const totalDayRevenue = allDayStops.reduce((sum, c) => {
                           const custMatch = customers.find(cu => cu.id === c.id);
@@ -7401,22 +7412,22 @@ const createJob = async () => {
                           return dist;
                         };
                         const weekStops = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.reduce((sum, r) => sum + (r.customers || []).length, 0);
                         }, 0);
                         const weekRevenue = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.flatMap(r => r.customers || []).reduce((sum, c) => {
                             const custMatch = customers.find(cu => cu.id === c.id);
                             return sum + (parseFloat(c.jobPrice) || parseFloat(custMatch?.jobPrice) || parseFloat(c.amountPaid) || parseFloat(custMatch?.amountPaid) || parseFloat(c.price) || 0);
                           }, 0);
                         }, 0);
                         const weekMiles = weekDays.reduce((total, date) => {
-                          const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          const dayRoutes = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                           return total + dayRoutes.reduce((sum, r) => sum + calcRouteDistance(r), 0);
                         }, 0);
                         const daysWithRoutes = weekDays.filter(date => {
-                          return savedRoutes.some(r => new Date(r.scheduledDate).toDateString() === date.toDateString());
+                          return savedRoutes.some(r => parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                         }).length;
                         return (
                           <div style={{ padding: '12px', borderBottom: '1px solid rgba(234, 179, 8, 0.15)' }}>
@@ -7443,7 +7454,7 @@ const createJob = async () => {
                               <div style={{ fontSize: '9px', fontWeight: 600, color: '#64748b', marginBottom: '6px', textTransform: 'uppercase' }}>Daily Breakdown</div>
                               <div style={{ display: 'flex', gap: '3px' }}>
                                 {weekDays.map((day, di) => {
-                                  const dayR = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === day.toDateString());
+                                  const dayR = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === day.toDateString());
                                   const dayStopCount = dayR.reduce((s, r) => s + (r.customers || []).length, 0);
                                   const hasSent = dayR.some(r => r.sentToTech);
                                   const hasUnsent = dayR.some(r => !r.sentToTech);
@@ -7504,7 +7515,7 @@ const createJob = async () => {
                   {/* All View - Read-only route summary with Edit in Route Planner button */}
                   {statusFilter !== 'scheduled' && (() => {
                     const dateKey = selectedDate.toDateString();
-                    const dayRoutes = savedRoutes.filter(r => new Date(r.scheduledDate).toDateString() === dateKey);
+                    const dayRoutes = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === dateKey);
                     if (dayRoutes.length === 0) return null;
                     return (
                       <div style={{ marginBottom: '12px', padding: '12px', background: 'rgba(30, 41, 59, 0.6)', border: '1px solid rgba(148, 163, 184, 0.15)', borderRadius: '10px' }}>
@@ -7635,7 +7646,7 @@ const createJob = async () => {
 
                       // Find ALL saved routes for this day (multiple technicians)
                       const savedRoutesForDay = savedRoutes.filter(r => {
-                        const rDate = new Date(r.scheduledDate);
+                        const rDate = parseLocalDate(r.scheduledDate);
                         return rDate.toDateString() === dateKey;
                       });
 
@@ -7658,7 +7669,7 @@ const createJob = async () => {
                           .filter(c => {
                             if (dayRouteIds.size > 0) return dayRouteIds.has(c.id);
                             if (!c.scheduledDate) return false;
-                            const custDate = new Date(c.scheduledDate);
+                            const custDate = parseLocalDate(c.scheduledDate);
                             return custDate.toDateString() === dateKey;
                           })
                           .sort((a, b) => {
@@ -7985,7 +7996,7 @@ const createJob = async () => {
                                       const savedCustomerIds = new Set(savedRoute.customers.map(c => c.id));
                                       setCustomers(prev => prev.map(c => {
                                         if (!c.scheduledDate) return c;
-                                        const custDate = new Date(c.scheduledDate);
+                                        const custDate = parseLocalDate(c.scheduledDate);
                                         if (custDate.toDateString() === dateKey && !savedCustomerIds.has(c.id)) {
                                           return {
                                             ...c,
@@ -8018,7 +8029,7 @@ const createJob = async () => {
                                   } else {
                                     const affectedCustomers = customers.filter(c => {
                                       if (!c.scheduledDate) return false;
-                                      return new Date(c.scheduledDate).toDateString() === dateKey;
+                                      return parseLocalDate(c.scheduledDate).toDateString() === dateKey;
                                     });
 
                                     for (const ac of affectedCustomers) {
@@ -8152,7 +8163,7 @@ const createJob = async () => {
                                           const inRoute = savedRoute.customers.some(rc => rc.id === c.id);
                                           return inRoute ? { ...c, ...unscheduleUpdates } : c;
                                         }));
-                                        const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                        const routeDateKey = parseLocalDate(savedRoute.scheduledDate).toDateString();
                                         setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                         setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                         loadFromDatabase();
@@ -8244,7 +8255,7 @@ const createJob = async () => {
                           const allJobsForDay = customers
                             .filter(c => {
                               if (!c.scheduledDate || !c.scheduledTime) return false;
-                              const custDate = new Date(c.scheduledDate);
+                              const custDate = parseLocalDate(c.scheduledDate);
                               return custDate.toDateString() === selectedDate.toDateString();
                             })
                             .sort((a, b) => {
@@ -9150,8 +9161,8 @@ const createJob = async () => {
                                       if (!date) return <div key={idx} />;
                                       const isToday = date.toDateString() === new Date().toDateString();
                                       const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
-                                      const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                                      const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                                      const routesOnDay = savedRoutes.filter(r => !r.sentToTech && parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
+                                      const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                                       const jobCount = routesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
                                       const sentCount = sentRoutesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
                                       return (
@@ -9231,8 +9242,8 @@ const createJob = async () => {
                                 const isFocused = focusedDays.some(fd => date.toDateString() === fd.toDateString());
                                 const hasUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0).length > 0;
                                 const isPrefMatch = hasUnrouted && hoveredUnroutedDays.includes(date.getDay());
-                                const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
-                                const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && new Date(r.scheduledDate).toDateString() === date.toDateString());
+                                const routesOnDay = savedRoutes.filter(r => !r.sentToTech && parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
+                                const sentRoutesOnDay = savedRoutes.filter(r => r.sentToTech && parseLocalDate(r.scheduledDate).toDateString() === date.toDateString());
                                 const jobCount = routesOnDay.reduce((sum, r) => sum + r.customers.length, 0);
                                 const hasSentRoutes = sentRoutesOnDay.length > 0;
                                 return (
@@ -9840,13 +9851,13 @@ const createJob = async () => {
                                       </span>
                                     );
                                   })()}
-                                  {customer.scheduledDate && new Date(customer.scheduledDate) >= new Date(new Date().toDateString()) && (
+                                  {customer.scheduledDate && parseLocalDate(customer.scheduledDate) >= new Date(new Date().toDateString()) && (
                                     <span style={{
                                       fontSize: '10px', padding: '2px 7px',
                                       background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
                                       borderRadius: '4px', color: '#22c55e', fontWeight: 600
                                     }}>
-                                      Upcoming: {new Date(customer.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                      Upcoming: {parseLocalDate(customer.scheduledDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                                     </span>
                                   )}
                                   {customer.nextScheduledDate && (customer.isRecurring || customer.recurring) && (
@@ -10122,7 +10133,7 @@ const createJob = async () => {
                               {selectedCustomer.scheduledDate && (
                                 <div style={{ marginTop: '10px', padding: '8px 10px', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.2)', borderRadius: '8px' }}>
                                   <div style={{ fontSize: '12px', color: '#4ade80', fontWeight: 600 }}>
-                                    📅 Scheduled: {new Date(selectedCustomer.scheduledDate).toLocaleDateString('en-US', {
+                                    📅 Scheduled: {parseLocalDate(selectedCustomer.scheduledDate).toLocaleDateString('en-US', {
                                       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
                                     })}
                                     {selectedCustomer.scheduledTime && (
@@ -11092,7 +11103,7 @@ const createJob = async () => {
                         <div style={{ fontSize: '14px', color: '#60a5fa', padding: '4px 0' }}>
                           {(() => {
                             if (profileCustomer.scheduledDate) {
-                              return new Date(profileCustomer.scheduledDate).toLocaleDateString();
+                              return parseLocalDate(profileCustomer.scheduledDate).toLocaleDateString();
                             }
                             const upcoming = (profileCustomer.serviceHistory || [])
                               .filter(j => j.status && j.status.toLowerCase() !== 'completed' && j.status.toLowerCase() !== 'cancelled')
@@ -11896,7 +11907,7 @@ const createJob = async () => {
                       .filter(r => !r.sentToTech)
                       .sort((a, b) => new Date(a.scheduledDate || a.date) - new Date(b.scheduledDate || b.date))
                       .map((savedRoute) => {
-                        const schedDate = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate) : null;
+                        const schedDate = savedRoute.scheduledDate ? parseLocalDate(savedRoute.scheduledDate) : null;
                         const dayLabel = schedDate ? schedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unscheduled';
                         return (
                       <div key={savedRoute.id} className="glass-card" style={{ 
@@ -11966,7 +11977,7 @@ const createJob = async () => {
                                   alert('This route has already been sent to the technician.');
                                   return;
                                 }
-                                const routeDate = new Date(savedRoute.scheduledDate);
+                                const routeDate = parseLocalDate(savedRoute.scheduledDate);
                                 const routeDateKey = routeDate.toDateString();
                                 setRoutesByDay(prev => ({ ...prev, [routeDateKey]: savedRoute.customers }));
                                 setEditingSavedRouteId(savedRoute.id, routeDateKey);
@@ -12046,7 +12057,7 @@ const createJob = async () => {
                                   setCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...deleteUpdates } : c));
                                   setPipelineCustomers(prev => prev.map(c => routeCustomerIds.has(c.id) ? { ...c, ...deleteUpdates } : c));
                                   setSavedRoutes(prev => prev.filter(r => r.id !== savedRoute.id));
-                                  const routeDateKey = new Date(savedRoute.scheduledDate).toDateString();
+                                  const routeDateKey = parseLocalDate(savedRoute.scheduledDate).toDateString();
                                   setRoutesByDay(prev => ({ ...prev, [routeDateKey]: [] }));
                                   setSavedViewDays(prev => ({ ...prev, [routeDateKey]: false }));
                                   loadFromDatabase();
@@ -12323,7 +12334,7 @@ const createJob = async () => {
                       .filter(r => r.sentToTech)
                       .sort((a, b) => new Date(b.scheduledDate || b.date) - new Date(a.scheduledDate || a.date))
                       .map((savedRoute) => {
-                        const schedDate = savedRoute.scheduledDate ? new Date(savedRoute.scheduledDate) : null;
+                        const schedDate = savedRoute.scheduledDate ? parseLocalDate(savedRoute.scheduledDate) : null;
                         const dayLabel = schedDate ? schedDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Unscheduled';
                         const totalMiles = (() => {
                           let total = 0;
@@ -13423,7 +13434,7 @@ const createJob = async () => {
                   {dayPickerPopup.days.map((day, idx) => {
                     const dayLabel = day.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
                     const isToday = day.toDateString() === new Date().toDateString();
-                    const routesOnDay = savedRoutes.filter(r => !r.sentToTech && new Date(r.scheduledDate).toDateString() === day.toDateString());
+                    const routesOnDay = savedRoutes.filter(r => !r.sentToTech && parseLocalDate(r.scheduledDate).toDateString() === day.toDateString());
                     const stopCount = routesOnDay.reduce((sum, r) => sum + (r.customers || []).length, 0);
                     return (
                       <button
@@ -14415,7 +14426,7 @@ onClick={exitRadiusMode}
             <div className="modal" onClick={() => setShowSaveModal(false)}>
               <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dk)) ? 'Update Route' : 'Save Route'; })()}</h2>
+                  <h2 style={{ fontSize: '20px', fontWeight: 700, margin: 0 }}>{(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && parseLocalDate(r.scheduledDate).toDateString() === dk)) ? 'Update Route' : 'Save Route'; })()}</h2>
                   <button
                     onClick={() => setShowSaveModal(false)}
                     style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 0, fontSize: '24px' }}
@@ -14489,7 +14500,7 @@ onClick={exitRadiusMode}
                       onClick={handleSaveRoute}
                       style={{ flex: 1, justifyContent: 'center' }}
                     >
-                      {(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && new Date(r.scheduledDate).toDateString() === dk)) ? '💾 Update Route' : '💾 Save This Day'; })()}
+                      {(() => { const dk = saveModalDateKey || selectedDate.toDateString(); return (editingSavedRouteId || editingRouteIdByDay[dk] || savedRoutes.some(r => !r.sentToTech && r.scheduledDate && parseLocalDate(r.scheduledDate).toDateString() === dk)) ? '💾 Update Route' : '💾 Save This Day'; })()}
                     </button>
                   </div>
                   {Object.keys(unsavedRouteDays).filter(k => unsavedRouteDays[k]).length > 1 && (
