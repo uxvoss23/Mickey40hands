@@ -3422,14 +3422,17 @@
 
       const handleCancelConfirm = async () => {
         if (!cancellingStop) return;
-        const dateKey = selectedDate.toDateString();
-        const savedRoutesForDay = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === dateKey);
-        const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
-        const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
-        if (!savedRouteForDay) return;
+        const routeId = cancellingStop.routeId || (() => {
+          const dateKey = selectedDate.toDateString();
+          const savedRoutesForDay = savedRoutes.filter(r => parseLocalDate(r.scheduledDate).toDateString() === dateKey);
+          const selectedIdx = selectedRouteIndexByDay[dateKey] || 0;
+          const savedRouteForDay = savedRoutesForDay[selectedIdx] || savedRoutesForDay[0];
+          return savedRouteForDay?.id;
+        })();
+        if (!routeId) return;
         
         try {
-          const res = await fetch(`/api/routes/${savedRouteForDay.id}/stops/${cancellingStop.stopId}/cancel`, {
+          const res = await fetch(`/api/routes/${routeId}/stops/${cancellingStop.stopId}/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -3441,7 +3444,7 @@
           const data = await res.json();
           if (data.success) {
             setSavedRoutes(prev => prev.map(r => {
-              if (r.id !== savedRouteForDay.id) return r;
+              if (r.id !== routeId) return r;
               return { ...r, customers: r.customers.map(c => 
                 c.id === cancellingStop.id ? { ...c, cancelled: true, cancellationReason: cancelReason } : c
               )};
@@ -7540,35 +7543,101 @@ const createJob = async () => {
                                       </span>
                                     </div>
                                   </div>
-                                  {routeStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => (
+                                  {routeStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => {
+                                    const isCancelled = stop.cancelled;
+                                    const custData = customers.find(c => c.id === stop.id);
+                                    const cancellationCount = custData?.cancellation_count || stop.cancellationCount || 0;
+                                    return (
                                     <div key={stop.id || idx} style={{
                                       display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px',
                                       borderRadius: '5px', marginBottom: '1px',
-                                      background: 'rgba(15, 23, 42, 0.3)', cursor: 'pointer'
+                                      background: isCancelled ? 'rgba(239, 68, 68, 0.1)' : 'rgba(15, 23, 42, 0.3)',
+                                      cursor: 'pointer',
+                                      opacity: isCancelled ? 0.5 : 1,
+                                      border: isCancelled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent',
+                                      position: 'relative'
                                     }}
-                                      onClick={() => { setProfileCustomer(customers.find(c => c.id === stop.id) || stop); setShowCustomerProfile(true); }}
+                                      onClick={() => { setProfileCustomer(custData || stop); setShowCustomerProfile(true); }}
                                     >
                                       <div style={{
                                         width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
-                                        background: route.sentToTech ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #eab308, #ca8a04)',
+                                        background: isCancelled ? 'linear-gradient(135deg, #ef4444, #dc2626)' : route.sentToTech ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #eab308, #ca8a04)',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '8px', fontWeight: 700, color: route.sentToTech ? '#fff' : '#000'
-                                      }}>{idx + 1}</div>
+                                        fontSize: '8px', fontWeight: 700, color: isCancelled ? '#fff' : route.sentToTech ? '#fff' : '#000'
+                                      }}>{isCancelled ? '✕' : idx + 1}</div>
                                       <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</div>
+                                        <div style={{ fontSize: '10px', fontWeight: 600, color: isCancelled ? '#94a3b8' : '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isCancelled ? 'line-through' : 'none' }}>{stop.name}</div>
+                                        {isCancelled && (
+                                          <div style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase' }}>Cancelled{stop.cancellationReason ? ` - ${stop.cancellationReason}` : ''}</div>
+                                        )}
                                       </div>
-                                      {(stop.jobPrice > 0 || stop.amountPaid > 0) && (
+                                      {cancellationCount >= 3 && (
+                                        <span title={`${cancellationCount} cancellations`} style={{ fontSize: '9px', color: '#f59e0b', flexShrink: 0 }}>⚠️</span>
+                                      )}
+                                      {!isCancelled && (stop.jobPrice > 0 || stop.amountPaid > 0) && (
                                         <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 700, flexShrink: 0 }}>
                                           ${parseFloat(stop.jobPrice || stop.amountPaid || 0)}
                                         </span>
                                       )}
-                                      {stop.scheduledTime && (
+                                      {!isCancelled && stop.scheduledTime && (
                                         <span style={{ fontSize: '9px', color: route.sentToTech ? '#86efac' : '#fbbf24', fontWeight: 600, flexShrink: 0 }}>
                                           {new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                         </span>
                                       )}
+                                      {route.sentToTech && !isCancelled && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCancellingStop({ ...stop, stopId: stop.routeStopId || stop.id, routeId: route.id });
+                                            setShowCancelModal(true);
+                                          }}
+                                          style={{
+                                            padding: '2px 6px', fontSize: '8px', fontWeight: 600,
+                                            background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)',
+                                            borderRadius: '4px', color: '#fca5a5', cursor: 'pointer', flexShrink: 0
+                                          }}
+                                        >✕</button>
+                                      )}
+                                      {route.sentToTech && isCancelled && (
+                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                                          <button
+                                            onClick={async (e) => {
+                                              e.stopPropagation();
+                                              try {
+                                                const res = await fetch(`/api/routes/${route.id}/stops/${stop.routeStopId || stop.id}/reactivate`, { method: 'POST' });
+                                                const data = await res.json();
+                                                if (data.success) {
+                                                  setSavedRoutes(prev => prev.map(r => {
+                                                    if (r.id !== route.id) return r;
+                                                    return { ...r, customers: r.customers.map(c => c.id === stop.id ? { ...c, cancelled: false, cancellationReason: null } : c) };
+                                                  }));
+                                                }
+                                              } catch (err) { console.error('Reactivate failed:', err); }
+                                            }}
+                                            style={{
+                                              padding: '2px 6px', fontSize: '8px', fontWeight: 600,
+                                              background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
+                                              borderRadius: '4px', color: '#86efac', cursor: 'pointer'
+                                            }}
+                                          >↩</button>
+                                          {!showGapFillPanel && (
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                startGapFillSession(stop, route);
+                                              }}
+                                              style={{
+                                                padding: '2px 6px', fontSize: '8px', fontWeight: 600,
+                                                background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)',
+                                                borderRadius: '4px', color: '#fbbf24', cursor: 'pointer'
+                                              }}
+                                            >Fill</button>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                   {!route.sentToTech && (
                                     <button
                                       onClick={() => {
