@@ -3388,21 +3388,21 @@
           const isInSavedRouteOtherDay = savedRoutes.some(r => {
             const rDate = parseLocalDate(r.scheduledDate);
             if (rDate.toDateString() === dateKey) return false;
-            return (r.customers || []).some(c => c.id === customer.id);
+            return (r.customers || []).some(c => c.id === customer.id && !c.cancelled);
           });
           if (isOnAnotherDaysRoute || isInSavedRouteOtherDay) {
             return;
           }
         }
 
-        const cancelledOnSentRoute = savedRoutes.some(r => {
+        const alreadyActiveOnSentRoute = savedRoutes.some(r => {
           if (!r.sentToTech) return false;
           const rDate = parseLocalDate(r.scheduledDate);
           if (rDate.toDateString() !== dateKey) return false;
-          return (r.customers || []).some(c => c.id === customer.id && c.cancelled);
+          return (r.customers || []).some(c => c.id === customer.id && !c.cancelled);
         });
-        if (cancelledOnSentRoute) {
-          alert('This customer was cancelled from a route on this day. Please select a different day to reschedule them.');
+        if (alreadyActiveOnSentRoute) {
+          alert('This customer is already on an active route for this day.');
           return;
         }
 
