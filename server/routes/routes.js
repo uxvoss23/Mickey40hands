@@ -311,13 +311,22 @@ router.post('/:id/stops/:stopId/cancel', async (req, res) => {
     await client.query('BEGIN');
     const { reason, note, reschedule_date } = req.body;
 
-    const stopResult = await client.query(
+    let stopResult = await client.query(
       `SELECT rs.*, c.id as cust_id, c.full_name, c.cancellation_count
        FROM route_stops rs
        JOIN customers c ON rs.customer_id = c.id
        WHERE rs.id = $1 AND rs.route_id = $2`,
       [req.params.stopId, req.params.id]
     );
+    if (stopResult.rows.length === 0) {
+      stopResult = await client.query(
+        `SELECT rs.*, c.id as cust_id, c.full_name, c.cancellation_count
+         FROM route_stops rs
+         JOIN customers c ON rs.customer_id = c.id
+         WHERE rs.customer_id = $1 AND rs.route_id = $2 AND rs.cancelled = false`,
+        [req.params.stopId, req.params.id]
+      );
+    }
     if (stopResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Stop not found' });
@@ -381,7 +390,7 @@ router.post('/:id/stops/:stopId/cancel', async (req, res) => {
 
     await client.query(
       `UPDATE route_stops SET cancelled = true, cancellation_reason = $1 WHERE id = $2 AND route_id = $3`,
-      [reason || 'Other', req.params.stopId, req.params.id]
+      [reason || 'Other', stop.id, req.params.id]
     );
 
     const newCancelCount = (stop.cancellation_count || 0) + 1;
@@ -413,10 +422,16 @@ router.post('/:id/stops/:stopId/reactivate', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    const stopResult = await client.query(
+    let stopResult = await client.query(
       'SELECT rs.*, c.cancellation_count FROM route_stops rs JOIN customers c ON rs.customer_id = c.id WHERE rs.id = $1 AND rs.route_id = $2',
       [req.params.stopId, req.params.id]
     );
+    if (stopResult.rows.length === 0) {
+      stopResult = await client.query(
+        'SELECT rs.*, c.cancellation_count FROM route_stops rs JOIN customers c ON rs.customer_id = c.id WHERE rs.customer_id = $1 AND rs.route_id = $2',
+        [req.params.stopId, req.params.id]
+      );
+    }
     if (stopResult.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Stop not found' });
@@ -450,7 +465,7 @@ router.post('/:id/stops/:stopId/reactivate', async (req, res) => {
 
     await client.query(
       `UPDATE route_stops SET cancelled = false, cancellation_reason = NULL WHERE id = $1 AND route_id = $2`,
-      [req.params.stopId, req.params.id]
+      [stop.id, req.params.id]
     );
 
     const newCount = Math.max(0, (stop.cancellation_count || 0) - 1);
