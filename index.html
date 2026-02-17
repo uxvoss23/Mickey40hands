@@ -1046,15 +1046,16 @@
             if (isNaN(idNum) || idNum > 2147483647) return null;
             const data = await apiFetch(`/routes/${routeDbId}/tech-view`);
             if (!data || !data.stops) return null;
+            const activeRouteStops = data.stops.filter(s => !s.cancelled);
             const completedStopCustomerIds = new Set(
-              data.stops.filter(s => s.completed_at).map(s => s.customer_id)
+              activeRouteStops.filter(s => s.completed_at).map(s => s.customer_id)
             );
             const stopCustomerEmails = {};
-            data.stops.forEach(s => {
+            activeRouteStops.forEach(s => {
               if (s.email) stopCustomerEmails[s.customer_id] = s.email;
             });
             const stopCompletionData = {};
-            data.stops.forEach(s => {
+            activeRouteStops.forEach(s => {
               if (s.completed_at) {
                 let parsedPhotos = [];
                 try { parsedPhotos = s.photos ? JSON.parse(s.photos) : []; } catch(e) { parsedPhotos = []; }
@@ -1074,7 +1075,7 @@
               }
             });
             const completedCount = completedStopCustomerIds.size;
-            const totalCount = data.stops.length;
+            const totalCount = activeRouteStops.length;
             return {
               routeId: sr.id,
               completedStopIds: completedStopCustomerIds,
@@ -3064,7 +3065,7 @@
             const routeRes = await fetch(`/api/routes/${routeId}`);
             const routeData = await routeRes.json();
             if (routeData.route) {
-              const mappedCustomers = (routeData.stops || []).map(s => ({
+              const mappedCustomers = (routeData.stops || []).filter(s => !s.cancelled).map(s => ({
                 id: s.customer_id,
                 routeStopId: s.id,
                 name: s.full_name,
@@ -3079,8 +3080,6 @@
                 scheduledDate: routeData.route.scheduled_date,
                 notes: s.stop_notes,
                 customerType: s.customer_type,
-                cancelled: s.cancelled || false,
-                cancellationReason: s.cancellation_reason || null,
                 isRecurring: s.is_recurring,
                 jobDescription: s.job_notes || 'Panel Cleaning',
                 completedAt: s.completed_at,
@@ -7819,47 +7818,42 @@ const createJob = async () => {
                                     </div>
                                   </div>
                                   {routeStops.sort((a, b) => (a.scheduledTime || '').localeCompare(b.scheduledTime || '')).map((stop, idx) => {
-                                    const isCancelled = stop.cancelled;
                                     const custData = customers.find(c => c.id === stop.id);
                                     const cancellationCount = custData?.cancellation_count || stop.cancellationCount || 0;
                                     return (
                                     <div key={stop.id || idx} style={{
                                       display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 6px',
                                       borderRadius: '5px', marginBottom: '1px',
-                                      background: isCancelled ? 'rgba(239, 68, 68, 0.1)' : 'rgba(15, 23, 42, 0.3)',
+                                      background: 'rgba(15, 23, 42, 0.3)',
                                       cursor: 'pointer',
-                                      opacity: isCancelled ? 0.5 : 1,
-                                      border: isCancelled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid transparent',
+                                      border: '1px solid transparent',
                                       position: 'relative'
                                     }}
                                       onClick={() => { setProfileCustomer(custData || stop); setShowCustomerProfile(true); }}
                                     >
                                       <div style={{
                                         width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
-                                        background: isCancelled ? 'linear-gradient(135deg, #ef4444, #dc2626)' : route.sentToTech ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #eab308, #ca8a04)',
+                                        background: route.sentToTech ? 'linear-gradient(135deg, #22c55e, #16a34a)' : 'linear-gradient(135deg, #eab308, #ca8a04)',
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '8px', fontWeight: 700, color: isCancelled ? '#fff' : route.sentToTech ? '#fff' : '#000'
-                                      }}>{isCancelled ? '✕' : idx + 1}</div>
+                                        fontSize: '8px', fontWeight: 700, color: route.sentToTech ? '#fff' : '#000'
+                                      }}>{idx + 1}</div>
                                       <div style={{ flex: 1, minWidth: 0 }}>
-                                        <div style={{ fontSize: '10px', fontWeight: 600, color: isCancelled ? '#94a3b8' : '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: isCancelled ? 'line-through' : 'none' }}>{stop.name}</div>
-                                        {isCancelled && (
-                                          <div style={{ fontSize: '8px', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase' }}>Cancelled{stop.cancellationReason ? ` - ${stop.cancellationReason}` : ''}</div>
-                                        )}
+                                        <div style={{ fontSize: '10px', fontWeight: 600, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{stop.name}</div>
                                       </div>
                                       {cancellationCount >= 3 && (
                                         <span title={`${cancellationCount} cancellations`} style={{ fontSize: '9px', color: '#f59e0b', flexShrink: 0 }}>⚠️</span>
                                       )}
-                                      {!isCancelled && (stop.jobPrice > 0 || stop.amountPaid > 0) && (
+                                      {(stop.jobPrice > 0 || stop.amountPaid > 0) && (
                                         <span style={{ fontSize: '9px', color: '#22c55e', fontWeight: 700, flexShrink: 0 }}>
                                           ${parseFloat(stop.jobPrice || stop.amountPaid || 0)}
                                         </span>
                                       )}
-                                      {!isCancelled && stop.scheduledTime && (
+                                      {stop.scheduledTime && (
                                         <span style={{ fontSize: '9px', color: route.sentToTech ? '#86efac' : '#fbbf24', fontWeight: 600, flexShrink: 0 }}>
                                           {new Date(`2000-01-01T${stop.scheduledTime}`).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                                         </span>
                                       )}
-                                      {route.sentToTech && !isCancelled && (
+                                      {route.sentToTech && (
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
@@ -7872,46 +7866,6 @@ const createJob = async () => {
                                             borderRadius: '4px', color: '#fca5a5', cursor: 'pointer', flexShrink: 0
                                           }}
                                         >✕</button>
-                                      )}
-                                      {route.sentToTech && isCancelled && (
-                                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                                          <button
-                                            onClick={async (e) => {
-                                              e.stopPropagation();
-                                              try {
-                                                const res = await fetch(`/api/routes/${route.dbRouteId || route.id}/stops/${stop.routeStopId || stop.id}/reactivate`, { method: 'POST' });
-                                                const data = await res.json();
-                                                if (data.success) {
-                                                  setSavedRoutes(prev => prev.map(r => {
-                                                    if (r.id !== route.id) return r;
-                                                    return { ...r, customers: r.customers.map(c => c.id === stop.id ? { ...c, cancelled: false, cancellationReason: null } : c) };
-                                                  }));
-                                                  setCustomers(prev => prev.map(c => 
-                                                    c.id === stop.id ? { ...c, status: 'scheduled' } : c
-                                                  ));
-                                                }
-                                              } catch (err) { console.error('Reactivate failed:', err); }
-                                            }}
-                                            style={{
-                                              padding: '2px 6px', fontSize: '8px', fontWeight: 600,
-                                              background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)',
-                                              borderRadius: '4px', color: '#86efac', cursor: 'pointer'
-                                            }}
-                                          >↩</button>
-                                          {!showGapFillPanel && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                startGapFillSession(stop, route);
-                                              }}
-                                              style={{
-                                                padding: '2px 6px', fontSize: '8px', fontWeight: 600,
-                                                background: 'rgba(251, 191, 36, 0.15)', border: '1px solid rgba(251, 191, 36, 0.3)',
-                                                borderRadius: '4px', color: '#fbbf24', cursor: 'pointer'
-                                              }}
-                                            >Fill</button>
-                                          )}
-                                        </div>
                                       )}
                                     </div>
                                     );
@@ -8936,16 +8890,15 @@ const createJob = async () => {
                                       alignItems: 'center',
                                       gap: '10px',
                                       padding: '8px',
-                                      background: job.cancelled ? 'rgba(15, 23, 42, 0.3)' : 'rgba(15, 23, 42, 0.6)',
+                                      background: 'rgba(15, 23, 42, 0.6)',
                                       borderRadius: '6px',
-                                      border: job.cancelled ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid rgba(139, 92, 246, 0.2)',
+                                      border: '1px solid rgba(139, 92, 246, 0.2)',
                                       cursor: 'pointer',
                                       transition: 'all 0.15s',
-                                      opacity: job.cancelled ? 0.5 : 1,
                                       position: 'relative'
                                     }}
-                                    onMouseEnter={(e) => { if (!job.cancelled) e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.background = job.cancelled ? 'rgba(15, 23, 42, 0.3)' : 'rgba(15, 23, 42, 0.6)'; }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(139, 92, 246, 0.15)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(15, 23, 42, 0.6)'; }}
                                   >
                                     <div style={{
                                       fontSize: '11px',
@@ -8972,11 +8925,10 @@ const createJob = async () => {
                                       <div style={{
                                         fontSize: '12px',
                                         fontWeight: 600,
-                                        color: job.cancelled ? '#94a3b8' : '#f1f5f9',
+                                        color: '#f1f5f9',
                                         overflow: 'hidden',
                                         textOverflow: 'ellipsis',
-                                        whiteSpace: 'nowrap',
-                                        textDecoration: job.cancelled ? 'line-through' : 'none'
+                                        whiteSpace: 'nowrap'
                                       }}>
                                         {job.name}
                                         {job.cancellationCount >= 3 && (
@@ -8998,21 +8950,7 @@ const createJob = async () => {
                                         {job.address}
                                       </div>
                                     </div>
-                                    {job.cancelled && (
-                                      <span style={{
-                                        fontSize: '9px',
-                                        fontWeight: 700,
-                                        color: '#ef4444',
-                                        background: 'rgba(239,68,68,0.15)',
-                                        border: '1px solid rgba(239,68,68,0.3)',
-                                        borderRadius: '4px',
-                                        padding: '2px 6px',
-                                        textTransform: 'uppercase',
-                                        letterSpacing: '0.5px',
-                                        whiteSpace: 'nowrap'
-                                      }}>CANCELLED</span>
-                                    )}
-                                    {savedRouteForDay && savedRouteForDay.sentToTech && !job.cancelled && (
+                                    {savedRouteForDay && savedRouteForDay.sentToTech && (
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
@@ -9043,46 +8981,6 @@ const createJob = async () => {
                                           }
                                         }}
                                       >✕ Cancel</button>
-                                    )}
-                                    {savedRouteForDay && savedRouteForDay.sentToTech && job.cancelled && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          alert('Reactivate functionality coming soon');
-                                        }}
-                                        style={{
-                                          background: 'rgba(34,197,94,0.1)',
-                                          border: '1px solid rgba(34,197,94,0.3)',
-                                          borderRadius: '4px',
-                                          padding: '2px 6px',
-                                          color: '#22c55e',
-                                          fontSize: '10px',
-                                          fontWeight: 600,
-                                          cursor: 'pointer',
-                                          whiteSpace: 'nowrap'
-                                        }}
-                                      >↩ Reactivate</button>
-                                    )}
-                                    {savedRouteForDay && savedRouteForDay.sentToTech && job.cancelled && !showGapFillPanel && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          startGapFillSession(job, savedRouteForDay);
-                                        }}
-                                        disabled={gapFillLoading}
-                                        style={{
-                                          background: 'rgba(139, 92, 246, 0.15)',
-                                          border: '1px solid rgba(139, 92, 246, 0.3)',
-                                          borderRadius: '4px',
-                                          padding: '2px 6px',
-                                          color: '#c4b5fd',
-                                          fontSize: '10px',
-                                          fontWeight: 600,
-                                          cursor: gapFillLoading ? 'wait' : 'pointer',
-                                          whiteSpace: 'nowrap',
-                                          opacity: gapFillLoading ? 0.5 : 1
-                                        }}
-                                      >{gapFillLoading ? '...' : '🔄 Gap Fill'}</button>
                                     )}
                                   </div>
                                 ))}
@@ -13679,24 +13577,19 @@ const createJob = async () => {
                           {savedRoute.customers.map((customer, idx) => {
                             const timeSlot = customer.scheduledTime || '';
                             const cd = customer._completionData;
-                            const isCancelled = customer.cancelled;
                             const recurringLabels = { not_offered: 'Not Offered', offered_declined: 'Declined', signed_annual: 'Annual', signed_biannual: 'Bi-Annual', enrolled_annual: 'Enrolled Annual', enrolled_biannual: 'Enrolled Bi-Annual' };
                             const recurringColors = { not_offered: '#64748b', offered_declined: '#ef4444', signed_annual: '#22c55e', signed_biannual: '#3b82f6', enrolled_annual: '#22c55e', enrolled_biannual: '#3b82f6' };
                             return (
                               <div key={customer.id} style={{ 
                                 padding: '8px 10px',
-                                background: isCancelled ? 'rgba(239, 68, 68, 0.08)' : customer._stopCompleted ? 'rgba(34, 197, 94, 0.08)' : 'rgba(15, 23, 42, 0.4)',
+                                background: customer._stopCompleted ? 'rgba(34, 197, 94, 0.08)' : 'rgba(15, 23, 42, 0.4)',
                                 borderRadius: '6px',
-                                borderLeft: `3px solid ${isCancelled ? 'rgba(239, 68, 68, 0.6)' : customer._stopCompleted ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.4)'}`,
-                                opacity: isCancelled ? 0.7 : 1
+                                borderLeft: `3px solid ${customer._stopCompleted ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.4)'}`
                               }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                                  <span style={{ fontSize: '10px', fontWeight: 700, color: isCancelled ? '#ef4444' : '#22c55e', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCancelled ? 'rgba(239, 68, 68, 0.3)' : customer._stopCompleted ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.15)', borderRadius: '50%' }}>{isCancelled ? '✕' : customer._stopCompleted ? '✓' : idx + 1}</span>
-                                  <span style={{ fontSize: '12px', fontWeight: 600, color: isCancelled ? '#94a3b8' : customer._stopCompleted ? '#86efac' : '#e2e8f0', textDecoration: isCancelled ? 'line-through' : 'none' }}>{customer.name}</span>
-                                  {isCancelled && (
-                                    <span style={{ fontSize: '9px', padding: '1px 6px', background: 'rgba(239, 68, 68, 0.2)', borderRadius: '10px', color: '#fca5a5', fontWeight: 600 }}>Cancelled{customer.cancellationReason ? ` - ${customer.cancellationReason}` : ''}</span>
-                                  )}
-                                  {!isCancelled && timeSlot && <span style={{ fontSize: '10px', color: '#fbbf24', marginLeft: 'auto' }}>⏰ {timeSlot}</span>}
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: '#22c55e', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: customer._stopCompleted ? 'rgba(34, 197, 94, 0.3)' : 'rgba(34, 197, 94, 0.15)', borderRadius: '50%' }}>{customer._stopCompleted ? '✓' : idx + 1}</span>
+                                  <span style={{ fontSize: '12px', fontWeight: 600, color: customer._stopCompleted ? '#86efac' : '#e2e8f0' }}>{customer.name}</span>
+                                  {timeSlot && <span style={{ fontSize: '10px', color: '#fbbf24', marginLeft: 'auto' }}>⏰ {timeSlot}</span>}
                                 </div>
                                 <div style={{ fontSize: '10px', color: '#94a3b8', marginLeft: '24px' }}>
                                   📍 {customer.address}
@@ -13805,7 +13698,7 @@ const createJob = async () => {
                                     )}
                                   </div>
                                 )}
-                                {!isCancelled && !customer._stopCompleted && (
+                                {!customer._stopCompleted && (
                                   <div style={{ marginLeft: '24px', marginTop: '6px' }}>
                                     <button
                                       onClick={(e) => {
@@ -13815,31 +13708,6 @@ const createJob = async () => {
                                       }}
                                       style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#fca5a5', cursor: 'pointer', fontWeight: 600, width: '100%' }}
                                     >✕ Cancel Stop</button>
-                                  </div>
-                                )}
-                                {isCancelled && (
-                                  <div style={{ marginLeft: '24px', marginTop: '6px', display: 'flex', gap: '6px' }}>
-                                    <button
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        try {
-                                          const res = await fetch(`/api/routes/${savedRoute.dbRouteId || savedRoute.id}/stops/${customer.routeStopId || customer.id}/reactivate`, { method: 'POST' });
-                                          const data = await res.json();
-                                          if (data.success) {
-                                            setSavedRoutes(prev => prev.map(r => {
-                                              if (r.id !== savedRoute.id) return r;
-                                              return { ...r, customers: r.customers.map(c => c.id === customer.id ? { ...c, cancelled: false, cancellationReason: null } : c) };
-                                            }));
-                                            setCustomers(prev => prev.map(c => 
-                                              c.id === customer.id ? { ...c, status: 'scheduled' } : c
-                                            ));
-                                          } else {
-                                            alert(data.error || 'Failed to reactivate');
-                                          }
-                                        } catch (err) { console.error('Reactivate failed:', err); alert('Failed to reactivate stop'); }
-                                      }}
-                                      style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(34, 197, 94, 0.15)', border: '1px solid rgba(34, 197, 94, 0.3)', borderRadius: '6px', color: '#86efac', cursor: 'pointer', fontWeight: 600, flex: 1 }}
-                                    >↩ Reactivate</button>
                                   </div>
                                 )}
                               </div>

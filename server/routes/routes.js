@@ -288,8 +288,8 @@ router.post('/:id/stops/:stopId/complete', async (req, res) => {
       }
     }
 
-    const allStops = await client.query('SELECT completed_at FROM route_stops WHERE route_id = $1', [req.params.id]);
-    const allDone = allStops.rows.every(s => s.completed_at !== null);
+    const allStops = await client.query('SELECT completed_at FROM route_stops WHERE route_id = $1 AND cancelled = false', [req.params.id]);
+    const allDone = allStops.rows.length > 0 && allStops.rows.every(s => s.completed_at !== null);
     if (allDone) {
       await client.query('UPDATE routes SET completed_at = NOW() WHERE id = $1', [req.params.id]);
     }
