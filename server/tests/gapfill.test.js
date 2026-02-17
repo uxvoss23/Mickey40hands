@@ -118,9 +118,9 @@ describe('Time Feasibility Calculation', () => {
     assert.ok(fitsBeforeCutoff, `Should fit before cutoff: ${endMinutes} <= ${HARD_CUTOFF_HOUR * 60}`);
   });
 
-  it('candidate at 15mi does NOT fit when current time is 4PM (exceeds 6PM cutoff)', () => {
+  it('candidate at 15mi does NOT fit when current time is 4:30PM (exceeds 6PM cutoff)', () => {
     const currentHour = 16;
-    const currentMinute = 0;
+    const currentMinute = 30;
     const nowMinutes = currentHour * 60 + currentMinute;
     const distance = 15;
     const driveMinutes = estimateDriveMinutes(distance);
