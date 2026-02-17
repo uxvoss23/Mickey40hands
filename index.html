@@ -3724,13 +3724,28 @@
           const data = await res.json();
           console.log('[CANCEL] Response:', data);
           if (data.success) {
+            const cancelUpdates = { status: 'unscheduled', scheduledDate: null, scheduledTime: null, activeJobCount: (cancellingStop.activeJobCount || 1) };
             setSavedRoutes(prev => prev.map(r => {
               if (r.id !== frontendRouteId) return r;
               return { ...r, customers: r.customers.filter(c => c.id !== cancellingStop.id) };
             }));
             setCustomers(prev => prev.map(c => 
-              c.id === cancellingStop.id ? { ...c, status: 'unscheduled', activeJobCount: (c.activeJobCount || 1) } : c
+              c.id === cancellingStop.id ? { ...c, ...cancelUpdates } : c
             ));
+            setPipelineCustomers(prev => prev.map(c =>
+              c.id === cancellingStop.id ? { ...c, ...cancelUpdates } : c
+            ));
+            setRoutesByDay(prev => {
+              const updated = { ...prev };
+              let changed = false;
+              for (const [dk, stops] of Object.entries(updated)) {
+                if (stops.some(s => s.id === cancellingStop.id)) {
+                  updated[dk] = stops.filter(s => s.id !== cancellingStop.id);
+                  changed = true;
+                }
+              }
+              return changed ? updated : prev;
+            });
             setShowCancelModal(false);
             setCancellingStop(null);
             setCancelReason('');
@@ -10431,9 +10446,9 @@ const createJob = async () => {
                               return prefStr.toLowerCase().split(/[,\s]+/).map(d => dayMap[d.trim()]).filter(d => d !== undefined);
                             };
                             const getJobType = (c) => c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
-                            const activeRouteDate = focusedDays.length === 1 ? focusedDays[0] : selectedDate;
-                            const activeRouteDateKey = activeRouteDate ? activeRouteDate.toDateString() : '';
-                            const currentRouteCustomerIds = new Set((routesByDay[activeRouteDateKey] || []).map(c => c.id));
+                            const routeDateKeys = focusedDays.length > 0 ? focusedDays.map(d => d.toDateString()) : (selectedDate ? [selectedDate.toDateString()] : []);
+                            const currentRouteCustomerIds = new Set();
+                            routeDateKeys.forEach(dk => (routesByDay[dk] || []).forEach(c => currentRouteCustomerIds.add(c.id)));
                             const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0 && !currentRouteCustomerIds.has(c.id));
                             const jobTypes = [...new Set(allUnrouted.map(c => getJobType(c)))].sort();
                             const filtered = unroutedJobTypeFilter === 'all' ? allUnrouted : allUnrouted.filter(c => getJobType(c) === unroutedJobTypeFilter);

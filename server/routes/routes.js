@@ -395,7 +395,7 @@ router.post('/:id/stops/:stopId/cancel', async (req, res) => {
 
     const newCancelCount = (stop.cancellation_count || 0) + 1;
     await client.query(
-      `UPDATE customers SET cancellation_count = $1, status = 'unscheduled' WHERE id = $2`,
+      `UPDATE customers SET cancellation_count = $1, status = 'unscheduled', scheduled_date = NULL, scheduled_time = NULL WHERE id = $2`,
       [newCancelCount, stop.customer_id]
     );
 
