@@ -3,7 +3,15 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node --test server/tests/"
+    "test": "node --test server/tests/gapfill.test.js",
+    "test:unit": "node --test server/tests/gapfill.test.js",
+    "test:integration": "node --test server/tests/integration.test.js",
+    "test:api": "node --test server/tests/api.test.js",
+    "test:security": "node --test server/tests/security.test.js",
+    "test:race": "node --test server/tests/race-condition.test.js",
+    "test:data": "node --test server/tests/data-integrity.test.js",
+    "test:load": "node --test server/tests/load.test.js",
+    "test:all": "node --test server/tests/"
   },
   "keywords": [],
   "author": "",
