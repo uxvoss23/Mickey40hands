@@ -160,11 +160,11 @@ describe('API: Invalid Input Handling', () => {
     }
   });
 
-  it('POST /api/jobs with missing customer_id returns error', async () => {
+  it('POST /api/jobs with missing customer_id returns 400', async () => {
     const res = await request('POST', '/api/jobs', {
       job_description: 'Orphan job'
     });
-    assert.ok([201, 400, 422, 500].includes(res.status), `Expected valid status, got ${res.status}`);
+    assert.equal(res.status, 400, `Should reject job without customer_id, got ${res.status}`);
   });
 
   it('GET /api/customers with filters returns filtered results', async () => {

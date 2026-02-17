@@ -105,6 +105,9 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const j = req.body;
+    if (!j.customer_id) {
+      return res.status(400).json({ error: 'customer_id is required' });
+    }
     const result = await pool.query(`
       INSERT INTO jobs (customer_id, job_description, status, scheduled_date, scheduled_time,
                         completed_date, amount, tip, notes, is_recurring, employee, panel_count,

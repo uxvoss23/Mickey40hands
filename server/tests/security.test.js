@@ -36,12 +36,12 @@ function request(method, path, body = null) {
 describe('Security: SQL Injection Prevention', () => {
   it('search parameter with SQL injection is safely handled', async () => {
     const res = await request('GET', "/api/customers?search=' OR 1=1; --");
-    assert.ok([200, 400, 500].includes(res.status), 'Should return a valid HTTP status, not crash the process');
+    assert.ok([200, 400].includes(res.status), `Should handle SQL injection gracefully, got ${res.status}`);
   });
 
   it('search with DROP TABLE attempt is safely handled', async () => {
     const res = await request('GET', "/api/customers?search='; DROP TABLE customers; --");
-    assert.ok([200, 400, 500].includes(res.status), 'Should return a valid HTTP status, not crash the process');
+    assert.ok([200, 400].includes(res.status), `Should handle SQL injection gracefully, got ${res.status}`);
   });
 
   it('customer name with SQL injection is safely stored', async () => {
@@ -93,7 +93,7 @@ describe('Security: SQL Injection Prevention', () => {
 
   it('filter parameters with SQL injection are safely handled', async () => {
     const res = await request('GET', "/api/customers?city=' UNION SELECT * FROM pg_shadow; --");
-    assert.ok([200, 400, 500].includes(res.status), 'Should return a valid HTTP status, not crash the process');
+    assert.ok([200, 400].includes(res.status), `Should handle SQL injection gracefully, got ${res.status}`);
   });
 
   it('customer ID path parameter with SQL injection returns error gracefully', async () => {
@@ -176,6 +176,6 @@ describe('Security: Request Size & Rate Limits', () => {
   it('extremely long search query does not crash', async () => {
     const longSearch = 'a'.repeat(5000);
     const res = await request('GET', `/api/customers?search=${encodeURIComponent(longSearch)}`);
-    assert.ok([200, 400, 414, 500].includes(res.status));
+    assert.ok([200, 400, 414].includes(res.status), `Should handle long query gracefully, got ${res.status}`);
   });
 });

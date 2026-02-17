@@ -132,10 +132,60 @@ router.get('/', async (req, res) => {
       paramIndex++;
     }
 
+    if (search && search.length > 500) {
+      return res.status(400).json({ error: 'Search query too long', customers: [], total: 0 });
+    }
+
     const result = await pool.query(query, params);
 
-    const countQuery = query.replace(/SELECT \*/, 'SELECT COUNT(*)').replace(/ORDER BY.*$/, '').replace(/LIMIT.*$/, '').replace(/OFFSET.*$/, '');
-    const countParams = params.slice(0, params.length - (limit ? 1 : 0) - (offset ? 1 : 0));
+    let countQuery = `SELECT COUNT(*) FROM customers c WHERE 1=1`;
+    const countParams = [];
+    let countParamIndex = 1;
+
+    if (search) {
+      countQuery += ` AND (
+        full_name ILIKE $${countParamIndex} OR
+        address ILIKE $${countParamIndex} OR
+        city ILIKE $${countParamIndex} OR
+        email ILIKE $${countParamIndex} OR
+        phone ILIKE $${countParamIndex} OR
+        zip ILIKE $${countParamIndex} OR
+        notes ILIKE $${countParamIndex}
+      )`;
+      countParams.push(`%${search}%`);
+      countParamIndex++;
+    }
+
+    if (status && status !== 'all') {
+      countQuery += ` AND LOWER(c.status) = $${countParamIndex}`;
+      countParams.push(status.toLowerCase());
+      countParamIndex++;
+    }
+
+    if (city) {
+      countQuery += ` AND LOWER(city) = $${countParamIndex}`;
+      countParams.push(city.toLowerCase());
+      countParamIndex++;
+    }
+
+    if (state) {
+      countQuery += ` AND LOWER(state) = $${countParamIndex}`;
+      countParams.push(state.toLowerCase());
+      countParamIndex++;
+    }
+
+    if (zip) {
+      countQuery += ` AND zip = $${countParamIndex}`;
+      countParams.push(zip);
+      countParamIndex++;
+    }
+
+    if (lat_min && lat_max && lng_min && lng_max) {
+      countQuery += ` AND lat >= $${countParamIndex} AND lat <= $${countParamIndex + 1} AND lng >= $${countParamIndex + 2} AND lng <= $${countParamIndex + 3}`;
+      countParams.push(parseFloat(lat_min), parseFloat(lat_max), parseFloat(lng_min), parseFloat(lng_max));
+      countParamIndex += 4;
+    }
+
     const countResult = await pool.query(countQuery, countParams);
 
     res.json({
