@@ -34,600 +34,611 @@ const {
   estimateDriveMinutes,
   directionScore,
   determineTier,
-  getRecurrenceMonths
+  getRecurrenceMonths,
+  filterAndScoreCandidates
 } = require('../routes/gapfill')._testExports;
+
+const REF_LAT = 32.7767;
+const REF_LNG = -96.7970;
+
+function makeSession(overrides = {}) {
+  return {
+    reference_lat: REF_LAT,
+    reference_lng: REF_LNG,
+    next_stop_lat: REF_LAT + 0.05,
+    next_stop_lng: REF_LNG + 0.03,
+    next_stop_time: '16:00',
+    cancelled_job_description: 'Residential Panel Cleaning',
+    ...overrides
+  };
+}
+
+function makeCustomer(id, latOffset, lngOffset, overrides = {}) {
+  return {
+    id,
+    lat: REF_LAT + latOffset,
+    lng: REF_LNG + lngOffset,
+    phone: '555-0100',
+    ...overrides
+  };
+}
+
+function makeCSTTime(hour, minute) {
+  const d = new Date(2026, 1, 17, hour, minute, 0);
+  return d;
+}
+
+function runPipeline(customers, opts = {}) {
+  const session = makeSession(opts.session || {});
+  const config = opts.config || LAYER_CONFIG[opts.layer || 1];
+  const layer = opts.layer || 1;
+  const excludeIds = opts.excludeIds || new Set();
+  const outreachMap = opts.outreachMap || {};
+  const cancelledTodayIds = opts.cancelledTodayIds || new Set();
+  const lastContactMap = opts.lastContactMap || {};
+  const cstNow = opts.cstNow || makeCSTTime(10, 0);
+  const now = opts.now || new Date('2026-02-17T16:00:00Z');
+
+  return filterAndScoreCandidates(
+    customers, session, config, layer, excludeIds,
+    outreachMap, cancelledTodayIds, lastContactMap, cstNow, now
+  );
+}
 
 
 describe('haversineDistance', () => {
   it('returns 0 for same point', () => {
-    const d = haversineDistance(32.7, -96.8, 32.7, -96.8);
-    assert.equal(d, 0);
+    assert.equal(haversineDistance(32.7, -96.8, 32.7, -96.8), 0);
   });
 
-  it('calculates short distance accurately', () => {
+  it('calculates short distance accurately (~3.5mi in DFW)', () => {
     const d = haversineDistance(32.7767, -96.7970, 32.7357, -96.8353);
     assert.ok(d > 3 && d < 4, `Expected ~3.5mi, got ${d}`);
-  });
-
-  it('calculates long distance accurately', () => {
-    const d = haversineDistance(32.7767, -96.7970, 33.4484, -112.0740);
-    assert.ok(d > 850 && d < 950, `Expected ~887mi DFW to Phoenix, got ${d}`);
   });
 
   it('is symmetric', () => {
     const d1 = haversineDistance(32.7, -96.8, 33.0, -97.0);
     const d2 = haversineDistance(33.0, -97.0, 32.7, -96.8);
-    assert.ok(Math.abs(d1 - d2) < 0.001, 'Distance should be symmetric');
+    assert.ok(Math.abs(d1 - d2) < 0.001);
   });
 });
 
 
 describe('estimateDriveMinutes', () => {
-  it('returns 0 for 0 miles', () => {
-    assert.equal(estimateDriveMinutes(0), 0);
-  });
-
-  it('calculates correctly at AVG_SPEED_MPH', () => {
-    assert.equal(estimateDriveMinutes(AVG_SPEED_MPH), 60);
-  });
-
-  it('returns 30 min for half the avg speed distance', () => {
-    assert.equal(estimateDriveMinutes(AVG_SPEED_MPH / 2), 30);
-  });
-
+  it('returns 0 for 0 miles', () => assert.equal(estimateDriveMinutes(0), 0));
+  it('25 miles = 60 min at 25mph', () => assert.equal(estimateDriveMinutes(25), 60));
   it('scales linearly', () => {
-    const d1 = estimateDriveMinutes(10);
-    const d2 = estimateDriveMinutes(20);
-    assert.ok(Math.abs(d2 - d1 * 2) < 0.001, 'Should scale linearly');
-  });
-});
-
-
-describe('Time Feasibility Calculation', () => {
-  it('JOB_DURATION_MINUTES is 75', () => {
-    assert.equal(JOB_DURATION_MINUTES, 75);
-  });
-
-  it('BUFFER_MINUTES is 10', () => {
-    assert.equal(BUFFER_MINUTES, 10);
-  });
-
-  it('HARD_CUTOFF_HOUR is 18 (6 PM)', () => {
-    assert.equal(HARD_CUTOFF_HOUR, 18);
-  });
-
-  it('total time = drive + job + buffer for time-gated layers', () => {
-    const distance = 5;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-    assert.equal(totalMinutes, 75 + 12 + 10);
-  });
-
-  it('candidate at 5mi fits when current time is 2PM and next stop at 4PM', () => {
-    const currentHour = 14;
-    const currentMinute = 0;
-    const nowMinutes = currentHour * 60 + currentMinute;
-    const distance = 5;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-    const nextStopMinutes = 16 * 60;
-    const fitsBeforeNext = nowMinutes + totalMinutes <= nextStopMinutes;
-    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-    const fitsBeforeCutoff = endMinutes <= HARD_CUTOFF_HOUR * 60;
-    assert.ok(fitsBeforeNext, `Should fit: ${nowMinutes + totalMinutes} <= ${nextStopMinutes}`);
-    assert.ok(fitsBeforeCutoff, `Should fit before cutoff: ${endMinutes} <= ${HARD_CUTOFF_HOUR * 60}`);
-  });
-
-  it('candidate at 15mi does NOT fit when current time is 4:30PM (exceeds 6PM cutoff)', () => {
-    const currentHour = 16;
-    const currentMinute = 30;
-    const nowMinutes = currentHour * 60 + currentMinute;
-    const distance = 15;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-    const fitsBeforeCutoff = endMinutes <= HARD_CUTOFF_HOUR * 60;
-    assert.ok(!fitsBeforeCutoff, `Should NOT fit: ${endMinutes} > ${HARD_CUTOFF_HOUR * 60}`);
-  });
-
-  it('candidate at 8mi does NOT fit when current time is 3:30PM and next stop at 4:15PM', () => {
-    const currentHour = 15;
-    const currentMinute = 30;
-    const nowMinutes = currentHour * 60 + currentMinute;
-    const distance = 8;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-    const nextStopMinutes = 16 * 60 + 15;
-    const fitsBeforeNext = nowMinutes + totalMinutes <= nextStopMinutes;
-    assert.ok(!fitsBeforeNext, `Should NOT fit: ${nowMinutes + totalMinutes} > ${nextStopMinutes}`);
-  });
-
-  it('right at cutoff boundary - ends exactly at 6PM passes', () => {
-    const cutoffMinutes = HARD_CUTOFF_HOUR * 60;
-    const distance = 0;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const nowMinutes = cutoffMinutes - JOB_DURATION_MINUTES - driveMinutes;
-    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-    assert.ok(endMinutes <= cutoffMinutes, 'Exactly at cutoff should pass');
-  });
-
-  it('one minute past cutoff boundary fails', () => {
-    const cutoffMinutes = HARD_CUTOFF_HOUR * 60;
-    const distance = 0;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const nowMinutes = cutoffMinutes - JOB_DURATION_MINUTES - driveMinutes + 1;
-    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-    assert.ok(endMinutes > cutoffMinutes, 'One past cutoff should fail');
-  });
-});
-
-
-describe('Lateness Tolerance (Layer Config)', () => {
-  it('layers 1 and 2 enforce time gate', () => {
-    assert.equal(LAYER_CONFIG[1].enforceTimeGate, true);
-    assert.equal(LAYER_CONFIG[2].enforceTimeGate, true);
-  });
-
-  it('layers 3 and 4 do NOT enforce time gate (lateness tolerated)', () => {
-    assert.equal(LAYER_CONFIG[3].enforceTimeGate, false);
-    assert.equal(LAYER_CONFIG[4].enforceTimeGate, false);
-  });
-
-  it('layers 3 and 4 still enforce hard cutoff (6PM) even without time gate', () => {
-    const currentHour = 17;
-    const currentMinute = 30;
-    const nowMinutes = currentHour * 60 + currentMinute;
-    const distance = 5;
-    const driveMinutes = estimateDriveMinutes(distance);
-    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-    assert.ok(endMinutes > HARD_CUTOFF_HOUR * 60, 'Even non-gated layers must respect 6PM cutoff');
-  });
-});
-
-
-describe('Tier Qualification Logic (determineTier)', () => {
-  const now = new Date('2026-02-17T12:00:00Z');
-  const session = { cancelled_job_description: 'Residential Panel Cleaning' };
-
-  it('Tier 1: anytime_access customer', () => {
-    const customer = { anytime_access: true };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 1);
-    assert.ok(result.reason.includes('Anytime Access'));
-  });
-
-  it('Tier 2: recurring customer who is overdue (1.5x interval)', () => {
-    const eighteenMonthsAgo = new Date(now);
-    eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
-    const customer = {
-      is_recurring: true,
-      recurrence_for_type: '12',
-      last_service_for_type: eighteenMonthsAgo.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 2);
-    assert.ok(result.reason.includes('overdue'));
-  });
-
-  it('Tier 2: recurring customer who is due (within 1 month of interval)', () => {
-    const elevenMonthsAgo = new Date(now);
-    elevenMonthsAgo.setMonth(elevenMonthsAgo.getMonth() - 11);
-    const customer = {
-      is_recurring: true,
-      recurrence_for_type: '12',
-      last_service_for_type: elevenMonthsAgo.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 2);
-    assert.ok(result.reason.includes('due'));
-  });
-
-  it('Tier 2 NOT triggered for recurring customer cleaned recently', () => {
-    const twoMonthsAgo = new Date(now);
-    twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
-    const customer = {
-      is_recurring: true,
-      recurrence_for_type: '12',
-      last_service_for_type: twoMonthsAgo.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.notEqual(result.tier, 2);
-  });
-
-  it('Tier 3: flexible customer with no scheduled job', () => {
-    const customer = {
-      flexible: true,
-      next_scheduled_for_type: null
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 3);
-    assert.ok(result.reason.includes('Flexible'));
-  });
-
-  it('Tier 3 NOT triggered for flexible customer WITH a scheduled job', () => {
-    const futureDate = new Date(now);
-    futureDate.setDate(futureDate.getDate() + 10);
-    const customer = {
-      flexible: true,
-      next_scheduled_for_type: futureDate.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.notEqual(result.tier, 3);
-  });
-
-  it('Tier 4: customer with job scheduled within 21 days', () => {
-    const tenDaysOut = new Date(now);
-    tenDaysOut.setDate(tenDaysOut.getDate() + 10);
-    const customer = {
-      next_scheduled_for_type: tenDaysOut.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 4);
-    assert.ok(result.reason.includes('scheduled'));
-  });
-
-  it('Tier 4 NOT triggered for job >21 days out', () => {
-    const thirtyDaysOut = new Date(now);
-    thirtyDaysOut.setDate(thirtyDaysOut.getDate() + 30);
-    const customer = {
-      next_scheduled_for_type: thirtyDaysOut.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.notEqual(result.tier, 4);
-  });
-
-  it('Tier 5: past non-recurring customer with completed jobs', () => {
-    const sixteenMonthsAgo = new Date(now);
-    sixteenMonthsAgo.setMonth(sixteenMonthsAgo.getMonth() - 16);
-    const customer = {
-      completed_count_for_type: '2',
-      is_recurring: false,
-      last_service_for_type: sixteenMonthsAgo.toISOString()
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 5);
-    assert.ok(result.reason.includes('non-recurring'));
-  });
-
-  it('Tier 5 fallback: no matching conditions', () => {
-    const customer = {};
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 5);
-    assert.ok(result.reason.includes('Past customer'));
-  });
-
-  it('Tier priority: anytime_access beats recurring overdue', () => {
-    const eighteenMonthsAgo = new Date(now);
-    eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
-    const customer = {
-      anytime_access: true,
-      is_recurring: true,
-      recurrence_for_type: '12',
-      last_service_for_type: eighteenMonthsAgo.toISOString(),
-      flexible: true
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 1, 'Anytime access should always be Tier 1');
-  });
-
-  it('Tier priority: recurring overdue beats flexible', () => {
-    const eighteenMonthsAgo = new Date(now);
-    eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
-    const customer = {
-      is_recurring: true,
-      recurrence_for_type: '12',
-      last_service_for_type: eighteenMonthsAgo.toISOString(),
-      flexible: true,
-      next_scheduled_for_type: null
-    };
-    const result = determineTier(customer, session, now);
-    assert.equal(result.tier, 2, 'Recurring overdue should beat flexible');
+    assert.ok(Math.abs(estimateDriveMinutes(20) - estimateDriveMinutes(10) * 2) < 0.001);
   });
 });
 
 
 describe('getRecurrenceMonths', () => {
-  it('parses biannual as 6', () => assert.equal(getRecurrenceMonths('biannual'), 6));
-  it('parses 6months as 6', () => assert.equal(getRecurrenceMonths('6months'), 6));
-  it('parses "6" as 6', () => assert.equal(getRecurrenceMonths('6'), 6));
-  it('parses annual as 12', () => assert.equal(getRecurrenceMonths('annual'), 12));
-  it('parses yearly as 12', () => assert.equal(getRecurrenceMonths('yearly'), 12));
-  it('parses 12months as 12', () => assert.equal(getRecurrenceMonths('12months'), 12));
-  it('parses triannual as 4', () => assert.equal(getRecurrenceMonths('triannual'), 4));
-  it('parses 4months as 4', () => assert.equal(getRecurrenceMonths('4months'), 4));
-  it('parses numeric string "3" as 3', () => assert.equal(getRecurrenceMonths('3'), 3));
-  it('defaults to 6 for unknown string', () => assert.equal(getRecurrenceMonths('unknown'), 6));
-  it('defaults to 6 for empty string', () => assert.equal(getRecurrenceMonths(''), 6));
+  it('biannual=6', () => assert.equal(getRecurrenceMonths('biannual'), 6));
+  it('annual=12', () => assert.equal(getRecurrenceMonths('annual'), 12));
+  it('triannual=4', () => assert.equal(getRecurrenceMonths('triannual'), 4));
+  it('"3"=3', () => assert.equal(getRecurrenceMonths('3'), 3));
+  it('unknown defaults to 6', () => assert.equal(getRecurrenceMonths('unknown'), 6));
 });
 
 
-describe('Distance Filtering (Layer Config)', () => {
-  it('Layer 1 maxMiles is 8', () => assert.equal(LAYER_CONFIG[1].maxMiles, 8));
-  it('Layer 2 maxMiles is 15', () => assert.equal(LAYER_CONFIG[2].maxMiles, 15));
-  it('Layer 3 maxMiles is 20', () => assert.equal(LAYER_CONFIG[3].maxMiles, 20));
-  it('Layer 4 maxMiles is 30', () => assert.equal(LAYER_CONFIG[4].maxMiles, 30));
+describe('determineTier', () => {
+  const now = new Date('2026-02-17T12:00:00Z');
+  const session = { cancelled_job_description: 'Residential Panel Cleaning' };
 
-  it('progressive expansion: each layer is wider than previous', () => {
-    assert.ok(LAYER_CONFIG[2].maxMiles > LAYER_CONFIG[1].maxMiles);
-    assert.ok(LAYER_CONFIG[3].maxMiles > LAYER_CONFIG[2].maxMiles);
-    assert.ok(LAYER_CONFIG[4].maxMiles > LAYER_CONFIG[3].maxMiles);
+  it('Tier 1: anytime_access', () => {
+    const r = determineTier({ anytime_access: true }, session, now);
+    assert.equal(r.tier, 1);
   });
 
-  it('customer at 7mi passes layer 1 filter', () => {
-    const d = 7;
-    assert.ok(d <= LAYER_CONFIG[1].maxMiles);
+  it('Tier 2: recurring overdue (>= 1.5x interval)', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 18);
+    const r = determineTier({ is_recurring: true, recurrence_for_type: '12', last_service_for_type: ago.toISOString() }, session, now);
+    assert.equal(r.tier, 2);
+    assert.ok(r.reason.includes('overdue'));
   });
 
-  it('customer at 9mi fails layer 1 but passes layer 2', () => {
-    const d = 9;
-    assert.ok(d > LAYER_CONFIG[1].maxMiles);
-    assert.ok(d <= LAYER_CONFIG[2].maxMiles);
+  it('Tier 2: recurring due (within 1 month of interval)', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 11);
+    const r = determineTier({ is_recurring: true, recurrence_for_type: '12', last_service_for_type: ago.toISOString() }, session, now);
+    assert.equal(r.tier, 2);
   });
 
-  it('customer at 25mi fails layers 1-3 but passes layer 4', () => {
-    const d = 25;
-    assert.ok(d > LAYER_CONFIG[1].maxMiles);
-    assert.ok(d > LAYER_CONFIG[2].maxMiles);
-    assert.ok(d > LAYER_CONFIG[3].maxMiles);
-    assert.ok(d <= LAYER_CONFIG[4].maxMiles);
+  it('NOT Tier 2: recurring cleaned recently', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 2);
+    const r = determineTier({ is_recurring: true, recurrence_for_type: '12', last_service_for_type: ago.toISOString() }, session, now);
+    assert.notEqual(r.tier, 2);
   });
 
-  it('customer at 31mi fails all layers', () => {
-    const d = 31;
-    for (let layer = 1; layer <= 4; layer++) {
-      assert.ok(d > LAYER_CONFIG[layer].maxMiles, `Should fail layer ${layer}`);
-    }
+  it('Tier 3: flexible, no scheduled job', () => {
+    const r = determineTier({ flexible: true, next_scheduled_for_type: null }, session, now);
+    assert.equal(r.tier, 3);
   });
 
-  it('bounding box approximation is correct for lat', () => {
-    const maxMiles = 8;
-    const latRange = maxMiles / MILES_PER_DEGREE_LAT;
-    assert.ok(Math.abs(latRange - 0.1159) < 0.01, `Lat range should be ~0.116 degrees, got ${latRange}`);
+  it('NOT Tier 3: flexible WITH scheduled job', () => {
+    const future = new Date(now); future.setDate(future.getDate() + 10);
+    const r = determineTier({ flexible: true, next_scheduled_for_type: future.toISOString() }, session, now);
+    assert.notEqual(r.tier, 3);
   });
 
-  it('bounding box approximation adjusts for longitude at Dallas latitude', () => {
-    const maxMiles = 8;
-    const refLat = 32.7;
-    const latRange = maxMiles / MILES_PER_DEGREE_LAT;
-    const lngRange = latRange / Math.cos(refLat * Math.PI / 180);
-    assert.ok(lngRange > latRange, 'Lng range should be wider than lat range at this latitude');
-    assert.ok(Math.abs(lngRange - 0.138) < 0.02, `Lng range should be ~0.138, got ${lngRange}`);
+  it('Tier 4: job scheduled within 21 days', () => {
+    const future = new Date(now); future.setDate(future.getDate() + 10);
+    const r = determineTier({ next_scheduled_for_type: future.toISOString() }, session, now);
+    assert.equal(r.tier, 4);
+  });
+
+  it('NOT Tier 4: job >21 days out', () => {
+    const future = new Date(now); future.setDate(future.getDate() + 30);
+    const r = determineTier({ next_scheduled_for_type: future.toISOString() }, session, now);
+    assert.notEqual(r.tier, 4);
+  });
+
+  it('Tier 5: past non-recurring', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 16);
+    const r = determineTier({ completed_count_for_type: '2', is_recurring: false, last_service_for_type: ago.toISOString() }, session, now);
+    assert.equal(r.tier, 5);
+  });
+
+  it('Tier 5: fallback', () => {
+    const r = determineTier({}, session, now);
+    assert.equal(r.tier, 5);
+  });
+
+  it('Priority: anytime_access beats everything', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 18);
+    const r = determineTier({ anytime_access: true, is_recurring: true, recurrence_for_type: '12', last_service_for_type: ago.toISOString(), flexible: true }, session, now);
+    assert.equal(r.tier, 1);
+  });
+
+  it('Priority: recurring overdue beats flexible', () => {
+    const ago = new Date(now); ago.setMonth(ago.getMonth() - 18);
+    const r = determineTier({ is_recurring: true, recurrence_for_type: '12', last_service_for_type: ago.toISOString(), flexible: true, next_scheduled_for_type: null }, session, now);
+    assert.equal(r.tier, 2);
   });
 });
 
 
-describe('Directional Filtering (directionScore)', () => {
+describe('directionScore', () => {
   it('returns 0 when no next stop', () => {
-    const score = directionScore(32.7, -96.8, null, null, 32.8, -96.7);
-    assert.equal(score, 0);
+    assert.equal(directionScore(32.7, -96.8, null, null, 32.8, -96.7), 0);
   });
 
-  it('returns 0 when candidate is at reference point', () => {
-    const score = directionScore(32.7, -96.8, 33.0, -96.5, 32.7, -96.8);
-    assert.equal(score, 0);
+  it('~1.0 for candidate in same direction as next stop', () => {
+    const s = directionScore(32.7, -96.8, 33.0, -96.5, 32.85, -96.65);
+    assert.ok(s > 0.95, `Expected ~1.0, got ${s}`);
   });
 
-  it('returns 0 when next stop is at reference point', () => {
-    const score = directionScore(32.7, -96.8, 32.7, -96.8, 33.0, -96.5);
-    assert.equal(score, 0);
+  it('~-1.0 for candidate in opposite direction', () => {
+    const s = directionScore(32.7, -96.8, 33.0, -96.5, 32.4, -97.1);
+    assert.ok(s < -0.95, `Expected ~-1.0, got ${s}`);
   });
 
-  it('returns ~1.0 for candidate in same direction as next stop', () => {
-    const score = directionScore(32.7, -96.8, 33.0, -96.5, 32.85, -96.65);
-    assert.ok(score > 0.95, `Expected ~1.0, got ${score}`);
-  });
-
-  it('returns ~-1.0 for candidate in opposite direction from next stop', () => {
-    const score = directionScore(32.7, -96.8, 33.0, -96.5, 32.4, -97.1);
-    assert.ok(score < -0.95, `Expected ~-1.0, got ${score}`);
-  });
-
-  it('returns ~0 for candidate perpendicular to next stop direction', () => {
-    const score = directionScore(32.7, -96.8, 33.0, -96.8, 32.7, -96.5);
-    assert.ok(Math.abs(score) < 0.15, `Expected ~0, got ${score}`);
-  });
-
-  it('higher score for candidate closer to next stop direction', () => {
-    const scoreA = directionScore(32.7, -96.8, 33.0, -96.5, 32.85, -96.65);
-    const scoreB = directionScore(32.7, -96.8, 33.0, -96.5, 32.5, -97.0);
-    assert.ok(scoreA > scoreB, 'Candidate toward next stop should score higher');
+  it('~0 for perpendicular candidate', () => {
+    const s = directionScore(32.7, -96.8, 33.0, -96.8, 32.7, -96.5);
+    assert.ok(Math.abs(s) < 0.15, `Expected ~0, got ${s}`);
   });
 });
 
 
-describe('Sorting Logic', () => {
-  it('candidates sort by tier first, then distance', () => {
-    const candidates = [
-      { tier: 3, distance_miles: 2 },
-      { tier: 1, distance_miles: 7 },
-      { tier: 2, distance_miles: 5 },
-      { tier: 1, distance_miles: 3 },
-      { tier: 2, distance_miles: 1 },
-    ];
-
-    candidates.sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
-      return a.distance_miles - b.distance_miles;
-    });
-
-    assert.deepEqual(candidates.map(c => c.tier), [1, 1, 2, 2, 3]);
-    assert.equal(candidates[0].distance_miles, 3);
-    assert.equal(candidates[1].distance_miles, 7);
-    assert.equal(candidates[2].distance_miles, 1);
-    assert.equal(candidates[3].distance_miles, 5);
+describe('filterAndScoreCandidates - Time Feasibility', () => {
+  it('includes nearby customer when plenty of time before cutoff', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], { cstNow: makeCSTTime(10, 0) });
+    assert.equal(result.length, 1);
   });
 
-  it('tier 1 always appears before tier 5 regardless of distance', () => {
-    const candidates = [
-      { tier: 5, distance_miles: 0.5 },
-      { tier: 1, distance_miles: 7.9 },
-    ];
-
-    candidates.sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
-      return a.distance_miles - b.distance_miles;
-    });
-
-    assert.equal(candidates[0].tier, 1);
-    assert.equal(candidates[1].tier, 5);
+  it('excludes customer when job would finish after 6PM cutoff', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], { cstNow: makeCSTTime(17, 0) });
+    assert.equal(result.length, 0, 'Job starting at 5PM + 75min = 6:15PM, past cutoff');
   });
 
-  it('within same tier, closer customer comes first', () => {
-    const candidates = [
-      { tier: 2, distance_miles: 12 },
-      { tier: 2, distance_miles: 3 },
-      { tier: 2, distance_miles: 8 },
-    ];
-
-    candidates.sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
-      return a.distance_miles - b.distance_miles;
+  it('includes customer when job ends exactly at cutoff', () => {
+    const c = makeCustomer(1, 0, 0);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(16, 45),
+      session: { next_stop_time: null },
+      layer: 3,
+      config: LAYER_CONFIG[3]
     });
+    assert.equal(result.length, 1, 'Job at 0mi drive, 16:45 + 75min = 18:00 exactly');
+  });
 
-    assert.deepEqual(candidates.map(c => c.distance_miles), [3, 8, 12]);
+  it('excludes customer when 1 minute past cutoff', () => {
+    const c = makeCustomer(1, 0, 0);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(16, 46),
+      session: { next_stop_time: null },
+      layer: 3,
+      config: LAYER_CONFIG[3]
+    });
+    assert.equal(result.length, 0, '16:46 + 75min = 18:01, past cutoff');
+  });
+
+  it('time-gated layer: excludes customer when total time exceeds next stop time', () => {
+    const c = makeCustomer(1, 0.05, 0.05);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(14, 0),
+      session: { next_stop_time: '14:30' },
+      layer: 1
+    });
+    assert.equal(result.length, 0, 'drive+job+buffer exceeds 30min until next stop');
+  });
+
+  it('time-gated layer: includes customer when total time fits before next stop', () => {
+    const c = makeCustomer(1, 0, 0);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(10, 0),
+      session: { next_stop_time: '16:00' },
+      layer: 1
+    });
+    assert.equal(result.length, 1, '0mi drive + 75min job + 10min buffer = 85min, fits before 16:00');
+  });
+
+  it('non-gated layer (3): ignores next stop time, only checks cutoff', () => {
+    const c = makeCustomer(1, 0.05, 0.05);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(10, 0),
+      session: { next_stop_time: '10:30' },
+      layer: 3,
+      config: LAYER_CONFIG[3]
+    });
+    assert.equal(result.length, 1, 'Layer 3 does not enforce time gate');
+  });
+
+  it('non-gated layer still enforces 6PM cutoff', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      cstNow: makeCSTTime(17, 0),
+      layer: 3,
+      config: LAYER_CONFIG[3]
+    });
+    assert.equal(result.length, 0, 'Layer 3 still respects hard cutoff');
+  });
+
+  it('drive time factors into feasibility: far customer excluded, close one included', () => {
+    const close = makeCustomer(1, 0.001, 0.001);
+    const far = makeCustomer(2, 0.08, 0.08);
+    const result = runPipeline([close, far], {
+      cstNow: makeCSTTime(16, 30),
+      session: { next_stop_time: null },
+      layer: 1
+    });
+    const ids = result.map(r => r.customer_id);
+    assert.ok(ids.includes(1), 'Close customer should be included');
+    assert.ok(!ids.includes(2), 'Far customer should be excluded by cutoff');
   });
 });
 
 
-describe('Suppression Rules', () => {
-  it('MAX_CONTACTS_PER_WEEK is 1', () => {
-    assert.equal(MAX_CONTACTS_PER_WEEK, 1);
+describe('filterAndScoreCandidates - Distance Filtering', () => {
+  it('layer 1: includes customer within 8mi', () => {
+    const c = makeCustomer(1, 0.05, 0.05);
+    const d = haversineDistance(REF_LAT, REF_LNG, REF_LAT + 0.05, REF_LNG + 0.05);
+    assert.ok(d < 8, `Precondition: distance ${d} should be <8mi`);
+    const result = runPipeline([c], { layer: 1 });
+    assert.equal(result.length, 1);
   });
 
-  it('MAX_CONTACTS_PER_MONTH is 3', () => {
-    assert.equal(MAX_CONTACTS_PER_MONTH, 3);
+  it('layer 1: excludes customer beyond 8mi', () => {
+    const c = makeCustomer(1, 0.15, 0.15);
+    const d = haversineDistance(REF_LAT, REF_LNG, REF_LAT + 0.15, REF_LNG + 0.15);
+    assert.ok(d > 8, `Precondition: distance ${d} should be >8mi`);
+    const result = runPipeline([c], { layer: 1 });
+    assert.equal(result.length, 0);
   });
 
-  it('COOLDOWN_MONTHS is 6', () => {
-    assert.equal(COOLDOWN_MONTHS, 6);
+  it('layer 2: includes customer between 8-15mi', () => {
+    const c = makeCustomer(1, 0.15, 0.15);
+    const d = haversineDistance(REF_LAT, REF_LNG, REF_LAT + 0.15, REF_LNG + 0.15);
+    assert.ok(d > 8 && d <= 15, `Precondition: distance ${d} should be 8-15mi`);
+    const result = runPipeline([c], { layer: 2, config: LAYER_CONFIG[2] });
+    assert.equal(result.length, 1);
   });
 
-  it('customer contacted 1 time this week is suppressed', () => {
-    const weekCount = 1;
-    assert.ok(weekCount >= MAX_CONTACTS_PER_WEEK, 'Should be suppressed');
+  it('layer 4: includes customer up to 30mi', () => {
+    const c = makeCustomer(1, 0.35, 0.20);
+    const d = haversineDistance(REF_LAT, REF_LNG, REF_LAT + 0.35, REF_LNG + 0.20);
+    assert.ok(d < 30, `Precondition: distance ${d} should be <30mi`);
+    const result = runPipeline([c], { layer: 4, config: LAYER_CONFIG[4] });
+    assert.equal(result.length, 1);
   });
 
-  it('customer contacted 0 times this week is NOT suppressed', () => {
-    const weekCount = 0;
-    assert.ok(weekCount < MAX_CONTACTS_PER_WEEK, 'Should not be suppressed');
+  it('layer 4: excludes customer beyond 30mi', () => {
+    const c = makeCustomer(1, 0.5, 0.5);
+    const d = haversineDistance(REF_LAT, REF_LNG, REF_LAT + 0.5, REF_LNG + 0.5);
+    assert.ok(d > 30, `Precondition: distance ${d} should be >30mi`);
+    const result = runPipeline([c], { layer: 4, config: LAYER_CONFIG[4] });
+    assert.equal(result.length, 0);
   });
 
-  it('customer contacted 3 times this month is suppressed', () => {
-    const monthCount = 3;
-    assert.ok(monthCount >= MAX_CONTACTS_PER_MONTH, 'Should be suppressed');
-  });
-
-  it('customer contacted 2 times this month is NOT suppressed', () => {
-    const monthCount = 2;
-    assert.ok(monthCount < MAX_CONTACTS_PER_MONTH, 'Should not be suppressed');
-  });
-
-  it('6-month cooldown: service 5 months ago is suppressed', () => {
-    const now = new Date('2026-02-17T12:00:00Z');
-    const lastService = new Date('2025-09-20T12:00:00Z');
-    const monthsSince = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-    assert.ok(monthsSince < COOLDOWN_MONTHS, `${monthsSince} months should be within cooldown`);
-  });
-
-  it('6-month cooldown: service 7 months ago is NOT suppressed', () => {
-    const now = new Date('2026-02-17T12:00:00Z');
-    const lastService = new Date('2025-07-15T12:00:00Z');
-    const monthsSince = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-    assert.ok(monthsSince >= COOLDOWN_MONTHS, `${monthsSince} months should be past cooldown`);
-  });
-
-  it('6-month cooldown: service exactly 6 months ago is NOT suppressed', () => {
-    const now = new Date('2026-02-17T12:00:00Z');
-    const lastService = new Date('2025-08-17T12:00:00Z');
-    const monthsSince = (now - lastService) / (1000 * 60 * 60 * 24 * 30);
-    assert.ok(monthsSince >= COOLDOWN_MONTHS, `Exactly 6 months should pass cooldown`);
-  });
-
-  it('cancelled-today customers are excluded (logic check)', () => {
-    const cancelledToday = [{ id: 1 }];
-    assert.ok(cancelledToday.length > 0, 'Customer with same-day cancellation should be excluded');
-  });
-
-  it('customer already on today route is excluded', () => {
-    const excludeIds = new Set([10, 20, 30]);
-    const customerId = 20;
-    assert.ok(excludeIds.has(customerId), 'Already-routed customer should be excluded');
-  });
-
-  it('cancelled customer for the session is excluded', () => {
-    const excludeIds = new Set();
-    const cancelledCustomerId = 42;
-    excludeIds.add(cancelledCustomerId);
-    assert.ok(excludeIds.has(42), 'Cancelled customer should be in exclude set');
+  it('progressive expansion: same customer excluded at layer 1, included at layer 2', () => {
+    const c = makeCustomer(1, 0.15, 0.15);
+    const r1 = runPipeline([c], { layer: 1 });
+    const r2 = runPipeline([c], { layer: 2, config: LAYER_CONFIG[2] });
+    assert.equal(r1.length, 0, 'Excluded at layer 1');
+    assert.equal(r2.length, 1, 'Included at layer 2');
   });
 });
 
 
-describe('20 Outreach Limit', () => {
-  it('layer 4 (max expansion) limits to 30mi radius which naturally caps candidates', () => {
-    assert.equal(LAYER_CONFIG[4].maxMiles, 30);
-    assert.ok(Object.keys(LAYER_CONFIG).length === 4, 'Only 4 expansion layers exist');
+describe('filterAndScoreCandidates - Directional Scoring', () => {
+  it('candidate toward next stop gets positive direction_score', () => {
+    const c = makeCustomer(1, 0.03, 0.02);
+    const result = runPipeline([c]);
+    assert.equal(result.length, 1);
+    assert.ok(result[0].direction_score > 0, `Expected positive direction score, got ${result[0].direction_score}`);
   });
 
-  it('outreach limit enforced: candidate list capped simulation', () => {
-    const OUTREACH_LIMIT = 20;
-    const candidates = Array.from({ length: 35 }, (_, i) => ({
-      id: i + 1,
-      tier: Math.ceil(Math.random() * 5),
-      distance_miles: Math.random() * 30
-    }));
+  it('candidate opposite from next stop gets negative direction_score', () => {
+    const c = makeCustomer(1, -0.03, -0.02);
+    const result = runPipeline([c]);
+    assert.equal(result.length, 1);
+    assert.ok(result[0].direction_score < 0, `Expected negative direction score, got ${result[0].direction_score}`);
+  });
 
-    candidates.sort((a, b) => {
-      if (a.tier !== b.tier) return a.tier - b.tier;
-      return a.distance_miles - b.distance_miles;
+  it('direction_score is 0 when no next stop defined', () => {
+    const c = makeCustomer(1, 0.03, 0.02);
+    const result = runPipeline([c], {
+      session: { next_stop_lat: null, next_stop_lng: null, next_stop_time: null }
     });
+    assert.equal(result.length, 1);
+    assert.equal(result[0].direction_score, 0);
+  });
+});
 
-    const topCandidates = candidates.slice(0, OUTREACH_LIMIT);
-    assert.equal(topCandidates.length, OUTREACH_LIMIT);
-    assert.ok(topCandidates[0].tier <= topCandidates[topCandidates.length - 1].tier,
-      'Top candidates should be ordered by tier');
+
+describe('filterAndScoreCandidates - Sorting', () => {
+  it('output sorted by tier first, then by distance', () => {
+    const c1 = makeCustomer(1, 0.01, 0.01, { anytime_access: true });
+    const c2 = makeCustomer(2, 0.005, 0.005, { flexible: true, next_scheduled_for_type: null });
+    const c3 = makeCustomer(3, 0.02, 0.02, { anytime_access: true });
+    const result = runPipeline([c1, c2, c3]);
+    assert.equal(result[0].tier, 1);
+    assert.equal(result[1].tier, 1);
+    assert.equal(result[2].tier, 3);
+    assert.ok(result[0].distance_miles <= result[1].distance_miles, 'Within tier 1, closer first');
   });
 
-  it('weekly and monthly limits prevent outreach spam across sessions', () => {
-    const simulateOutreachHistory = (weekCount, monthCount) => {
-      const suppressedWeek = weekCount >= MAX_CONTACTS_PER_WEEK;
-      const suppressedMonth = monthCount >= MAX_CONTACTS_PER_MONTH;
-      return suppressedWeek || suppressedMonth;
-    };
+  it('tier 1 always before tier 5 even if tier 5 is closer', () => {
+    const t5 = makeCustomer(1, 0.001, 0.001);
+    const t1 = makeCustomer(2, 0.05, 0.05, { anytime_access: true });
+    const result = runPipeline([t5, t1]);
+    assert.equal(result[0].tier, 1);
+    assert.equal(result[1].tier, 5);
+    assert.ok(result[0].distance_miles > result[1].distance_miles, 'Tier 1 is farther but ranked first');
+  });
 
-    assert.ok(!simulateOutreachHistory(0, 0), 'Fresh customer should not be suppressed');
-    assert.ok(simulateOutreachHistory(1, 1), 'Contacted once this week should be suppressed');
-    assert.ok(!simulateOutreachHistory(0, 2), '2 contacts this month but not this week: not suppressed');
-    assert.ok(simulateOutreachHistory(0, 3), '3 contacts this month: suppressed');
-    assert.ok(simulateOutreachHistory(1, 3), 'Both limits hit: suppressed');
+  it('within same tier, closest customer is first', () => {
+    const c1 = makeCustomer(1, 0.05, 0.05, { anytime_access: true });
+    const c2 = makeCustomer(2, 0.02, 0.02, { anytime_access: true });
+    const c3 = makeCustomer(3, 0.03, 0.03, { anytime_access: true });
+    const result = runPipeline([c1, c2, c3]);
+    assert.ok(result[0].distance_miles <= result[1].distance_miles);
+    assert.ok(result[1].distance_miles <= result[2].distance_miles);
+  });
+});
+
+
+describe('filterAndScoreCandidates - Suppression Rules', () => {
+  it('excludes customer contacted 1+ times this week', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      outreachMap: { 1: { weekCount: 1, monthCount: 1 } }
+    });
+    assert.equal(result.length, 0, 'Weekly limit exceeded');
+  });
+
+  it('includes customer with 0 contacts this week', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      outreachMap: { 1: { weekCount: 0, monthCount: 2 } }
+    });
+    assert.equal(result.length, 1);
+  });
+
+  it('excludes customer contacted 3+ times this month', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      outreachMap: { 1: { weekCount: 0, monthCount: 3 } }
+    });
+    assert.equal(result.length, 0, 'Monthly limit exceeded');
+  });
+
+  it('includes customer with 2 contacts this month and 0 this week', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      outreachMap: { 1: { weekCount: 0, monthCount: 2 } }
+    });
+    assert.equal(result.length, 1);
+  });
+
+  it('excludes customer in excludeIds (already on route)', () => {
+    const c = makeCustomer(42, 0.01, 0.01);
+    const result = runPipeline([c], { excludeIds: new Set([42]) });
+    assert.equal(result.length, 0);
+  });
+
+  it('excludes customer who cancelled today', () => {
+    const c = makeCustomer(7, 0.01, 0.01);
+    const result = runPipeline([c], { cancelledTodayIds: new Set([7]) });
+    assert.equal(result.length, 0);
+  });
+
+  it('6-month cooldown: excludes customer serviced 3 months ago', () => {
+    const now = new Date('2026-02-17T16:00:00Z');
+    const threeMonthsAgo = new Date(now);
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    const c = makeCustomer(1, 0.01, 0.01, {
+      last_service_for_type: threeMonthsAgo.toISOString()
+    });
+    const result = runPipeline([c], { now });
+    assert.equal(result.length, 0, 'Within 6-month cooldown');
+  });
+
+  it('6-month cooldown: includes customer serviced 7 months ago', () => {
+    const now = new Date('2026-02-17T16:00:00Z');
+    const sevenMonthsAgo = new Date(now);
+    sevenMonthsAgo.setMonth(sevenMonthsAgo.getMonth() - 7);
+    const c = makeCustomer(1, 0.01, 0.01, {
+      last_service_for_type: sevenMonthsAgo.toISOString()
+    });
+    const result = runPipeline([c], { now });
+    assert.equal(result.length, 1, 'Past 6-month cooldown');
+  });
+
+  it('includes customer with no service history (no cooldown applies)', () => {
+    const c = makeCustomer(1, 0.01, 0.01, {
+      last_service_for_type: null
+    });
+    const result = runPipeline([c]);
+    assert.equal(result.length, 1);
+  });
+
+  it('multiple suppressions stack: weekly limit blocks even if monthly is fine', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c], {
+      outreachMap: { 1: { weekCount: 1, monthCount: 0 } }
+    });
+    assert.equal(result.length, 0);
+  });
+});
+
+
+describe('filterAndScoreCandidates - 20 Outreach Limit', () => {
+  it('max 4 expansion layers exist, no 5th layer', () => {
+    assert.ok(LAYER_CONFIG[4]);
+    assert.equal(LAYER_CONFIG[5], undefined);
+  });
+
+  it('outreach caps (1/wk, 3/mo) prevent repeated contacts across sessions', () => {
+    const customers = [];
+    for (let i = 1; i <= 30; i++) {
+      customers.push(makeCustomer(i, 0.001 * i, 0.001 * i));
+    }
+    const outreachMap = {};
+    for (let i = 1; i <= 10; i++) {
+      outreachMap[i] = { weekCount: 1, monthCount: 1 };
+    }
+    for (let i = 11; i <= 15; i++) {
+      outreachMap[i] = { weekCount: 0, monthCount: 3 };
+    }
+
+    const result = runPipeline(customers, { outreachMap });
+    const includedIds = new Set(result.map(r => r.customer_id));
+    for (let i = 1; i <= 15; i++) {
+      assert.ok(!includedIds.has(i), `Customer ${i} should be suppressed`);
+    }
+    for (let i = 16; i <= 30; i++) {
+      assert.ok(includedIds.has(i), `Customer ${i} should be included`);
+    }
+    assert.equal(result.length, 15, 'Only unsuppressed customers returned');
+  });
+
+  it('all customers suppressed returns empty list', () => {
+    const customers = [];
+    const outreachMap = {};
+    for (let i = 1; i <= 5; i++) {
+      customers.push(makeCustomer(i, 0.001 * i, 0.001 * i));
+      outreachMap[i] = { weekCount: 1, monthCount: 1 };
+    }
+    const result = runPipeline(customers, { outreachMap });
+    assert.equal(result.length, 0);
+  });
+});
+
+
+describe('filterAndScoreCandidates - Tier Qualification via Pipeline', () => {
+  it('anytime_access customer gets tier 1 in pipeline output', () => {
+    const c = makeCustomer(1, 0.01, 0.01, { anytime_access: true });
+    const result = runPipeline([c]);
+    assert.equal(result[0].tier, 1);
+  });
+
+  it('flexible unscheduled customer gets tier 3 in pipeline output', () => {
+    const c = makeCustomer(1, 0.01, 0.01, { flexible: true, next_scheduled_for_type: null });
+    const result = runPipeline([c]);
+    assert.equal(result[0].tier, 3);
+  });
+
+  it('mixed tiers are correctly assigned and sorted in pipeline', () => {
+    const c1 = makeCustomer(1, 0.03, 0.03, { anytime_access: true });
+    const c2 = makeCustomer(2, 0.01, 0.01, { flexible: true, next_scheduled_for_type: null });
+    const c3 = makeCustomer(3, 0.02, 0.02);
+    const result = runPipeline([c1, c2, c3]);
+    assert.equal(result.length, 3);
+    assert.equal(result[0].tier, 1);
+    assert.equal(result[0].customer_id, 1);
+    assert.ok(result[1].tier <= result[2].tier, 'Tiers should be sorted ascending');
+  });
+});
+
+
+describe('filterAndScoreCandidates - Edge Cases', () => {
+  it('empty customer list returns empty', () => {
+    const result = runPipeline([]);
+    assert.equal(result.length, 0);
+  });
+
+  it('customer with no phone is NOT filtered by pipeline (phone check is in SQL query)', () => {
+    const c = makeCustomer(1, 0.01, 0.01, { phone: '555-1234' });
+    const result = runPipeline([c]);
+    assert.equal(result.length, 1);
+  });
+
+  it('customer at exact reference point is included (0 distance)', () => {
+    const c = makeCustomer(1, 0, 0);
+    const result = runPipeline([c]);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].distance_miles, 0);
+  });
+
+  it('distance_miles is rounded to 2 decimal places', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const result = runPipeline([c]);
+    const d = result[0].distance_miles;
+    assert.equal(d, Math.round(d * 100) / 100, 'distance should be rounded to 2 decimals');
+  });
+
+  it('direction_score is rounded to 2 decimal places', () => {
+    const c = makeCustomer(1, 0.03, 0.02);
+    const result = runPipeline([c]);
+    const s = result[0].direction_score;
+    assert.equal(s, Math.round(s * 100) / 100, 'direction score should be rounded to 2 decimals');
+  });
+
+  it('search_layer is set correctly in output', () => {
+    const c = makeCustomer(1, 0.01, 0.01);
+    const r1 = runPipeline([c], { layer: 1 });
+    const r3 = runPipeline([c], { layer: 3, config: LAYER_CONFIG[3] });
+    assert.equal(r1[0].search_layer, 1);
+    assert.equal(r3[0].search_layer, 3);
   });
 });
 
 
 describe('TIER_MESSAGES', () => {
-  it('all 5 tiers have messages', () => {
+  it('all 5 tiers have messages with {firstName} placeholder', () => {
     for (let t = 1; t <= 5; t++) {
       assert.ok(TIER_MESSAGES[t], `Tier ${t} should have a message`);
-      assert.ok(TIER_MESSAGES[t].includes('{firstName}'), `Tier ${t} message should have {firstName} placeholder`);
+      assert.ok(TIER_MESSAGES[t].includes('{firstName}'));
     }
-  });
-
-  it('tier 1 message mentions not needing to be home', () => {
-    assert.ok(TIER_MESSAGES[1].toLowerCase().includes("don't have to be home") || 
-              TIER_MESSAGES[1].toLowerCase().includes("don't need to be home") ||
-              TIER_MESSAGES[1].toLowerCase().includes("don\u2019t have to be home"));
   });
 });
 
 
-describe('Constants sanity checks', () => {
-  it('AVG_SPEED_MPH is 25', () => assert.equal(AVG_SPEED_MPH, 25));
-  it('MILES_PER_DEGREE_LAT is 69', () => assert.equal(MILES_PER_DEGREE_LAT, 69));
-  
-  it('all 4 layers exist', () => {
-    assert.ok(LAYER_CONFIG[1]);
-    assert.ok(LAYER_CONFIG[2]);
-    assert.ok(LAYER_CONFIG[3]);
-    assert.ok(LAYER_CONFIG[4]);
-    assert.equal(LAYER_CONFIG[5], undefined, 'Layer 5 should not exist');
+describe('Layer Config', () => {
+  it('4 layers, each progressively wider', () => {
+    assert.equal(Object.keys(LAYER_CONFIG).length, 4);
+    assert.ok(LAYER_CONFIG[1].maxMiles < LAYER_CONFIG[2].maxMiles);
+    assert.ok(LAYER_CONFIG[2].maxMiles < LAYER_CONFIG[3].maxMiles);
+    assert.ok(LAYER_CONFIG[3].maxMiles < LAYER_CONFIG[4].maxMiles);
+  });
+
+  it('layers 1-2 enforce time gate, layers 3-4 do not', () => {
+    assert.equal(LAYER_CONFIG[1].enforceTimeGate, true);
+    assert.equal(LAYER_CONFIG[2].enforceTimeGate, true);
+    assert.equal(LAYER_CONFIG[3].enforceTimeGate, false);
+    assert.equal(LAYER_CONFIG[4].enforceTimeGate, false);
   });
 });

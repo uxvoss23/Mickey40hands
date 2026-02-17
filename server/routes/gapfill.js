@@ -606,6 +606,78 @@ router.get('/messages/:tier', (req, res) => {
   res.json({ tier, message });
 });
 
+function filterAndScoreCandidates(customers, session, config, layer, excludeIds, outreachMap, cancelledTodayIds, lastContactMap, cstNow, now) {
+  const candidates = [];
+
+  for (const customer of customers) {
+    if (excludeIds.has(customer.id)) continue;
+
+    const distance = haversineDistance(
+      session.reference_lat, session.reference_lng,
+      customer.lat, customer.lng
+    );
+
+    if (distance > config.maxMiles) continue;
+
+    const outreach = outreachMap[customer.id] || { weekCount: 0, monthCount: 0 };
+    if (outreach.weekCount >= MAX_CONTACTS_PER_WEEK) continue;
+    if (outreach.monthCount >= MAX_CONTACTS_PER_MONTH) continue;
+
+    if (cancelledTodayIds.has(customer.id)) continue;
+
+    const lastServiceDate = customer.last_service_for_type;
+    if (lastServiceDate) {
+      const monthsSinceService = (now - new Date(lastServiceDate)) / (1000 * 60 * 60 * 24 * 30);
+      if (monthsSinceService < COOLDOWN_MONTHS) continue;
+    }
+
+    if (config.enforceTimeGate && session.next_stop_time) {
+      const driveMinutes = estimateDriveMinutes(distance);
+      const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
+      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
+      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
+
+      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
+
+      const nextTimeParts = session.next_stop_time.match(/(\d+):(\d+)/);
+      if (nextTimeParts) {
+        const nextMinutes = parseInt(nextTimeParts[1]) * 60 + parseInt(nextTimeParts[2]);
+        if (nowMinutes + totalMinutes > nextMinutes) continue;
+      }
+    } else {
+      const driveMinutes = estimateDriveMinutes(distance);
+      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
+      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
+      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
+    }
+
+    const { tier, reason } = determineTier(customer, session, now);
+
+    const dirScore = directionScore(
+      session.reference_lat, session.reference_lng,
+      session.next_stop_lat, session.next_stop_lng,
+      customer.lat, customer.lng
+    );
+
+    candidates.push({
+      customer_id: customer.id,
+      tier,
+      tier_reason: reason,
+      distance_miles: Math.round(distance * 100) / 100,
+      direction_score: Math.round(dirScore * 100) / 100,
+      search_layer: layer,
+      last_contact: lastContactMap[customer.id] || null
+    });
+  }
+
+  candidates.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    return a.distance_miles - b.distance_miles;
+  });
+
+  return candidates;
+}
+
 async function generateCandidates(session, layer) {
   const config = LAYER_CONFIG[layer];
   if (!config) return [];
@@ -693,77 +765,20 @@ async function generateCandidates(session, layer) {
     lastContactMap[row.customer_id] = { contacted_at: row.contacted_at, outcome: row.outcome };
   }
 
-  const candidates = [];
-
+  const cancelledTodayIds = new Set();
   for (const customer of allCustomers.rows) {
     if (excludeIds.has(customer.id)) continue;
-
-    const distance = haversineDistance(
-      session.reference_lat, session.reference_lng,
-      customer.lat, customer.lng
-    );
-
-    if (distance > config.maxMiles) continue;
-
-    const outreach = outreachMap[customer.id] || { weekCount: 0, monthCount: 0 };
-    if (outreach.weekCount >= MAX_CONTACTS_PER_WEEK) continue;
-    if (outreach.monthCount >= MAX_CONTACTS_PER_MONTH) continue;
-
     const cancelledToday = await pool.query(
       `SELECT id FROM jobs WHERE customer_id = $1 AND cancelled_at::date = CURRENT_DATE`,
       [customer.id]
     );
-    if (cancelledToday.rows.length > 0) continue;
-
-    const lastServiceDate = customer.last_service_for_type;
-    if (lastServiceDate) {
-      const monthsSinceService = (now - new Date(lastServiceDate)) / (1000 * 60 * 60 * 24 * 30);
-      if (monthsSinceService < COOLDOWN_MONTHS) continue;
-    }
-
-    if (config.enforceTimeGate && session.next_stop_time) {
-      const driveMinutes = estimateDriveMinutes(distance);
-      const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
-      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-
-      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
-
-      const nextTimeParts = session.next_stop_time.match(/(\d+):(\d+)/);
-      if (nextTimeParts) {
-        const nextMinutes = parseInt(nextTimeParts[1]) * 60 + parseInt(nextTimeParts[2]);
-        if (nowMinutes + totalMinutes > nextMinutes) continue;
-      }
-    } else {
-      const driveMinutes = estimateDriveMinutes(distance);
-      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
-      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
-    }
-
-    const { tier, reason } = determineTier(customer, session, now);
-
-    const dirScore = directionScore(
-      session.reference_lat, session.reference_lng,
-      session.next_stop_lat, session.next_stop_lng,
-      customer.lat, customer.lng
-    );
-
-    candidates.push({
-      customer_id: customer.id,
-      tier,
-      tier_reason: reason,
-      distance_miles: Math.round(distance * 100) / 100,
-      direction_score: Math.round(dirScore * 100) / 100,
-      search_layer: layer,
-      last_contact: lastContactMap[customer.id] || null
-    });
+    if (cancelledToday.rows.length > 0) cancelledTodayIds.add(customer.id);
   }
 
-  candidates.sort((a, b) => {
-    if (a.tier !== b.tier) return a.tier - b.tier;
-    return a.distance_miles - b.distance_miles;
-  });
+  const candidates = filterAndScoreCandidates(
+    allCustomers.rows, session, config, layer, excludeIds,
+    outreachMap, cancelledTodayIds, lastContactMap, cstNow, now
+  );
 
   const maxExisting = await pool.query(
     `SELECT COALESCE(MAX(sort_rank), 0) as max_rank FROM gap_fill_candidates WHERE session_id = $1`,
@@ -859,5 +874,6 @@ module.exports._testExports = {
   directionScore,
   determineTier,
   getRecurrenceMonths,
-  getCSTNow
+  getCSTNow,
+  filterAndScoreCandidates
 };
