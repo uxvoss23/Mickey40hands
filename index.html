@@ -2339,8 +2339,11 @@
         referenceMarkerRef.current = refMarker;
       }, [referencePoint, referenceAddress]);
 
-      // Update markers and route lines
+      // Update markers and route lines (debounced to prevent race conditions)
+      const markerRenderTimerRef = useRef(null);
       useEffect(() => {
+        if (markerRenderTimerRef.current) clearTimeout(markerRenderTimerRef.current);
+        markerRenderTimerRef.current = setTimeout(() => {
         if (!markerClusterRef.current || !window.L) return;
 
         markerClusterRef.current.clearLayers();
@@ -2881,6 +2884,8 @@
             }
           }
         }
+        }, 60);
+        return () => { if (markerRenderTimerRef.current) clearTimeout(markerRenderTimerRef.current); };
       }, [filteredCustomers, showHeatMap, route, suggestedCustomers, homeBase, selectedDate, customers, statusFilter, hoveredPrefDay, hoveredPrefTime, focusedDays, hoveredRouteDay, savedRoutes, routePlannerEditMode, weekStart, showGapFillPanel, gapFillCandidates]);
 
       // Gap-fill candidate markers on map
