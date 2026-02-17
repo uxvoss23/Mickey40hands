@@ -925,6 +925,7 @@
                 scheduledDate: r.scheduled_date ? r.scheduled_date.substring(0, 10) : '',
                 sentToTech: true,
                 status: r.status || 'sent',
+                completedAt: r.completed_at || null,
                 totalDistance: r.total_distance || 0,
                 customers: (r.stops || []).filter(s => !s.cancelled).map(s => ({
                   id: s.customer_id,
@@ -945,7 +946,8 @@
                   zip: s.zip || ''
                 }))
               }));
-              allRoutes = [...allRoutes, ...dbRoutes];
+              const activeDbRoutes = dbRoutes.filter(r => r.status !== 'completed' && !r.completedAt && (r.customers || []).length > 0);
+              allRoutes = [...allRoutes, ...activeDbRoutes];
             }
           } catch (e) {
             console.error('Failed to load routes from database:', e);
@@ -3727,6 +3729,8 @@
           console.log('[CANCEL] Response:', data);
           if (data.success) {
             const cancelUpdates = { status: 'unscheduled', scheduledDate: null, scheduledTime: null, activeJobCount: (cancellingStop.activeJobCount || 1) };
+            const matchingRoute = savedRoutes.find(r => r.id === frontendRouteId || r.id == apiRouteId || r.dbRouteId == apiRouteId);
+            const routeNowEmpty = matchingRoute && (matchingRoute.customers || []).filter(c => c.id !== cancellingStop.id).length === 0;
             setSavedRoutes(prev => prev.map(r => {
               const isMatch = r.id === frontendRouteId || r.id == apiRouteId || r.dbRouteId == apiRouteId;
               if (!isMatch) return r;
@@ -3752,6 +3756,14 @@
             const savedRoute = savedRoutes.find(r => r.dbRouteId == apiRouteId || r.id == apiRouteId || r.id === frontendRouteId);
             setCancelledStopInfo({ stop: { ...cancellingStop }, route: savedRoute, frequentCanceller: data.frequentCanceller, cancellationCount: data.cancellationCount });
             setCancelSuccess(true);
+            if (routeNowEmpty && apiRouteId) {
+              try {
+                const delRes = await apiFetch(`/routes/${apiRouteId}`, { method: 'DELETE' });
+                if (delRes.deleted) {
+                  setSavedRoutes(prev => prev.filter(r => !(r.id === frontendRouteId || r.id == apiRouteId || r.dbRouteId == apiRouteId)));
+                }
+              } catch (e) { console.error('Failed to delete empty route:', e); }
+            }
           }
         } catch (err) {
           console.error('Cancel failed:', err);
@@ -4723,6 +4735,15 @@
             body: JSON.stringify({ status: 'completed', completed_at: completedAtTimestamp })
           });
         } catch (e) { console.error('Failed to persist route completion:', e); }
+        
+        try {
+          const delRes = await apiFetch(`/routes/${savedRoute.dbRouteId || savedRoute.id}`, { method: 'DELETE' });
+          if (delRes.deleted) {
+            setSavedRoutes(prev => prev.filter(r => r.id !== savedRoute.id));
+          }
+        } catch (e) { 
+          console.error('Failed to delete completed route from DB:', e);
+        }
         
         alert(`Route "${savedRoute.name}" marked as complete!`);
       };
@@ -13801,6 +13822,7 @@ const createJob = async () => {
                                         e.stopPropagation();
                                         setCancellingStop({ ...customer, stopId: customer.routeStopId || customer.id, routeId: savedRoute.dbRouteId || savedRoute.id });
                                         setShowCancelModal(true);
+                                        setCurrentView('map');
                                       }}
                                       style={{ fontSize: '10px', padding: '4px 10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#fca5a5', cursor: 'pointer', fontWeight: 600, width: '100%' }}
                                     >✕ Cancel Stop</button>
