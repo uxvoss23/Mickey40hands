@@ -2970,6 +2970,7 @@
               ${candidate.phone ? `<div style="font-size: 9px; color: #94a3b8;">📞 ${candidate.phone}</div>` : ''}
               ${distText ? `<div style="font-size: 9px; color: #60a5fa; margin-top: 2px;">📏 ${distText} away</div>` : ''}
               ${candidate.tier_reason ? `<div style="font-size: 9px; color: ${tierColor}; margin-top: 2px;">ℹ️ ${candidate.tier_reason}</div>` : ''}
+              ${candidate.time_feasible === false ? `<div style="font-size: 9px; color: #f59e0b; margin-top: 2px; background: rgba(245, 158, 11, 0.1); padding: 2px 4px; border-radius: 3px;">⚠ ${candidate.time_warning || 'Tight timing'}</div>` : ''}
               <div style="display: flex; gap: 4px; margin-top: 6px;">
                 <button onclick="window.dispatchEvent(new CustomEvent('viewCustomerProfile', {detail: '${candidate.customer_id}'}))"
                   style="flex: 1; background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: white; border: none; padding: 5px; border-radius: 4px; font-weight: 600; font-size: 9px; cursor: pointer; font-family: 'Inter', sans-serif;">
@@ -8255,6 +8256,19 @@ const createJob = async () => {
                                               }}>
                                                 {candidate.distance_miles} mi
                                               </span>
+                                              {candidate.time_feasible === false && (
+                                                <span style={{
+                                                  fontSize: '9px',
+                                                  fontWeight: 600,
+                                                  color: '#f59e0b',
+                                                  background: 'rgba(245, 158, 11, 0.15)',
+                                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                                  padding: '2px 5px',
+                                                  borderRadius: '4px'
+                                                }} title={candidate.time_warning || 'Tight timing'}>
+                                                  ⚠ {candidate.time_warning || 'Timing'}
+                                                </span>
+                                              )}
                                             </div>
                                           </div>
 

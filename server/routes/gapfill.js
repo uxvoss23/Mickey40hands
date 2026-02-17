@@ -47,10 +47,10 @@ function directionScore(refLat, refLng, nextLat, nextLng, candidateLat, candidat
 }
 
 const LAYER_CONFIG = {
-  1: { maxMiles: 8, enforceTimeGate: true, label: 'Close Range, Best Fit' },
-  2: { maxMiles: 15, enforceTimeGate: true, label: 'Expanded Range' },
-  3: { maxMiles: 20, enforceTimeGate: false, label: 'Flexible Timing (may delay route)' },
-  4: { maxMiles: 30, enforceTimeGate: false, label: 'All Nearby Customers' }
+  1: { maxMiles: 8, label: 'Close Range, Best Fit' },
+  2: { maxMiles: 15, label: 'Expanded Range' },
+  3: { maxMiles: 20, label: 'Wide Range' },
+  4: { maxMiles: 30, label: 'All Nearby Customers' }
 };
 
 const TIER_MESSAGES = {
@@ -90,6 +90,32 @@ router.get('/route/:routeId/status', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch status' });
   }
 });
+
+function annotateTimeFeasibility(candidates, session) {
+  const cstNow = getCSTNow();
+  const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
+  return candidates.filter(c => {
+    if (!c.lat || !c.lng || !session.reference_lat || !session.reference_lng) return true;
+    const distance = c.distance_miles || haversineDistance(session.reference_lat, session.reference_lng, parseFloat(c.lat), parseFloat(c.lng));
+    const driveMinutes = estimateDriveMinutes(distance);
+    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
+    return endMinutes <= HARD_CUTOFF_HOUR * 60;
+  }).map(c => {
+    if (!c.lat || !c.lng || !session.reference_lat || !session.reference_lng) return { ...c, time_feasible: true, time_warning: null };
+    const distance = c.distance_miles || haversineDistance(session.reference_lat, session.reference_lng, parseFloat(c.lat), parseFloat(c.lng));
+    const driveMinutes = estimateDriveMinutes(distance);
+    if (session.next_stop_time) {
+      const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
+      const nextTimeParts = session.next_stop_time.match(/(\d+):(\d+)/);
+      if (nextTimeParts) {
+        const nextMinutes = parseInt(nextTimeParts[1]) * 60 + parseInt(nextTimeParts[2]);
+        const nowMins = getCSTNow().getHours() * 60 + getCSTNow().getMinutes();
+        if (nowMins + totalMinutes > nextMinutes) return { ...c, time_feasible: false, time_warning: 'May delay next stop' };
+      }
+    }
+    return { ...c, time_feasible: true, time_warning: null };
+  });
+}
 
 router.post('/sessions', async (req, res) => {
   try {
@@ -137,7 +163,7 @@ router.post('/sessions', async (req, res) => {
       [session.id]
     );
 
-    res.status(201).json({ session, candidates: candidatesWithData.rows });
+    res.status(201).json({ session, candidates: annotateTimeFeasibility(candidatesWithData.rows, session) });
   } catch (err) {
     console.error('Error creating gap-fill session:', err);
     res.status(500).json({ error: 'Failed to create gap-fill session' });
@@ -164,7 +190,7 @@ router.get('/sessions/active', async (req, res) => {
        ORDER BY gc.sort_rank ASC`,
       [session.id]
     );
-    res.json({ session, candidates: candidates.rows });
+    res.json({ session, candidates: annotateTimeFeasibility(candidates.rows, session) });
   } catch (err) {
     console.error('Error fetching active session:', err);
     res.status(500).json({ error: 'Failed to fetch active session' });
@@ -201,7 +227,7 @@ router.post('/sessions/:id/expand', async (req, res) => {
 
     res.json({
       session: { ...s, search_layer: newLayer },
-      candidates: allCandidates.rows,
+      candidates: annotateTimeFeasibility(allCandidates.rows, s),
       newCandidatesCount: candidates.length,
       layerLabel: LAYER_CONFIG[newLayer]?.label || 'Expanded'
     });
@@ -643,24 +669,24 @@ function filterAndScoreCandidates(customers, session, config, layer, excludeIds,
       if (monthsSinceService < COOLDOWN_MONTHS) continue;
     }
 
-    if (config.enforceTimeGate && session.next_stop_time) {
-      const driveMinutes = estimateDriveMinutes(distance);
+    let timeFeasible = true;
+    let timeWarning = null;
+    const driveMinutes = estimateDriveMinutes(distance);
+    const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
+    const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
+
+    if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
+
+    if (session.next_stop_time) {
       const totalMinutes = JOB_DURATION_MINUTES + driveMinutes + BUFFER_MINUTES;
-      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
-      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-
-      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
-
       const nextTimeParts = session.next_stop_time.match(/(\d+):(\d+)/);
       if (nextTimeParts) {
         const nextMinutes = parseInt(nextTimeParts[1]) * 60 + parseInt(nextTimeParts[2]);
-        if (nowMinutes + totalMinutes > nextMinutes) continue;
+        if (nowMinutes + totalMinutes > nextMinutes) {
+          timeFeasible = false;
+          timeWarning = 'May delay next stop';
+        }
       }
-    } else {
-      const driveMinutes = estimateDriveMinutes(distance);
-      const nowMinutes = cstNow.getHours() * 60 + cstNow.getMinutes();
-      const endMinutes = nowMinutes + driveMinutes + JOB_DURATION_MINUTES;
-      if (endMinutes > HARD_CUTOFF_HOUR * 60) continue;
     }
 
     const { tier, reason } = determineTier(customer, session, now);
@@ -678,7 +704,9 @@ function filterAndScoreCandidates(customers, session, config, layer, excludeIds,
       distance_miles: Math.round(distance * 100) / 100,
       direction_score: Math.round(dirScore * 100) / 100,
       search_layer: layer,
-      last_contact: lastContactMap[customer.id] || null
+      last_contact: lastContactMap[customer.id] || null,
+      time_feasible: timeFeasible,
+      time_warning: timeWarning
     });
   }
 
