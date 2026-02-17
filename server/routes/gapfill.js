@@ -843,3 +843,21 @@ function getRecurrenceMonths(interval) {
 }
 
 module.exports = router;
+module.exports._testExports = {
+  JOB_DURATION_MINUTES,
+  BUFFER_MINUTES,
+  HARD_CUTOFF_HOUR,
+  MAX_CONTACTS_PER_WEEK,
+  MAX_CONTACTS_PER_MONTH,
+  COOLDOWN_MONTHS,
+  MILES_PER_DEGREE_LAT,
+  AVG_SPEED_MPH,
+  LAYER_CONFIG,
+  TIER_MESSAGES,
+  haversineDistance,
+  estimateDriveMinutes,
+  directionScore,
+  determineTier,
+  getRecurrenceMonths,
+  getCSTNow
+};
