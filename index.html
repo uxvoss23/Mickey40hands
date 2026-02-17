@@ -3378,13 +3378,18 @@
         }
 
         if (statusFilter === 'scheduled') {
+          const today = new Date();
+          today.setHours(0,0,0,0);
           const isOnAnotherDaysRoute = Object.entries(routesByDay).some(([key, stops]) => {
             if (key === dateKey) return false;
+            const keyDate = new Date(key);
+            if (keyDate < today) return false;
             return stops.some(s => s.id === customer.id);
           });
           const isInSavedRouteOtherDay = savedRoutes.some(r => {
             const rDate = parseLocalDate(r.scheduledDate);
             if (rDate.toDateString() === dateKey) return false;
+            if (rDate < today) return false;
             return (r.customers || []).some(c => c.id === customer.id && !c.cancelled);
           });
           if (isOnAnotherDaysRoute || isInSavedRouteOtherDay) {
@@ -3392,9 +3397,12 @@
           }
         }
 
+        const todayForSentCheck = new Date();
+        todayForSentCheck.setHours(0,0,0,0);
         const alreadyActiveOnSentRoute = savedRoutes.some(r => {
           if (!r.sentToTech) return false;
           const rDate = parseLocalDate(r.scheduledDate);
+          if (rDate < todayForSentCheck) return false;
           if (rDate.toDateString() !== dateKey) return false;
           return (r.customers || []).some(c => c.id === customer.id && !c.cancelled);
         });
@@ -10423,7 +10431,10 @@ const createJob = async () => {
                               return prefStr.toLowerCase().split(/[,\s]+/).map(d => dayMap[d.trim()]).filter(d => d !== undefined);
                             };
                             const getJobType = (c) => c.jobDescription || c.job_description || ((c.customerType || c.customer_type || 'residential') === 'commercial' ? 'Commercial Panel Cleaning' : 'Residential Panel Cleaning');
-                            const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0);
+                            const activeRouteDate = focusedDays.length === 1 ? focusedDays[0] : selectedDate;
+                            const activeRouteDateKey = activeRouteDate ? activeRouteDate.toDateString() : '';
+                            const currentRouteCustomerIds = new Set((routesByDay[activeRouteDateKey] || []).map(c => c.id));
+                            const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0 && !currentRouteCustomerIds.has(c.id));
                             const jobTypes = [...new Set(allUnrouted.map(c => getJobType(c)))].sort();
                             const filtered = unroutedJobTypeFilter === 'all' ? allUnrouted : allUnrouted.filter(c => getJobType(c) === unroutedJobTypeFilter);
                             const activeDaysOfWeek = (() => {
