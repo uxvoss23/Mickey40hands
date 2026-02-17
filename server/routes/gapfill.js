@@ -123,9 +123,21 @@ router.post('/sessions', async (req, res) => {
 
     const session = result.rows[0];
 
-    const candidates = await generateCandidates(session, 1);
+    await generateCandidates(session, 1);
 
-    res.status(201).json({ session, candidates });
+    const candidatesWithData = await pool.query(
+      `SELECT gc.*, c.full_name, c.first_name, c.address, c.phone, c.email,
+              c.lat, c.lng, c.panel_count, c.customer_notes, c.notes as job_notes,
+              c.is_recurring, c.last_service_date, c.anytime_access, c.flexible,
+              c.preferred_contact_method, c.cancellation_count, c.customer_type
+       FROM gap_fill_candidates gc
+       JOIN customers c ON gc.customer_id = c.id
+       WHERE gc.session_id = $1
+       ORDER BY gc.sort_rank ASC`,
+      [session.id]
+    );
+
+    res.status(201).json({ session, candidates: candidatesWithData.rows });
   } catch (err) {
     console.error('Error creating gap-fill session:', err);
     res.status(500).json({ error: 'Failed to create gap-fill session' });

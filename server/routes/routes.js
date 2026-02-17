@@ -165,8 +165,22 @@ router.delete('/:id', async (req, res) => {
         }
       }
     }
-    const result = await pool.query('DELETE FROM routes WHERE id = $1 RETURNING *', [req.params.id]);
-    res.json({ deleted: true });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM gap_fill_outreach_log WHERE session_id IN (SELECT id FROM gap_fill_sessions WHERE route_id = $1)', [req.params.id]);
+      await client.query('DELETE FROM gap_fill_candidates WHERE session_id IN (SELECT id FROM gap_fill_sessions WHERE route_id = $1)', [req.params.id]);
+      await client.query('DELETE FROM gap_fill_sessions WHERE route_id = $1', [req.params.id]);
+      await client.query('DELETE FROM route_stops WHERE route_id = $1', [req.params.id]);
+      await client.query('DELETE FROM routes WHERE id = $1', [req.params.id]);
+      await client.query('COMMIT');
+      res.json({ deleted: true });
+    } catch (txErr) {
+      await client.query('ROLLBACK');
+      throw txErr;
+    } finally {
+      client.release();
+    }
   } catch (err) {
     console.error('Error deleting route:', err);
     res.status(500).json({ error: 'Failed to delete route' });
