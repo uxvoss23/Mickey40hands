@@ -386,6 +386,42 @@ router.post('/:id/stops/:stopId/cancel', async (req, res) => {
         ]);
         duplicateJob = dupResult.rows[0];
       }
+    } else {
+      const lastJob = await client.query(
+        `SELECT * FROM jobs WHERE customer_id = $1 ORDER BY created_at DESC LIMIT 1`,
+        [stop.customer_id]
+      );
+      if (lastJob.rows.length > 0) {
+        const job = lastJob.rows[0];
+        const dupResult = await client.query(`
+          INSERT INTO jobs (customer_id, job_description, status, panel_count, price, price_per_panel,
+                            preferred_days, preferred_time, technician, employee, notes,
+                            is_recurring, recurrence_interval)
+          VALUES ($1, $2, 'unscheduled', $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          RETURNING *
+        `, [
+          job.customer_id, job.job_description || 'Residential Panel Cleaning',
+          job.panel_count || 0, job.price || 0, job.price_per_panel || 0,
+          job.preferred_days || '', job.preferred_time || '', job.technician || '', job.employee || '',
+          `Re-created from cancelled route stop. Reason: ${reason || 'Other'}. ${note || ''}`.trim(),
+          job.is_recurring || false, job.recurrence_interval || ''
+        ]);
+        duplicateJob = dupResult.rows[0];
+      } else {
+        const custInfo = await client.query('SELECT panel_count, pricing_tier FROM customers WHERE id = $1', [stop.customer_id]);
+        const cust = custInfo.rows[0] || {};
+        const panels = cust.panel_count || 0;
+        const ppp = cust.pricing_tier === 'premium' ? 12 : 9;
+        const dupResult = await client.query(`
+          INSERT INTO jobs (customer_id, job_description, status, panel_count, price, price_per_panel, notes, is_recurring)
+          VALUES ($1, 'Residential Panel Cleaning', 'unscheduled', $2, $3, $4, $5, false)
+          RETURNING *
+        `, [
+          stop.customer_id, panels, panels * ppp, ppp,
+          `Re-created from cancelled route stop. Reason: ${reason || 'Other'}. ${note || ''}`.trim()
+        ]);
+        duplicateJob = dupResult.rows[0];
+      }
     }
 
     await client.query(
