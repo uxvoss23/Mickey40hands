@@ -119,15 +119,16 @@ router.post('/', async (req, res) => {
       j.is_recurring || false, j.employee || '', parseInt(j.panel_count) || 0,
       parseFloat(j.price) || 0, parseFloat(j.price_per_panel) || 0,
       j.preferred_days || '', j.preferred_time || '', j.technician || '',
-      j.recurrence_interval || '', j.next_service_date || null
+      j.recurrence_interval || (j.is_recurring ? '6months' : ''), j.next_service_date || null
     ]);
 
     const job = result.rows[0];
     let recurringJobs = [];
 
-    if (j.is_recurring && j.recurrence_interval) {
+    const effectiveInterval = j.recurrence_interval || (j.is_recurring ? '6months' : '');
+    if (j.is_recurring && effectiveInterval) {
       const startDate = j.scheduled_date || new Date().toISOString().split('T')[0];
-      recurringJobs = await generateRecurringJobs(j.customer_id, j, j.recurrence_interval, startDate);
+      recurringJobs = await generateRecurringJobs(j.customer_id, j, effectiveInterval, startDate);
     }
 
     res.status(201).json({ ...job, recurring_jobs_created: recurringJobs.length });

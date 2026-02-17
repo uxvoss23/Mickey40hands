@@ -3121,10 +3121,6 @@
         // In Route Planner with active radius/drawn area: bypass scheduled filter
         // to show ALL customers in the area (prospecting mode)
         const isProspectingInRoutePlanner = statusFilter === 'scheduled' && radiusMode && (referencePoint || drawnArea);
-        if (statusFilter === 'scheduled') {
-          console.log('[V3 FILTER]', 'radiusMode:', radiusMode, 'refPt:', !!referencePoint, 'drawn:', !!drawnArea, 'prospecting:', isProspectingInRoutePlanner, 'count:', results.length);
-        }
-
         // Status filter (unscheduled, scheduled)
         if (isProspectingInRoutePlanner) {
           // Prospecting mode: skip ALL status filtering to show every customer in the area
@@ -9960,27 +9956,35 @@ const createJob = async () => {
                         <button
                           key={s.value}
                           onClick={() => { 
-                            if (statusFilter === s.value) {
+                            if (s.value === 'all') {
                               lastRoutePlannerState.current = { focusedDays: [...focusedDays], multiSelectDays, savedViewDays: { ...savedViewDays } };
                               setStatusFilter('all');
                               setFocusedDays([]);
                               setShowNeedScheduling(false);
                               setRoutePlannerEditMode(false);
-                            } else {
-                              setStatusFilter(s.value);
-                              setShowNeedScheduling(true);
-                              const prev = lastRoutePlannerState.current;
-                              if (prev.focusedDays && prev.focusedDays.length > 0) {
-                                setFocusedDays(prev.focusedDays);
-                                setSelectedDate(prev.focusedDays[0]);
-                                setMultiSelectDays(prev.multiSelectDays);
-                                if (prev.savedViewDays) setSavedViewDays(prev.savedViewDays);
+                            } else if (s.value === 'scheduled') {
+                              if (statusFilter === 'scheduled') {
+                                lastRoutePlannerState.current = { focusedDays: [...focusedDays], multiSelectDays, savedViewDays: { ...savedViewDays } };
+                                setStatusFilter('all');
+                                setFocusedDays([]);
+                                setShowNeedScheduling(false);
+                                setRoutePlannerEditMode(false);
                               } else {
-                                const today = new Date(); today.setHours(0,0,0,0);
-                                setSelectedDate(today);
-                                setFocusedDays([today]);
+                                setStatusFilter('scheduled');
+                                setShowNeedScheduling(true);
+                                const prev = lastRoutePlannerState.current;
+                                if (prev.focusedDays && prev.focusedDays.length > 0) {
+                                  setFocusedDays(prev.focusedDays);
+                                  setSelectedDate(prev.focusedDays[0]);
+                                  setMultiSelectDays(prev.multiSelectDays);
+                                  if (prev.savedViewDays) setSavedViewDays(prev.savedViewDays);
+                                } else {
+                                  const today = new Date(); today.setHours(0,0,0,0);
+                                  setSelectedDate(today);
+                                  setFocusedDays([today]);
+                                }
+                                setRoutePlannerEditMode(false);
                               }
-                              setRoutePlannerEditMode(false);
                             }
                           }}
                           style={{
