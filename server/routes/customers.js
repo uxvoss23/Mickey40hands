@@ -180,6 +180,41 @@ router.get('/', async (req, res) => {
       countParamIndex++;
     }
 
+    if (solar_verified && solar_verified !== 'all') {
+      if (solar_verified === 'verified') {
+        countQuery += ` AND solar_verified = 'yes'`;
+      } else if (solar_verified === 'no-solar') {
+        countQuery += ` AND solar_verified = 'no'`;
+      } else if (solar_verified === 'unverified') {
+        countQuery += ` AND solar_verified IS NULL`;
+      }
+    }
+
+    if (is_recurring === 'true') {
+      countQuery += ` AND is_recurring = true`;
+    }
+
+    if (existing_job === 'true') {
+      countQuery += ` AND existing_job = true`;
+    }
+
+    if (min_panels) {
+      countQuery += ` AND panel_count >= $${countParamIndex}`;
+      countParams.push(parseInt(min_panels));
+      countParamIndex++;
+    }
+
+    if (last_service) {
+      const months = parseInt(last_service);
+      if (months > 0) {
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - months);
+        countQuery += ` AND last_service_date IS NOT NULL AND last_service_date >= $${countParamIndex}`;
+        countParams.push(cutoff.toISOString().split('T')[0]);
+        countParamIndex++;
+      }
+    }
+
     if (lat_min && lat_max && lng_min && lng_max) {
       countQuery += ` AND lat >= $${countParamIndex} AND lat <= $${countParamIndex + 1} AND lng >= $${countParamIndex + 2} AND lng <= $${countParamIndex + 3}`;
       countParams.push(parseFloat(lat_min), parseFloat(lat_max), parseFloat(lng_min), parseFloat(lng_max));
