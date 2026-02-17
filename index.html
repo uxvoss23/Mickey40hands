@@ -3728,8 +3728,9 @@
           if (data.success) {
             const cancelUpdates = { status: 'unscheduled', scheduledDate: null, scheduledTime: null, activeJobCount: (cancellingStop.activeJobCount || 1) };
             setSavedRoutes(prev => prev.map(r => {
-              if (r.id !== frontendRouteId) return r;
-              return { ...r, customers: r.customers.filter(c => c.id !== cancellingStop.id) };
+              const isMatch = r.id === frontendRouteId || r.id == apiRouteId || r.dbRouteId == apiRouteId;
+              if (!isMatch) return r;
+              return { ...r, customers: (r.customers || []).filter(c => c.id !== cancellingStop.id) };
             }));
             setCustomers(prev => prev.map(c => 
               c.id === cancellingStop.id ? { ...c, ...cancelUpdates } : c
@@ -10511,6 +10512,13 @@ const createJob = async () => {
                             const routeDateKeys = focusedDays.length > 0 ? focusedDays.map(d => d.toDateString()) : (selectedDate ? [selectedDate.toDateString()] : []);
                             const currentRouteCustomerIds = new Set();
                             routeDateKeys.forEach(dk => (routesByDay[dk] || []).forEach(c => currentRouteCustomerIds.add(c.id)));
+                            savedRoutes.forEach(r => {
+                              if (!r.customers) return;
+                              const rDateKey = r.scheduledDate ? parseLocalDate(r.scheduledDate).toDateString() : null;
+                              if (rDateKey && routeDateKeys.includes(rDateKey)) {
+                                r.customers.forEach(c => currentRouteCustomerIds.add(c.id));
+                              }
+                            });
                             const allUnrouted = customers.filter(c => (c.status || '').toLowerCase() === 'unscheduled' && (c.activeJobCount || 0) > 0 && !currentRouteCustomerIds.has(c.id));
                             const jobTypes = [...new Set(allUnrouted.map(c => getJobType(c)))].sort();
                             const filtered = unroutedJobTypeFilter === 'all' ? allUnrouted : allUnrouted.filter(c => getJobType(c) === unroutedJobTypeFilter);
