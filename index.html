@@ -599,13 +599,16 @@
       const [jobForm, setJobForm] = useState({
         customerId: null,
         customerName: '',
-        isNewCustomer: false,
+        isNewCustomer: true,
         firstName: '',
         lastName: '',
         address: '',
+        city: 'Fort Worth',
+        state: 'TX',
+        zip: '76131',
         phone: '',
         email: '',
-        panelCount: '',
+        panelCount: '0',
         pricingTier: '2', // Default to Tier 2
         customPrice: '',
         useCustomPrice: false,
@@ -616,7 +619,8 @@
         isRecurring: false,
         recurringFrequency: '12', // months
         assignedEmployee: 'Chance Thompson',
-        notes: ''
+        notes: '',
+        showJobFields: false
       });
       const [customerSearchQuery, setCustomerSearchQuery] = useState('');
       const [customerSearchResults, setCustomerSearchResults] = useState([]);
@@ -3453,13 +3457,16 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
         setJobForm({
           customerId: null,
           customerName: '',
-          isNewCustomer: false,
+          isNewCustomer: true,
           firstName: '',
           lastName: '',
           address: '',
+          city: 'Fort Worth',
+          state: 'TX',
+          zip: '76131',
           phone: '',
           email: '',
-          panelCount: '',
+          panelCount: '0',
           pricingTier: '2',
           customPrice: '',
           useCustomPrice: false,
@@ -3470,7 +3477,8 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
           isRecurring: false,
           recurringFrequency: '12',
           assignedEmployee: 'Chance Thompson',
-          notes: ''
+          notes: '',
+          showJobFields: false
         });
         setCustomerSearchQuery('');
         setCustomerSearchResults([]);
@@ -3525,9 +3533,19 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
       };
 
       const selectAddressSuggestion = (suggestion) => {
+        // Parse address components from Nominatim response
+        const addr = suggestion.address || {};
+        const street = [addr.house_number, addr.road].filter(Boolean).join(' ') || '';
+        const city = addr.city || addr.town || addr.village || addr.municipality || '';
+        const state = addr.state || '';
+        const zip = addr.postcode || '';
+
         setJobForm(prev => ({
           ...prev,
-          address: suggestion.displayName,
+          address: street || suggestion.displayName.split(',')[0],
+          city: city,
+          state: state === 'Texas' ? 'TX' : state,
+          zip: zip,
           // Store coordinates for later use
           _preGeocodedLat: suggestion.lat,
           _preGeocodedLng: suggestion.lng
@@ -5634,20 +5652,34 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               return;
             }
 
+            // Build full address from components if available
+            const fullAddress = jobForm.city && jobForm.state
+              ? `${jobForm.address.trim()}, ${jobForm.city.trim()}, ${jobForm.state.trim()} ${jobForm.zip.trim()}`.trim()
+              : jobForm.address.trim();
+
             // Create new customer
             const newCustomer = {
               id: Date.now(),
               firstname: jobForm.firstName.trim(),
               lastname: jobForm.lastName.trim(),
-              address: jobForm.address.trim(),
+              address: fullAddress,
+              street: jobForm.address.trim(),
+              city: jobForm.city.trim(),
+              state: jobForm.state.trim(),
+              zip: jobForm.zip.trim(),
               latitude: geoResult.lat,
               longitude: geoResult.lng,
+              lat: geoResult.lat,
+              lng: geoResult.lng,
               phone: jobForm.phone.trim(),
               email: jobForm.email.trim(),
               totalPanels: parseInt(jobForm.panelCount) || 0,
+              panelCount: parseInt(jobForm.panelCount) || 0,
+              notes: jobForm.notes.trim(),
+              customerNotes: jobForm.notes.trim(),
               lastServiceDate: '',
               amountPaid: 0,
-              status: 'Not serviced', // Default status
+              status: jobForm.showJobFields && jobForm.scheduledDate ? 'scheduled' : 'Not serviced',
               existingJob: false,
               isRecurring: jobForm.isRecurring,
               solarVerified: null,
@@ -6019,7 +6051,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 }}
               >
                 <span style={{ fontSize: '16px' }}>+</span>
-                Add Customer / Job
+                Quick Add
               </button>
 
               {/* Show All Markers Button (only for large datasets) */}
@@ -10158,7 +10190,7 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               </div>
             )}
 
-            {/* ➕ Job Creation Modal */}
+            {/* ➕ Quick Add Customer Modal */}
             {showJobModal && (
               <div
                 style={{
@@ -10180,12 +10212,11 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 <div
                   onClick={(e) => e.stopPropagation()}
                   style={{
-                    width: '600px',
+                    width: '480px',
                     maxHeight: '90vh',
-                    background: 'rgba(15, 23, 42, 0.98)',
-                    backdropFilter: 'blur(20px)',
-                    border: '2px solid rgba(34, 197, 94, 0.3)',
-                    borderRadius: '16px',
+                    background: '#1a1a2e',
+                    border: '1px solid rgba(60, 60, 80, 0.5)',
+                    borderRadius: '12px',
                     overflow: 'hidden',
                     boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
                     display: 'flex',
@@ -10193,744 +10224,442 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                   }}
                 >
                   {/* Header */}
-                  <div style={{
-                    padding: '20px 24px',
-                    borderBottom: '1px solid rgba(34, 197, 94, 0.2)',
-                    background: 'rgba(34, 197, 94, 0.05)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <div>
-                      <h2 style={{ fontSize: '18px', fontWeight: 700, margin: 0, color: '#f1f5f9' }}>
-                        + Add New Customer & Job
-                      </h2>
-                      <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-                        {sheetsConnected ? '✅ Will sync to Google Sheets' : '📝 Create a new customer and schedule a job'}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setShowJobModal(false)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#94a3b8',
-                        fontSize: '24px',
-                        cursor: 'pointer',
-                        padding: '0',
-                        lineHeight: 1
-                      }}
-                    >
-                      ×
-                    </button>
+                  <div style={{ padding: '20px 24px 16px 24px' }}>
+                    <h2 style={{ fontSize: '18px', fontWeight: 600, margin: 0, color: '#f1f5f9' }}>
+                      + Quick Add Customer
+                    </h2>
                   </div>
 
                   {/* Form Content */}
-                  <div style={{
-                    padding: '24px',
-                    overflowY: 'auto',
-                    flex: 1
-                  }} className="scrollbar-custom">
+                  <div style={{ padding: '0 24px 24px 24px', overflowY: 'auto', flex: 1 }} className="scrollbar-custom">
 
-                    {/* Toggle: New or Existing Customer */}
-                    <div style={{ marginBottom: '20px' }}>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={() => setJobForm(prev => ({ ...prev, isNewCustomer: true, customerId: null, customerName: '' }))}
-                          style={{
-                            flex: 1,
-                            padding: '12px',
-                            background: jobForm.isNewCustomer ? 'rgba(34, 197, 94, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                            border: jobForm.isNewCustomer ? '2px solid rgba(34, 197, 94, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '10px',
-                            color: jobForm.isNewCustomer ? '#22c55e' : '#94a3b8',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
+                    {/* Address Field - Purple Background */}
+                    <div style={{ marginBottom: '16px', position: 'relative' }}>
+                      <div style={{
+                        background: 'rgba(139, 92, 246, 0.15)',
+                        border: '1px solid rgba(139, 92, 246, 0.3)',
+                        borderRadius: '8px',
+                        padding: '12px 16px'
+                      }}>
+                        <div style={{ fontSize: '11px', color: '#a78bfa', marginBottom: '6px', fontWeight: 500 }}>
+                          Start typing address...
+                        </div>
+                        <input
+                          type="text"
+                          value={jobForm.address}
+                          onChange={(e) => {
+                            setJobForm(prev => ({ ...prev, address: e.target.value, _preGeocodedLat: null, _preGeocodedLng: null }));
+                            searchAddresses(e.target.value);
                           }}
-                        >
-                          + New Customer
-                        </button>
-                        <button
-                          onClick={() => setJobForm(prev => ({ ...prev, isNewCustomer: false }))}
+                          placeholder="800 Henslee Dr, Euless, TX"
                           style={{
-                            flex: 1,
-                            padding: '12px',
-                            background: !jobForm.isNewCustomer ? 'rgba(139, 92, 246, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                            border: !jobForm.isNewCustomer ? '2px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '10px',
-                            color: !jobForm.isNewCustomer ? '#8b5cf6' : '#94a3b8',
-                            fontSize: '13px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s'
+                            width: '100%',
+                            padding: '0',
+                            background: 'transparent',
+                            border: 'none',
+                            color: '#f1f5f9',
+                            fontSize: '15px',
+                            outline: 'none'
                           }}
-                        >
-                          Existing Customer
-                        </button>
+                        />
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '6px' }}>
+                          Type full address and click out to auto-locate
+                        </div>
                       </div>
+                      {searchingAddress && (
+                        <div style={{ position: 'absolute', right: '16px', top: '20px', color: '#a78bfa', fontSize: '12px' }}>
+                          ⏳
+                        </div>
+                      )}
+                      {/* Address Suggestions Dropdown */}
+                      {addressSuggestions.length > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          background: '#1a1a2e',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          borderRadius: '8px',
+                          marginTop: '4px',
+                          maxHeight: '200px',
+                          overflowY: 'auto',
+                          zIndex: 100,
+                          boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
+                        }}>
+                          {addressSuggestions.map((suggestion, idx) => (
+                            <div
+                              key={idx}
+                              onClick={() => selectAddressSuggestion(suggestion)}
+                              style={{
+                                padding: '10px 12px',
+                                cursor: 'pointer',
+                                borderBottom: idx < addressSuggestions.length - 1 ? '1px solid rgba(100, 116, 139, 0.2)' : 'none',
+                                fontSize: '12px',
+                                color: '#f1f5f9',
+                                transition: 'background 0.2s'
+                              }}
+                              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)'}
+                              onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+                            >
+                              {suggestion.displayName}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
 
-                    {/* New Customer Fields */}
-                    {jobForm.isNewCustomer ? (
-                      <div style={{ marginBottom: '24px' }}>
-                        <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#22c55e', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>👤</span> Customer Information
-                        </h3>
-
-                        {/* Name Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                              First Name *
-                            </label>
-                            <input
-                              type="text"
-                              value={jobForm.firstName}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, firstName: e.target.value }))}
-                              placeholder="John"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                                borderRadius: '8px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none',
-                                transition: 'border-color 0.2s'
-                              }}
-                              onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
-                              onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                              Last Name *
-                            </label>
-                            <input
-                              type="text"
-                              value={jobForm.lastName}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, lastName: e.target.value }))}
-                              placeholder="Smith"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                                borderRadius: '8px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                              onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
-                              onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
-                            />
-                          </div>
-                        </div>
-
-                        {/* Address with Autocomplete */}
-                        <div style={{ marginBottom: '12px', position: 'relative' }}>
-                          <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                            Address *
-                          </label>
-                          <input
-                            type="text"
-                            value={jobForm.address}
-                            onChange={(e) => {
-                              setJobForm(prev => ({ ...prev, address: e.target.value, _preGeocodedLat: null, _preGeocodedLng: null }));
-                              searchAddresses(e.target.value);
-                            }}
-                            placeholder="123 Main St, City, State ZIP"
-                            style={{
-                              width: '100%',
-                              padding: '10px 12px',
-                              background: 'rgba(30, 41, 59, 0.5)',
-                              border: '1px solid rgba(100, 116, 139, 0.3)',
-                              borderRadius: '8px',
-                              color: '#f1f5f9',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
-                            onBlur={(e) => {
-                              e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)';
-                              // Delay hiding suggestions to allow clicks
-                              setTimeout(() => setAddressSuggestions([]), 200);
-                            }}
-                          />
-                          {searchingAddress && (
-                            <div style={{ position: 'absolute', right: '12px', top: '32px', color: '#94a3b8', fontSize: '12px' }}>
-                              ⏳
-                            </div>
-                          )}
-                          {/* Address Suggestions Dropdown */}
-                          {addressSuggestions.length > 0 && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              right: 0,
-                              background: 'rgba(15, 23, 42, 0.98)',
-                              border: '1px solid rgba(34, 197, 94, 0.3)',
-                              borderRadius: '8px',
-                              marginTop: '4px',
-                              maxHeight: '200px',
-                              overflowY: 'auto',
-                              zIndex: 100,
-                              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
-                            }}>
-                              {addressSuggestions.map((suggestion, idx) => (
-                                <div
-                                  key={idx}
-                                  onClick={() => selectAddressSuggestion(suggestion)}
-                                  style={{
-                                    padding: '10px 12px',
-                                    cursor: 'pointer',
-                                    borderBottom: idx < addressSuggestions.length - 1 ? '1px solid rgba(100, 116, 139, 0.2)' : 'none',
-                                    fontSize: '12px',
-                                    color: '#f1f5f9',
-                                    transition: 'background 0.2s'
-                                  }}
-                                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(34, 197, 94, 0.1)'}
-                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                  📍 {suggestion.displayName}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Phone & Email Row */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                              Phone
-                            </label>
-                            <input
-                              type="tel"
-                              value={jobForm.phone}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, phone: e.target.value }))}
-                              placeholder="(555) 123-4567"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                                borderRadius: '8px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                              onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
-                              onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                              Email
-                            </label>
-                            <input
-                              type="email"
-                              value={jobForm.email}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, email: e.target.value }))}
-                              placeholder="john@example.com"
-                              style={{
-                                width: '100%',
-                                padding: '10px 12px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                                borderRadius: '8px',
-                                color: '#f1f5f9',
-                                fontSize: '13px',
-                                outline: 'none'
-                              }}
-                              onFocus={(e) => e.target.style.borderColor = 'rgba(34, 197, 94, 0.5)'}
-                              onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Existing Customer Search */
-                      <div style={{ marginBottom: '24px' }}>
-                        <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#8b5cf6', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span>🔍</span> Search Existing Customer
-                        </h3>
-                        <div style={{ position: 'relative' }}>
-                          <input
-                            type="text"
-                            value={customerSearchQuery}
-                            onChange={(e) => {
-                              setCustomerSearchQuery(e.target.value);
-                              searchCustomers(e.target.value);
-                            }}
-                            placeholder="Search by name, address, or phone..."
-                            style={{
-                              width: '100%',
-                              padding: '12px 16px',
-                              paddingLeft: '40px',
-                              background: 'rgba(30, 41, 59, 0.5)',
-                              border: '1px solid rgba(100, 116, 139, 0.3)',
-                              borderRadius: '10px',
-                              color: '#f1f5f9',
-                              fontSize: '13px',
-                              outline: 'none'
-                            }}
-                            onFocus={(e) => e.target.style.borderColor = 'rgba(139, 92, 246, 0.5)'}
-                            onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
-                          />
-                          <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#64748b' }}>🔍</span>
-
-                          {/* Customer Search Results */}
-                          {customerSearchResults.length > 0 && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              right: 0,
-                              background: 'rgba(15, 23, 42, 0.98)',
-                              border: '1px solid rgba(139, 92, 246, 0.3)',
-                              borderRadius: '10px',
-                              marginTop: '4px',
-                              maxHeight: '200px',
-                              overflowY: 'auto',
-                              zIndex: 100,
-                              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.3)'
-                            }}>
-                              {customerSearchResults.map((customer) => (
-                                <div
-                                  key={customer.id}
-                                  onClick={() => {
-                                    selectExistingCustomer(customer);
-                                    setJobForm(prev => ({ ...prev, panelCount: customer.totalPanels || '' }));
-                                  }}
-                                  style={{
-                                    padding: '12px',
-                                    cursor: 'pointer',
-                                    borderBottom: '1px solid rgba(100, 116, 139, 0.2)',
-                                    transition: 'background 0.2s'
-                                  }}
-                                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(139, 92, 246, 0.1)'}
-                                  onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-                                >
-                                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#f1f5f9' }}>
-                                    {customer.firstname} {customer.lastname}
-                                  </div>
-                                  <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
-                                    📍 {customer.address}
-                                  </div>
-                                  {customer.phone && (
-                                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                      📱 {customer.phone}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Selected Customer Display */}
-                        {jobForm.customerId && (
-                          <div style={{
-                            marginTop: '12px',
-                            padding: '12px',
-                            background: 'rgba(139, 92, 246, 0.1)',
-                            border: '1px solid rgba(139, 92, 246, 0.3)',
-                            borderRadius: '10px'
-                          }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <div>
-                                <div style={{ fontSize: '13px', fontWeight: 600, color: '#c4b5fd' }}>
-                                  ✓ {jobForm.customerName}
-                                </div>
-                                <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                                  {jobForm.address}
-                                </div>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  setJobForm(prev => ({ ...prev, customerId: null, customerName: '', address: '' }));
-                                  setCustomerSearchQuery('');
-                                }}
-                                style={{
-                                  background: 'rgba(239, 68, 68, 0.1)',
-                                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                                  borderRadius: '6px',
-                                  padding: '4px 8px',
-                                  color: '#ef4444',
-                                  fontSize: '11px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                ✕ Clear
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Divider */}
-                    <div style={{ height: '1px', background: 'rgba(100, 116, 139, 0.2)', margin: '8px 0 24px 0' }}></div>
-
-                    {/* Job Details Section */}
-                    <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#fbbf24', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span>⚡</span> Job Details
-                    </h3>
-
-                    {/* Job Type & Panels Row */}
+                    {/* First Name / Last Name Row */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                       <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Job Type
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          First Name
                         </label>
-                        <select
-                          value={jobForm.jobType}
-                          onChange={(e) => setJobForm(prev => ({ ...prev, jobType: e.target.value }))}
+                        <input
+                          type="text"
+                          value={jobForm.firstName}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, firstName: e.target.value }))}
+                          placeholder="John"
                           style={{
                             width: '100%',
                             padding: '10px 12px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '8px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
                             color: '#f1f5f9',
-                            fontSize: '13px',
-                            outline: 'none',
-                            cursor: 'pointer'
+                            fontSize: '14px',
+                            outline: 'none'
                           }}
-                        >
-                          <option value="Panel Cleaning">Panel Cleaning</option>
-                          <option value="Panel Inspection">Panel Inspection</option>
-                          <option value="Maintenance">Maintenance</option>
-                          <option value="Installation">Installation</option>
-                          <option value="Repair">Repair</option>
-                        </select>
+                        />
                       </div>
                       <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Number of Panels
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          Last Name
+                        </label>
+                        <input
+                          type="text"
+                          value={jobForm.lastName}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, lastName: e.target.value }))}
+                          placeholder="Doe"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Phone / Email Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          Phone
+                        </label>
+                        <input
+                          type="tel"
+                          value={jobForm.phone}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, phone: e.target.value }))}
+                          placeholder="(555) 123-4567"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={jobForm.email}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, email: e.target.value }))}
+                          placeholder="john@example.com"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* City / State / ZIP Row */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          City
+                        </label>
+                        <input
+                          type="text"
+                          value={jobForm.city}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, city: e.target.value }))}
+                          placeholder="Fort Worth"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          State
+                        </label>
+                        <input
+                          type="text"
+                          value={jobForm.state}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, state: e.target.value }))}
+                          placeholder="TX"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          ZIP
+                        </label>
+                        <input
+                          type="text"
+                          value={jobForm.zip}
+                          onChange={(e) => setJobForm(prev => ({ ...prev, zip: e.target.value }))}
+                          placeholder="76131"
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
+                            color: '#f1f5f9',
+                            fontSize: '14px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Panels Row with Add Job Button */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                          Panels
                         </label>
                         <input
                           type="number"
                           value={jobForm.panelCount}
-                          onChange={(e) => {
-                            const count = e.target.value;
-                            setJobForm(prev => ({
-                              ...prev,
-                              panelCount: count,
-                              calculatedPrice: calculateJobPrice(parseInt(count) || 0, prev.pricingTier)
-                            }));
-                          }}
-                          placeholder="e.g., 24"
+                          onChange={(e) => setJobForm(prev => ({ ...prev, panelCount: e.target.value }))}
+                          placeholder="0"
                           min="0"
                           style={{
                             width: '100%',
                             padding: '10px 12px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '8px',
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '6px',
                             color: '#f1f5f9',
-                            fontSize: '13px',
+                            fontSize: '14px',
                             outline: 'none'
                           }}
-                          onFocus={(e) => e.target.style.borderColor = 'rgba(251, 191, 36, 0.5)'}
-                          onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
                         />
                       </div>
-                    </div>
-
-                    {/* Pricing Tier */}
-                    <div style={{ marginBottom: '12px' }}>
-                      <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                        Pricing Tier
-                      </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                        {['1', '2', '3', '4'].map(tier => (
-                          <button
-                            key={tier}
-                            onClick={() => setJobForm(prev => ({
-                              ...prev,
-                              pricingTier: tier,
-                              calculatedPrice: calculateJobPrice(parseInt(prev.panelCount) || 0, tier)
-                            }))}
-                            style={{
-                              padding: '10px',
-                              background: jobForm.pricingTier === tier ? 'rgba(251, 191, 36, 0.2)' : 'rgba(30, 41, 59, 0.5)',
-                              border: jobForm.pricingTier === tier ? '2px solid rgba(251, 191, 36, 0.5)' : '1px solid rgba(100, 116, 139, 0.3)',
-                              borderRadius: '8px',
-                              color: jobForm.pricingTier === tier ? '#fbbf24' : '#94a3b8',
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              textAlign: 'center'
-                            }}
-                          >
-                            Tier {tier}
-                            <div style={{ fontSize: '10px', marginTop: '2px' }}>
-                              ${PRICING_TIERS[tier]}/panel
-                            </div>
-                          </button>
-                        ))}
+                      <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button
+                          onClick={() => setJobForm(prev => ({ ...prev, showJobFields: !prev.showJobFields }))}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: jobForm.showJobFields ? 'rgba(139, 92, 246, 0.2)' : 'transparent',
+                            border: '1px solid rgba(139, 92, 246, 0.5)',
+                            borderRadius: '6px',
+                            color: '#a78bfa',
+                            fontSize: '14px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          + Add Job?
+                        </button>
                       </div>
                     </div>
 
-                    {/* Calculated Price Display */}
-                    {jobForm.panelCount && (
+                    {/* Expandable Job Fields */}
+                    {jobForm.showJobFields && (
                       <div style={{
-                        marginBottom: '12px',
-                        padding: '12px',
-                        background: 'rgba(34, 197, 94, 0.1)',
-                        border: '1px solid rgba(34, 197, 94, 0.3)',
-                        borderRadius: '10px',
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center'
+                        background: 'rgba(139, 92, 246, 0.05)',
+                        border: '1px solid rgba(139, 92, 246, 0.2)',
+                        borderRadius: '8px',
+                        padding: '16px',
+                        marginBottom: '12px'
                       }}>
-                        <div>
-                          <div style={{ fontSize: '11px', color: '#94a3b8' }}>Calculated Price</div>
-                          <div style={{ fontSize: '20px', fontWeight: 700, color: '#22c55e' }}>
-                            ${jobForm.useCustomPrice ? jobForm.customPrice : jobForm.calculatedPrice}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <label style={{ fontSize: '11px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                          <div>
+                            <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                              Schedule Date
+                            </label>
                             <input
-                              type="checkbox"
-                              checked={jobForm.useCustomPrice}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, useCustomPrice: e.target.checked }))}
-                              style={{ cursor: 'pointer' }}
-                            />
-                            Custom price
-                          </label>
-                          {jobForm.useCustomPrice && (
-                            <input
-                              type="number"
-                              value={jobForm.customPrice}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, customPrice: e.target.value }))}
-                              placeholder="$"
+                              type="date"
+                              value={jobForm.scheduledDate}
+                              onChange={(e) => setJobForm(prev => ({ ...prev, scheduledDate: e.target.value }))}
                               style={{
-                                width: '80px',
-                                padding: '6px 10px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(34, 197, 94, 0.3)',
+                                width: '100%',
+                                padding: '10px 12px',
+                                background: '#252538',
+                                border: '1px solid rgba(60, 60, 80, 0.5)',
                                 borderRadius: '6px',
                                 color: '#f1f5f9',
-                                fontSize: '13px',
+                                fontSize: '14px',
                                 outline: 'none'
                               }}
                             />
-                          )}
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                              Time
+                            </label>
+                            <input
+                              type="time"
+                              value={jobForm.scheduledTime}
+                              onChange={(e) => setJobForm(prev => ({ ...prev, scheduledTime: e.target.value }))}
+                              style={{
+                                width: '100%',
+                                padding: '10px 12px',
+                                background: '#252538',
+                                border: '1px solid rgba(60, 60, 80, 0.5)',
+                                borderRadius: '6px',
+                                color: '#f1f5f9',
+                                fontSize: '14px',
+                                outline: 'none'
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
+                            Job Type
+                          </label>
+                          <select
+                            value={jobForm.jobType}
+                            onChange={(e) => setJobForm(prev => ({ ...prev, jobType: e.target.value }))}
+                            style={{
+                              width: '100%',
+                              padding: '10px 12px',
+                              background: '#252538',
+                              border: '1px solid rgba(60, 60, 80, 0.5)',
+                              borderRadius: '6px',
+                              color: '#f1f5f9',
+                              fontSize: '14px',
+                              outline: 'none',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value="Panel Cleaning">Panel Cleaning</option>
+                            <option value="Panel Inspection">Panel Inspection</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Installation">Installation</option>
+                            <option value="Repair">Repair</option>
+                          </select>
                         </div>
                       </div>
                     )}
 
-                    {/* Schedule Row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                      <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Scheduled Date
-                        </label>
-                        <input
-                          type="date"
-                          value={jobForm.scheduledDate}
-                          onChange={(e) => setJobForm(prev => ({ ...prev, scheduledDate: e.target.value }))}
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '13px',
-                            outline: 'none',
-                            cursor: 'pointer'
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Scheduled Time
-                        </label>
-                        <input
-                          type="time"
-                          value={jobForm.scheduledTime}
-                          onChange={(e) => setJobForm(prev => ({ ...prev, scheduledTime: e.target.value }))}
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '13px',
-                            outline: 'none',
-                            cursor: 'pointer'
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Recurring & Employee Row */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
-                      <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Recurring Job
-                        </label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px', color: '#f1f5f9' }}>
-                            <input
-                              type="checkbox"
-                              checked={jobForm.isRecurring}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, isRecurring: e.target.checked }))}
-                              style={{ cursor: 'pointer', width: '16px', height: '16px' }}
-                            />
-                            Recurring
-                          </label>
-                          {jobForm.isRecurring && (
-                            <select
-                              value={jobForm.recurringFrequency}
-                              onChange={(e) => setJobForm(prev => ({ ...prev, recurringFrequency: e.target.value }))}
-                              style={{
-                                padding: '6px 10px',
-                                background: 'rgba(30, 41, 59, 0.5)',
-                                border: '1px solid rgba(100, 116, 139, 0.3)',
-                                borderRadius: '6px',
-                                color: '#f1f5f9',
-                                fontSize: '12px',
-                                outline: 'none',
-                                cursor: 'pointer'
-                              }}
-                            >
-                              <option value="3">Every 3 months</option>
-                              <option value="6">Every 6 months</option>
-                              <option value="12">Every 12 months</option>
-                            </select>
-                          )}
-                        </div>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
-                          Assigned Employee
-                        </label>
-                        <input
-                          type="text"
-                          value={jobForm.assignedEmployee}
-                          onChange={(e) => setJobForm(prev => ({ ...prev, assignedEmployee: e.target.value }))}
-                          placeholder="Chance Thompson"
-                          style={{
-                            width: '100%',
-                            padding: '10px 12px',
-                            background: 'rgba(30, 41, 59, 0.5)',
-                            border: '1px solid rgba(100, 116, 139, 0.3)',
-                            borderRadius: '8px',
-                            color: '#f1f5f9',
-                            fontSize: '13px',
-                            outline: 'none'
-                          }}
-                        />
-                      </div>
-                    </div>
-
                     {/* Notes */}
                     <div>
-                      <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '6px', fontWeight: 600 }}>
+                      <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '6px' }}>
                         Notes
                       </label>
                       <textarea
                         value={jobForm.notes}
                         onChange={(e) => setJobForm(prev => ({ ...prev, notes: e.target.value }))}
-                        placeholder="Add any notes about this job..."
-                        rows={3}
+                        placeholder="Gate code, special instructions..."
+                        rows={2}
                         style={{
                           width: '100%',
                           padding: '10px 12px',
-                          background: 'rgba(30, 41, 59, 0.5)',
-                          border: '1px solid rgba(100, 116, 139, 0.3)',
-                          borderRadius: '8px',
+                          background: '#252538',
+                          border: '1px solid rgba(60, 60, 80, 0.5)',
+                          borderRadius: '6px',
                           color: '#f1f5f9',
-                          fontSize: '13px',
+                          fontSize: '14px',
                           outline: 'none',
                           resize: 'vertical',
                           fontFamily: 'inherit'
                         }}
-                        onFocus={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.5)'}
-                        onBlur={(e) => e.target.style.borderColor = 'rgba(100, 116, 139, 0.3)'}
                       />
                     </div>
                   </div>
 
-                  {/* Footer */}
+                  {/* Footer Buttons */}
                   <div style={{
                     padding: '16px 24px',
-                    borderTop: '1px solid rgba(34, 197, 94, 0.2)',
-                    background: 'rgba(15, 23, 42, 0.8)',
                     display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
+                    justifyContent: 'center',
                     gap: '12px'
                   }}>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>
-                      {sheetsConnected && googleApiKey ? (
-                        <span style={{ color: '#22c55e' }}>✓ Connected to Google Sheets</span>
-                      ) : sheetsConnected ? (
-                        <span style={{ color: '#fbbf24' }}>⚠️ Add API key for auto-sync</span>
-                      ) : (
-                        <span>Data will be saved locally</span>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <button
-                        onClick={() => setShowJobModal(false)}
-                        style={{
-                          padding: '10px 20px',
-                          background: 'rgba(100, 116, 139, 0.2)',
-                          border: '1px solid rgba(100, 116, 139, 0.3)',
-                          borderRadius: '8px',
-                          color: '#94a3b8',
-                          fontSize: '13px',
-                          fontWeight: 600,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={createJob}
-                        disabled={geocoding || (jobForm.isNewCustomer ? (!jobForm.firstName || !jobForm.lastName || !jobForm.address) : !jobForm.customerId)}
-                        style={{
-                          padding: '10px 24px',
-                          background: (geocoding || (jobForm.isNewCustomer ? (!jobForm.firstName || !jobForm.lastName || !jobForm.address) : !jobForm.customerId))
-                            ? 'rgba(100, 116, 139, 0.2)'
-                            : 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: (geocoding || (jobForm.isNewCustomer ? (!jobForm.firstName || !jobForm.lastName || !jobForm.address) : !jobForm.customerId))
-                            ? '#64748b'
-                            : 'white',
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          cursor: (geocoding || (jobForm.isNewCustomer ? (!jobForm.firstName || !jobForm.lastName || !jobForm.address) : !jobForm.customerId))
-                            ? 'not-allowed'
-                            : 'pointer',
-                          boxShadow: (geocoding || (jobForm.isNewCustomer ? (!jobForm.firstName || !jobForm.lastName || !jobForm.address) : !jobForm.customerId))
-                            ? 'none'
-                            : '0 4px 15px rgba(34, 197, 94, 0.3)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }}
-                      >
-                        {geocoding ? (
-                          <>⏳ Geocoding...</>
-                        ) : (
-                          <>+ Create Job</>
-                        )}
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => setShowJobModal(false)}
+                      style={{
+                        padding: '12px 32px',
+                        background: '#3a3a4d',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: '#94a3b8',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={createJob}
+                      disabled={geocoding || !jobForm.address}
+                      style={{
+                        padding: '12px 32px',
+                        background: (geocoding || !jobForm.address)
+                          ? 'rgba(100, 116, 139, 0.2)'
+                          : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+                        border: 'none',
+                        borderRadius: '8px',
+                        color: (geocoding || !jobForm.address) ? '#64748b' : 'white',
+                        fontSize: '14px',
+                        fontWeight: 600,
+                        cursor: (geocoding || !jobForm.address) ? 'not-allowed' : 'pointer',
+                        boxShadow: (geocoding || !jobForm.address) ? 'none' : '0 4px 15px rgba(139, 92, 246, 0.3)'
+                      }}
+                    >
+                      {geocoding ? 'Saving...' : 'Save Customer'}
+                    </button>
                   </div>
                 </div>
               </div>
