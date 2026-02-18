@@ -9,6 +9,7 @@ const listsRouter = require('./routes/lists');
 const exportRouter = require('./routes/export');
 const emailRouter = require('./routes/email');
 const gapfillRouter = require('./routes/gapfill');
+const googleSheetsRouter = require('./routes/google-sheets');
 
 const app = express();
 const PORT = 5000;
@@ -57,6 +58,7 @@ app.use('/api/lists', listsRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/email', emailRouter);
 app.use('/api/gapfill', gapfillRouter);
+app.use('/api/google-sheets', googleSheetsRouter);
 
 app.use(express.static(path.join(__dirname, '..'), {
   setHeaders: (res, filePath) => {
