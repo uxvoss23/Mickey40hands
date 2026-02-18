@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request a Quote - Solar Panel Services</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .form-container {
+      background: white;
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+      width: 100%;
+      max-width: 520px;
+      overflow: hidden;
+      animation: slideUp 0.5s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .form-header {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      padding: 32px 32px 28px;
+      text-align: center;
+    }
+
+    .form-header h1 {
+      color: white;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .form-header p {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 14px;
+      font-weight: 400;
+    }
+
+    .form-body {
+      padding: 32px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .form-row-3 {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+    }
+
+    .required::after {
+      content: ' *';
+      color: #ef4444;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #e5e7eb;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      color: #1f2937;
+      transition: all 0.2s ease;
+      background: #fafafa;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #8b5cf6;
+      background: white;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+    }
+
+    input::placeholder, textarea::placeholder {
+      color: #9ca3af;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .address-field {
+      position: relative;
+    }
+
+    .address-field input {
+      padding-right: 40px;
+    }
+
+    .address-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: #9ca3af;
+      font-size: 18px;
+    }
+
+    .address-suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 2px solid #e5e7eb;
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+    }
+
+    .address-suggestion {
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #374151;
+      border-bottom: 1px solid #f3f4f6;
+      transition: background 0.15s ease;
+    }
+
+    .address-suggestion:last-child {
+      border-bottom: none;
+    }
+
+    .address-suggestion:hover {
+      background: #f3f4f6;
+    }
+
+    .service-select {
+      position: relative;
+    }
+
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%239ca3af'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 20px;
+      padding-right: 44px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4);
+      margin-top: 8px;
+    }
+
+    .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
+    }
+
+    .submit-btn:active {
+      transform: translateY(0);
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .success-message {
+      display: none;
+      text-align: center;
+      padding: 48px 32px;
+    }
+
+    .success-message.show {
+      display: block;
+      animation: slideUp 0.4s ease;
+    }
+
+    .success-icon {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.3);
+    }
+
+    .success-icon svg {
+      width: 40px;
+      height: 40px;
+      color: white;
+    }
+
+    .success-message h2 {
+      color: #1f2937;
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .success-message p {
+      color: #6b7280;
+      font-size: 15px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+
+    .new-request-btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #f3f4f6;
+      border: none;
+      border-radius: 10px;
+      color: #374151;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .new-request-btn:hover {
+      background: #e5e7eb;
+    }
+
+    .form-footer {
+      text-align: center;
+      padding: 20px 32px 28px;
+      border-top: 1px solid #f3f4f6;
+    }
+
+    .form-footer p {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .privacy-note {
+      font-size: 12px;
+      color: #9ca3af;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .privacy-note a {
+      color: #8b5cf6;
+      text-decoration: none;
+    }
+
+    .loading-spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .error-text {
+      color: #ef4444;
+      font-size: 12px;
+      margin-top: 4px;
+      display: none;
+    }
+
+    .error-text.show {
+      display: block;
+    }
+
+    input.error, select.error, textarea.error {
+      border-color: #ef4444;
+    }
+
+    @media (max-width: 560px) {
+      body {
+        padding: 16px;
+      }
+
+      .form-container {
+        border-radius: 20px;
+      }
+
+      .form-header {
+        padding: 24px 24px 20px;
+      }
+
+      .form-header h1 {
+        font-size: 20px;
+      }
+
+      .form-body {
+        padding: 24px;
+      }
+
+      .form-row, .form-row-3 {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="form-container">
+    <div class="form-header">
+      <h1>Request a Free Quote</h1>
+      <p>Fill out the form below and we'll get back to you shortly</p>
+    </div>
+
+    <form id="customerForm" class="form-body">
+      <!-- Name Row -->
+      <div class="form-row form-group">
+        <div>
+          <label for="firstName" class="required">First Name</label>
+          <input
+            type="text"
+            id="firstName"
+            name="firstName"
+            placeholder="John"
+            required
+          >
+          <span class="error-text" id="firstNameError">Please enter your first name</span>
+        </div>
+        <div>
+          <label for="lastName" class="required">Last Name</label>
+          <input
+            type="text"
+            id="lastName"
+            name="lastName"
+            placeholder="Smith"
+            required
+          >
+          <span class="error-text" id="lastNameError">Please enter your last name</span>
+        </div>
+      </div>
+
+      <!-- Address -->
+      <div class="form-group">
+        <label for="address" class="required">Street Address</label>
+        <div class="address-field">
+          <input
+            type="text"
+            id="address"
+            name="address"
+            placeholder="123 Main Street"
+            required
+            autocomplete="off"
+          >
+          <span class="address-icon">&#128205;</span>
+          <div class="address-suggestions" id="addressSuggestions" style="display: none;"></div>
+        </div>
+        <span class="error-text" id="addressError">Please enter your address</span>
+      </div>
+
+      <!-- City, State, ZIP Row -->
+      <div class="form-row-3 form-group">
+        <div>
+          <label for="city" class="required">City</label>
+          <input
+            type="text"
+            id="city"
+            name="city"
+            placeholder="Dallas"
+            required
+          >
+          <span class="error-text" id="cityError">Please enter your city</span>
+        </div>
+        <div>
+          <label for="state" class="required">State</label>
+          <input
+            type="text"
+            id="state"
+            name="state"
+            placeholder="TX"
+            value="TX"
+            maxlength="2"
+            required
+          >
+          <span class="error-text" id="stateError">Required</span>
+        </div>
+        <div>
+          <label for="zip" class="required">ZIP Code</label>
+          <input
+            type="text"
+            id="zip"
+            name="zip"
+            placeholder="75001"
+            maxlength="10"
+            required
+          >
+          <span class="error-text" id="zipError">Required</span>
+        </div>
+      </div>
+
+      <!-- Phone & Email Row -->
+      <div class="form-row form-group">
+        <div>
+          <label for="phone" class="required">Phone Number</label>
+          <input
+            type="tel"
+            id="phone"
+            name="phone"
+            placeholder="(555) 123-4567"
+            required
+          >
+          <span class="error-text" id="phoneError">Please enter a valid phone number</span>
+        </div>
+        <div>
+          <label for="email">Email Address</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="john@example.com"
+          >
+          <span class="error-text" id="emailError">Please enter a valid email</span>
+        </div>
+      </div>
+
+      <!-- Service & Panel Count Row -->
+      <div class="form-row form-group">
+        <div class="service-select">
+          <label for="service">Service Interested In</label>
+          <select id="service" name="service">
+            <option value="Panel Cleaning">Solar Panel Cleaning</option>
+            <option value="Panel Inspection">Panel Inspection</option>
+            <option value="Maintenance">Maintenance</option>
+            <option value="Installation">New Installation</option>
+            <option value="Repair">Repair Service</option>
+            <option value="Other">Other / Not Sure</option>
+          </select>
+        </div>
+        <div>
+          <label for="panelCount">Number of Panels</label>
+          <input
+            type="number"
+            id="panelCount"
+            name="panelCount"
+            placeholder="e.g., 20"
+            min="0"
+            max="500"
+          >
+        </div>
+      </div>
+
+      <!-- Notes -->
+      <div class="form-group">
+        <label for="notes">Additional Notes</label>
+        <textarea
+          id="notes"
+          name="notes"
+          placeholder="Tell us about your solar system, any specific concerns, or preferred contact times..."
+          rows="3"
+        ></textarea>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submitBtn">
+        Submit Request
+      </button>
+
+      <p class="privacy-note">
+        Your information is secure and will never be shared with third parties.
+      </p>
+    </form>
+
+    <div class="success-message" id="successMessage">
+      <div class="success-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" />
+        </svg>
+      </div>
+      <h2>Thank You!</h2>
+      <p>Your request has been submitted successfully.<br>We'll be in touch with you shortly.</p>
+      <button type="button" class="new-request-btn" onclick="resetForm()">
+        Submit Another Request
+      </button>
+    </div>
+
+    <div class="form-footer">
+      <p>Questions? Call us at (555) 123-4567</p>
+    </div>
+  </div>
+
+  <script>
+    // Form elements
+    const form = document.getElementById('customerForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successMessage = document.getElementById('successMessage');
+    const addressInput = document.getElementById('address');
+    const suggestionsContainer = document.getElementById('addressSuggestions');
+
+    // Phone formatting
+    const phoneInput = document.getElementById('phone');
+    phoneInput.addEventListener('input', function(e) {
+      let value = e.target.value.replace(/\D/g, '');
+      if (value.length > 0) {
+        if (value.length <= 3) {
+          value = '(' + value;
+        } else if (value.length <= 6) {
+          value = '(' + value.slice(0, 3) + ') ' + value.slice(3);
+        } else {
+          value = '(' + value.slice(0, 3) + ') ' + value.slice(3, 6) + '-' + value.slice(6, 10);
+        }
+      }
+      e.target.value = value;
+    });
+
+    // Address autocomplete with debounce
+    let searchTimeout;
+    addressInput.addEventListener('input', function(e) {
+      clearTimeout(searchTimeout);
+      const query = e.target.value;
+
+      if (query.length < 3) {
+        suggestionsContainer.style.display = 'none';
+        return;
+      }
+
+      searchTimeout = setTimeout(() => {
+        searchAddresses(query);
+      }, 300);
+    });
+
+    // Hide suggestions when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.address-field')) {
+        suggestionsContainer.style.display = 'none';
+      }
+    });
+
+    async function searchAddresses(query) {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&countrycodes=us&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`
+        );
+        const results = await response.json();
+
+        if (results.length > 0) {
+          displaySuggestions(results);
+        } else {
+          suggestionsContainer.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Address search error:', error);
+      }
+    }
+
+    function displaySuggestions(results) {
+      suggestionsContainer.innerHTML = '';
+
+      results.forEach(result => {
+        const div = document.createElement('div');
+        div.className = 'address-suggestion';
+        div.textContent = result.display_name;
+        div.onclick = () => selectAddress(result);
+        suggestionsContainer.appendChild(div);
+      });
+
+      suggestionsContainer.style.display = 'block';
+    }
+
+    function selectAddress(result) {
+      const addr = result.address || {};
+
+      // Build street address
+      let street = '';
+      if (addr.house_number) street += addr.house_number + ' ';
+      if (addr.road) street += addr.road;
+
+      document.getElementById('address').value = street || result.display_name.split(',')[0];
+      document.getElementById('city').value = addr.city || addr.town || addr.village || addr.municipality || '';
+      document.getElementById('state').value = addr.state ? getStateAbbreviation(addr.state) : 'TX';
+      document.getElementById('zip').value = addr.postcode || '';
+
+      // Store lat/lng for geocoding
+      addressInput.dataset.lat = result.lat;
+      addressInput.dataset.lng = result.lon;
+
+      suggestionsContainer.style.display = 'none';
+    }
+
+    function getStateAbbreviation(stateName) {
+      const states = {
+        'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA',
+        'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA',
+        'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA',
+        'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD',
+        'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO',
+        'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ',
+        'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH',
+        'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC',
+        'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT',
+        'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+      };
+      return states[stateName] || stateName.substring(0, 2).toUpperCase();
+    }
+
+    // Form validation
+    function validateForm() {
+      let isValid = true;
+
+      // Required fields
+      const requiredFields = ['firstName', 'lastName', 'address', 'city', 'state', 'zip', 'phone'];
+
+      requiredFields.forEach(fieldId => {
+        const input = document.getElementById(fieldId);
+        const errorEl = document.getElementById(fieldId + 'Error');
+
+        if (!input.value.trim()) {
+          input.classList.add('error');
+          if (errorEl) errorEl.classList.add('show');
+          isValid = false;
+        } else {
+          input.classList.remove('error');
+          if (errorEl) errorEl.classList.remove('show');
+        }
+      });
+
+      // Email validation (optional but must be valid if provided)
+      const emailInput = document.getElementById('email');
+      const emailError = document.getElementById('emailError');
+      if (emailInput.value && !isValidEmail(emailInput.value)) {
+        emailInput.classList.add('error');
+        emailError.classList.add('show');
+        isValid = false;
+      } else {
+        emailInput.classList.remove('error');
+        emailError.classList.remove('show');
+      }
+
+      // Phone validation
+      const phoneValue = document.getElementById('phone').value.replace(/\D/g, '');
+      if (phoneValue.length < 10) {
+        document.getElementById('phone').classList.add('error');
+        document.getElementById('phoneError').classList.add('show');
+        isValid = false;
+      }
+
+      return isValid;
+    }
+
+    function isValidEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+
+    // Clear errors on input
+    document.querySelectorAll('input, textarea').forEach(input => {
+      input.addEventListener('input', () => {
+        input.classList.remove('error');
+        const errorEl = document.getElementById(input.id + 'Error');
+        if (errorEl) errorEl.classList.remove('show');
+      });
+    });
+
+    // Form submission
+    form.addEventListener('submit', async function(e) {
+      e.preventDefault();
+
+      if (!validateForm()) {
+        return;
+      }
+
+      // Show loading state
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="loading-spinner"></span>Submitting...';
+
+      // Collect form data
+      const formData = {
+        id: 'form_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        firstName: document.getElementById('firstName').value.trim(),
+        lastName: document.getElementById('lastName').value.trim(),
+        address: document.getElementById('address').value.trim(),
+        city: document.getElementById('city').value.trim(),
+        state: document.getElementById('state').value.trim().toUpperCase(),
+        zip: document.getElementById('zip').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        panelCount: document.getElementById('panelCount').value || 0,
+        service: document.getElementById('service').value,
+        notes: document.getElementById('notes').value.trim(),
+        lat: addressInput.dataset.lat || null,
+        lng: addressInput.dataset.lng || null,
+        submittedAt: new Date().toISOString(),
+        source: 'public_form'
+      };
+
+      try {
+        // Save to localStorage for the main app to import
+        const existingSubmissions = JSON.parse(localStorage.getItem('formSubmissions') || '[]');
+        existingSubmissions.push(formData);
+        localStorage.setItem('formSubmissions', JSON.stringify(existingSubmissions));
+
+        // Also try to geocode if we don't have coordinates
+        if (!formData.lat || !formData.lng) {
+          try {
+            const fullAddress = `${formData.address}, ${formData.city}, ${formData.state} ${formData.zip}`;
+            const geoResponse = await fetch(
+              `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress)}&limit=1`
+            );
+            const geoResults = await geoResponse.json();
+            if (geoResults.length > 0) {
+              formData.lat = geoResults[0].lat;
+              formData.lng = geoResults[0].lon;
+              // Update the saved data
+              existingSubmissions[existingSubmissions.length - 1] = formData;
+              localStorage.setItem('formSubmissions', JSON.stringify(existingSubmissions));
+            }
+          } catch (geoError) {
+            console.log('Geocoding failed, will geocode later');
+          }
+        }
+
+        // Simulate brief network delay for UX
+        await new Promise(resolve => setTimeout(resolve, 800));
+
+        // Show success
+        form.style.display = 'none';
+        successMessage.classList.add('show');
+
+      } catch (error) {
+        console.error('Submission error:', error);
+        alert('There was an error submitting your request. Please try again.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Submit Request';
+      }
+    });
+
+    function resetForm() {
+      form.reset();
+      document.getElementById('state').value = 'TX';
+      form.style.display = 'block';
+      successMessage.classList.remove('show');
+      addressInput.dataset.lat = '';
+      addressInput.dataset.lng = '';
+    }
+  </script>
+</body>
+</html>

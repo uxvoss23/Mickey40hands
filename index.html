@@ -594,7 +594,11 @@
       const [pipelineSortOrder, setPipelineSortOrder] = useState('asc'); // 'asc' or 'desc'
       const [sheetAutoRefresh, setSheetAutoRefresh] = useState(true); // Auto-refresh from Google Sheets
       const [sheetRefreshInterval, setSheetRefreshInterval] = useState(30000); // Refresh every 30 seconds
-      
+
+      // Public Form Submissions State
+      const [formSubmissions, setFormSubmissions] = useState([]);
+      const [showFormSubmissionsModal, setShowFormSubmissionsModal] = useState(false);
+
       // Job Creation Modal State
       const [jobForm, setJobForm] = useState({
         customerId: null,
@@ -770,13 +774,142 @@
       // Auto-sync from Google Sheets
       useEffect(() => {
         if (!autoSyncSheets || !sheetsConnected) return;
-        
+
         const interval = setInterval(() => {
           syncFromGoogleSheet();
         }, 30000); // Every 30 seconds
-        
+
         return () => clearInterval(interval);
       }, [autoSyncSheets, sheetsConnected]);
+
+      // Check for public form submissions in localStorage
+      useEffect(() => {
+        const checkFormSubmissions = () => {
+          try {
+            const submissions = JSON.parse(localStorage.getItem('formSubmissions') || '[]');
+            setFormSubmissions(submissions);
+          } catch (e) {
+            console.error('Error loading form submissions:', e);
+          }
+        };
+
+        // Check on mount and every 10 seconds
+        checkFormSubmissions();
+        const interval = setInterval(checkFormSubmissions, 10000);
+        return () => clearInterval(interval);
+      }, []);
+
+      // Import a single form submission as a customer
+      const importFormSubmission = async (submission) => {
+        try {
+          setGeocoding(true);
+
+          // Build full address
+          const fullAddress = `${submission.address}, ${submission.city}, ${submission.state} ${submission.zip}`;
+
+          // Get coordinates (use stored ones or geocode)
+          let lat = parseFloat(submission.lat);
+          let lng = parseFloat(submission.lng);
+
+          if (!lat || !lng || isNaN(lat) || isNaN(lng)) {
+            const geoResult = await geocodeAddress(fullAddress);
+            if (geoResult) {
+              lat = geoResult.lat;
+              lng = geoResult.lng;
+            }
+          }
+
+          setGeocoding(false);
+
+          if (!lat || !lng) {
+            alert(`Could not geocode address for ${submission.firstName} ${submission.lastName}. Please check the address.`);
+            return false;
+          }
+
+          // Create customer object
+          const newCustomer = {
+            id: Date.now() + Math.random(),
+            firstname: submission.firstName,
+            lastname: submission.lastName,
+            address: fullAddress,
+            street: submission.address,
+            city: submission.city,
+            state: submission.state,
+            zip: submission.zip,
+            latitude: lat,
+            longitude: lng,
+            lat: lat,
+            lng: lng,
+            phone: submission.phone,
+            email: submission.email || '',
+            totalPanels: parseInt(submission.panelCount) || 0,
+            panelCount: parseInt(submission.panelCount) || 0,
+            notes: submission.notes || '',
+            customerNotes: `Service requested: ${submission.service}. ${submission.notes || ''}`.trim(),
+            lastServiceDate: '',
+            amountPaid: 0,
+            status: 'Not serviced',
+            existingJob: false,
+            solarVerified: null,
+            serviceHistory: [],
+            notesHistory: [],
+            source: 'public_form',
+            submittedAt: submission.submittedAt
+          };
+
+          // Add to customers
+          setCustomers(prev => [...prev, newCustomer]);
+
+          // Add to Google Sheets if connected
+          if (sheetsConnected && googleApiKey) {
+            await addRowToGoogleSheet(newCustomer, {
+              jobType: submission.service,
+              scheduledDate: '',
+              price: 0,
+              assignedEmployee: ''
+            });
+          }
+
+          // Remove from submissions
+          const updatedSubmissions = formSubmissions.filter(s => s.id !== submission.id);
+          setFormSubmissions(updatedSubmissions);
+          localStorage.setItem('formSubmissions', JSON.stringify(updatedSubmissions));
+
+          return true;
+        } catch (error) {
+          console.error('Error importing submission:', error);
+          setGeocoding(false);
+          alert('Error importing submission. Please try again.');
+          return false;
+        }
+      };
+
+      // Import all form submissions
+      const importAllFormSubmissions = async () => {
+        let imported = 0;
+        let failed = 0;
+
+        for (const submission of formSubmissions) {
+          const success = await importFormSubmission(submission);
+          if (success) imported++;
+          else failed++;
+        }
+
+        if (imported > 0) {
+          alert(`Successfully imported ${imported} customer${imported > 1 ? 's' : ''}${failed > 0 ? `. ${failed} failed.` : '!'}`);
+        }
+
+        if (formSubmissions.length === 0 || imported === formSubmissions.length) {
+          setShowFormSubmissionsModal(false);
+        }
+      };
+
+      // Delete a form submission without importing
+      const deleteFormSubmission = (submissionId) => {
+        const updatedSubmissions = formSubmissions.filter(s => s.id !== submissionId);
+        setFormSubmissions(updatedSubmissions);
+        localStorage.setItem('formSubmissions', JSON.stringify(updatedSubmissions));
+      };
 
       // NOTE: filteredCustomers is managed by the unified filter useEffect below (search for "UNIFIED FILTER")
 
@@ -6054,6 +6187,58 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
                 Quick Add
               </button>
 
+              {/* New Form Submissions Button */}
+              {formSubmissions.length > 0 && (
+                <button
+                  onClick={() => setShowFormSubmissionsModal(true)}
+                  style={{
+                    padding: '10px 20px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    border: 'none',
+                    borderRadius: '10px',
+                    color: 'white',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: '0 4px 15px rgba(245, 158, 11, 0.3)',
+                    position: 'relative',
+                    animation: 'pulse-glow 2s ease-in-out infinite'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 6px 20px rgba(245, 158, 11, 0.5)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 15px rgba(245, 158, 11, 0.3)';
+                  }}
+                >
+                  <span style={{
+                    position: 'absolute',
+                    top: '-8px',
+                    right: '-8px',
+                    background: '#ef4444',
+                    color: 'white',
+                    borderRadius: '50%',
+                    width: '22px',
+                    height: '22px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    boxShadow: '0 2px 8px rgba(239, 68, 68, 0.4)'
+                  }}>
+                    {formSubmissions.length}
+                  </span>
+                  New Leads
+                </button>
+              )}
+
               {/* Show All Markers Button (only for large datasets) */}
               {customers.length > 5000 && !showAllMarkers && (
                 <button
@@ -10665,7 +10850,242 @@ Answer: YES (solar panels visible), NO (no panels/only shadows), or UNSURE (cann
               </div>
             )}
 
-            {/* ⚠️ Failed Customers Modal */}
+            {/* New Form Submissions Modal */}
+            {showFormSubmissionsModal && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: 'rgba(0, 0, 0, 0.7)',
+                  backdropFilter: 'blur(4px)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 10002,
+                  animation: 'fadeIn 0.2s ease'
+                }}
+                onClick={() => setShowFormSubmissionsModal(false)}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '700px',
+                    maxHeight: '85vh',
+                    background: '#1a1a2e',
+                    border: '1px solid rgba(245, 158, 11, 0.3)',
+                    borderRadius: '16px',
+                    overflow: 'hidden',
+                    boxShadow: '0 25px 60px rgba(0, 0, 0, 0.5)',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                >
+                  {/* Header */}
+                  <div style={{
+                    padding: '20px 24px',
+                    background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.1) 100%)',
+                    borderBottom: '1px solid rgba(245, 158, 11, 0.2)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }}>
+                    <div>
+                      <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontSize: '22px' }}>&#128229;</span>
+                        New Customer Leads
+                      </h2>
+                      <p style={{ fontSize: '12px', color: '#94a3b8', margin: '6px 0 0 0' }}>
+                        {formSubmissions.length} submission{formSubmissions.length !== 1 ? 's' : ''} from your public form
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setShowFormSubmissionsModal(false)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#94a3b8',
+                        fontSize: '24px',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        lineHeight: 1
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  {/* Submissions List */}
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+                    {formSubmissions.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+                        <p style={{ fontSize: '14px' }}>No pending submissions</p>
+                      </div>
+                    ) : (
+                      formSubmissions.map((submission, idx) => (
+                        <div
+                          key={submission.id || idx}
+                          style={{
+                            background: '#252538',
+                            border: '1px solid rgba(60, 60, 80, 0.5)',
+                            borderRadius: '12px',
+                            padding: '16px',
+                            marginBottom: '12px',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                            <div>
+                              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#f1f5f9', margin: 0 }}>
+                                {submission.firstName} {submission.lastName}
+                              </h3>
+                              <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
+                                {submission.address}, {submission.city}, {submission.state} {submission.zip}
+                              </p>
+                            </div>
+                            <span style={{
+                              fontSize: '10px',
+                              color: '#64748b',
+                              background: 'rgba(100, 116, 139, 0.1)',
+                              padding: '4px 8px',
+                              borderRadius: '4px'
+                            }}>
+                              {new Date(submission.submittedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+                            <div>
+                              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Phone</span>
+                              <span style={{ fontSize: '13px', color: '#f1f5f9' }}>{submission.phone || '-'}</span>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Email</span>
+                              <span style={{ fontSize: '13px', color: '#f1f5f9' }}>{submission.email || '-'}</span>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Panels</span>
+                              <span style={{ fontSize: '13px', color: '#f1f5f9' }}>{submission.panelCount || 'Unknown'}</span>
+                            </div>
+                          </div>
+
+                          <div style={{ marginBottom: '12px' }}>
+                            <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Service Requested</span>
+                            <span style={{
+                              fontSize: '12px',
+                              color: '#a78bfa',
+                              background: 'rgba(139, 92, 246, 0.1)',
+                              padding: '4px 10px',
+                              borderRadius: '6px',
+                              display: 'inline-block',
+                              marginTop: '4px'
+                            }}>
+                              {submission.service || 'Not specified'}
+                            </span>
+                          </div>
+
+                          {submission.notes && (
+                            <div style={{ marginBottom: '12px' }}>
+                              <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>Notes</span>
+                              <p style={{ fontSize: '12px', color: '#cbd5e1', margin: '4px 0 0 0', lineHeight: 1.5 }}>
+                                {submission.notes}
+                              </p>
+                            </div>
+                          )}
+
+                          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '12px', paddingTop: '12px', borderTop: '1px solid rgba(60, 60, 80, 0.3)' }}>
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete submission from ${submission.firstName} ${submission.lastName}?`)) {
+                                  deleteFormSubmission(submission.id);
+                                }
+                              }}
+                              style={{
+                                padding: '8px 16px',
+                                background: 'transparent',
+                                border: '1px solid rgba(239, 68, 68, 0.3)',
+                                borderRadius: '6px',
+                                color: '#f87171',
+                                fontSize: '12px',
+                                fontWeight: 500,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Delete
+                            </button>
+                            <button
+                              onClick={() => importFormSubmission(submission)}
+                              disabled={geocoding}
+                              style={{
+                                padding: '8px 20px',
+                                background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                                border: 'none',
+                                borderRadius: '6px',
+                                color: 'white',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                                cursor: geocoding ? 'not-allowed' : 'pointer',
+                                opacity: geocoding ? 0.6 : 1
+                              }}
+                            >
+                              {geocoding ? 'Importing...' : 'Import Customer'}
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Footer */}
+                  {formSubmissions.length > 0 && (
+                    <div style={{
+                      padding: '16px 24px',
+                      borderTop: '1px solid rgba(60, 60, 80, 0.3)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <button
+                        onClick={() => setShowFormSubmissionsModal(false)}
+                        style={{
+                          padding: '10px 24px',
+                          background: '#3a3a4d',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: '#94a3b8',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        onClick={importAllFormSubmissions}
+                        disabled={geocoding}
+                        style={{
+                          padding: '10px 24px',
+                          background: geocoding ? 'rgba(100, 116, 139, 0.2)' : 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                          border: 'none',
+                          borderRadius: '8px',
+                          color: geocoding ? '#64748b' : 'white',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          cursor: geocoding ? 'not-allowed' : 'pointer',
+                          boxShadow: geocoding ? 'none' : '0 4px 15px rgba(139, 92, 246, 0.3)'
+                        }}
+                      >
+                        {geocoding ? 'Importing...' : `Import All (${formSubmissions.length})`}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Failed Customers Modal */}
             {showFailedCustomersModal && (
               <div
                 style={{
